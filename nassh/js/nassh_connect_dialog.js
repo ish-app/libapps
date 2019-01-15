@@ -968,7 +968,11 @@ nassh.ConnectDialog.prototype.onShortcutListKeyDown_ = function(e) {
     if (isNewConnection) {
       this.$f('description').focus();
     } else {
-      this.onConnectClick_();
+      if (e.ctrlKey) {
+        this.onSftpClientClick_();
+      } else {
+        this.onConnectClick_();
+      }
     }
   }
 };
@@ -1052,7 +1056,11 @@ nassh.ConnectDialog.prototype.onOptionsClick_ = nassh.openOptionsPage;
  */
 nassh.ConnectDialog.prototype.onFormKeyUp_ = function(e) {
   if (e.keyCode == 13) {  // ENTER
-    this.connect();
+    if (e.ctrlKey) {
+      this.sftpConnect();
+    } else {
+      this.connect();
+    }
   } else if (e.keyCode == 27) {  // ESC
     this.syncForm_();
     this.shortcutList_.focus();
