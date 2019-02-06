@@ -393,8 +393,7 @@ nassh.sftp.fsp.onCopyEntryRequested = function(options, onSuccess, onError) {
       } else if (metadata.isDirectory) {
         return nassh.sftp.fsp.copyDirectory_(sourcePath, targetPath, client);
       } else {
-        return nassh.sftp.fsp.copyFile_(
-            sourcePath, targetPath, metadata.size, client);
+        return nassh.sftp.fsp.copyFile_(sourcePath, targetPath, client);
       }
     })
     .then(onSuccess)
@@ -407,7 +406,7 @@ nassh.sftp.fsp.onCopyEntryRequested = function(options, onSuccess, onError) {
 /**
  * Copies the file at the remote source path to the remote target path.
  */
-nassh.sftp.fsp.copyFile_ = function(sourcePath, targetPath, size, client) {
+nassh.sftp.fsp.copyFile_ = function(sourcePath, targetPath, client) {
   var sourceHandle;
   var targetHandle;
   return client.openFile(sourcePath, nassh.sftp.packets.OpenFlags.READ)
@@ -430,21 +429,43 @@ nassh.sftp.fsp.copyFile_ = function(sourcePath, targetPath, size, client) {
         return client.copyData(sourceHandle, targetHandle, size);
       }
 
-      var readWritePromises = [];
-      // Splits up the data to be read and written into chunks that the server
-      // can handle and places them into multiple promises which will be
-      // resolved asynchronously.
-      const chunkSize = Math.min(client.readChunkSize, client.writeChunkSize);
-      for (var i = 0; i < size; i += chunkSize) {
-        var offset = i;
-        var readWritePromise = client.readChunk(sourceHandle, offset,
-                                                chunkSize)
-          .then(data => client.writeChunk(targetHandle, offset, data));
+      // Read the next chunk from the remote and add it to the queue.
+      let readOffset = 0;
+      const readChunk = () => {
+        return client.readChunk(sourceHandle, readOffset, client.readChunkSize)
+          .then((result) => {
+            if (result.length == 0) {
+              return Promise.resolve(nassh.WorkerPipeline.FINISHED);
+            }
 
-        readWritePromises.push(readWritePromise);
-      }
-      return Promise.all(readWritePromises);
+            const ret = {offset: readOffset, chunk: result};
+            readOffset += result.length;
+            return ret;
+          });
+      };
 
+      // Read the next chunk from the queue and send to the server.
+      let writeOffset = 0;
+      const writeChunk = (work, offset=0) => {
+        const readOffset = work.offset;
+        const chunk = work.chunk;
+
+        if (offset >= chunk.length) {
+          return Promise.resolve();
+        }
+
+        // If the read chunk is larger than the write chunk, fragment it.
+        const slice = chunk.slice(offset, offset + client.writeChunkSize);
+        return client.writeChunk(targetHandle, writeOffset, slice)
+          .then(() => {
+            writeOffset += slice.length;
+            return writeChunk(work, offset + slice.length);
+          });
+      };
+
+      // Kick off the worker.
+      const worker = new nassh.WorkerPipeline(readChunk, writeChunk);
+      return worker.run();
     })
     .finally(() => {
       if (sourceHandle !== undefined) {
@@ -492,7 +513,7 @@ nassh.sftp.fsp.copyDirectory_ = function(sourcePath, targetPath, client) {
               fileSourcePath, fileTargetPath, client));
         } else {
           copyPromises.push(nassh.sftp.fsp.copyFile_(
-              fileSourcePath, fileTargetPath, file.size, client));
+              fileSourcePath, fileTargetPath, client));
         }
       }
 
