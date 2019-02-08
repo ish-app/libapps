@@ -35,7 +35,16 @@ nassh.Stream.RelaySshfeWS = function(fd) {
   this.sshAgent_ = null;
 
   // All the data we've queued but not yet sent out.
+<<<<<<< HEAD
   this.writeBuffer_ = new Uint8Array();
+||||||| merged common ancestors
+  this.writeBuffer_ = '';
+  // An array buffer cache so we don't have to create a new one everytime
+  // sendWrite is called.  The contents of this are not retained.
+  this.writeBufferCache_ = new ArrayBuffer(this.maxMessageLength + 4);
+=======
+  this.writeBuffer_ = new nassh.Buffer(true);
+>>>>>>> nassh: RelaySshfe: convert to ArrayBuffers
   // Callback function when asyncWrite is used.
   this.onWriteSuccess_ = null;
 
@@ -342,8 +351,14 @@ nassh.Stream.RelaySshfeWS.prototype.asyncWrite = function(data, onSuccess) {
     return;
   }
 
+<<<<<<< HEAD
   this.writeBuffer_ = lib.array.concatTyped(
       this.writeBuffer_, new Uint8Array(data));
+||||||| merged common ancestors
+  this.writeBuffer_ += atob(data);
+=======
+  this.writeBuffer_.write(data);
+>>>>>>> nassh: RelaySshfe: convert to ArrayBuffers
   this.onWriteSuccess_ = onSuccess;
   this.sendWrite_();
 };
@@ -353,14 +368,13 @@ nassh.Stream.RelaySshfeWS.prototype.asyncWrite = function(data, onSuccess) {
  */
 nassh.Stream.RelaySshfeWS.prototype.sendWrite_ = function() {
   if (!this.socket_ || this.socket_.readyState != 1 ||
-      this.writeBuffer_.length == 0) {
+      this.writeBuffer_.getQueuedBytes() == 0) {
     // Nothing to write or socket is not ready.
     return;
   }
 
-  const readBuffer = this.writeBuffer_.subarray(0, this.maxMessageLength);
-  const size = readBuffer.length;
-  const buf = new ArrayBuffer(size + 4);
+  const readBuffer = this.writeBuffer_.read(this.maxMessageLength);
+  const buf = new ArrayBuffer(readBuffer.length + 4);
   const u8 = new Uint8Array(buf, 4);
   const dv = new DataView(buf);
 
@@ -370,14 +384,13 @@ nassh.Stream.RelaySshfeWS.prototype.sendWrite_ = function() {
   u8.set(readBuffer);
 
   this.socket_.send(buf);
-  this.writeBuffer_ = this.writeBuffer_.subarray(size);
 
   if (this.onWriteSuccess_ !== null) {
     // Notify nassh that we are ready to consume more data.
     this.onWriteSuccess_(size);
   }
 
-  if (this.writeBuffer_.length) {
+  if (this.writeBuffer_.getQueuedBytes()) {
     // We have more data to send but due to message limit we didn't send it.
     setTimeout(this.sendWrite_.bind(this), 0);
   }
