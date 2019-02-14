@@ -14,7 +14,7 @@ nassh.Stream.SSHAgentRelay = function(fd) {
   this.authAgentAppID_ = null;
   this.port_ = null;
   this.pendingMessageSize_ = null;
-  this.writeBuffer_ = new Uint8Array();
+  this.writeBuffer_ = new nassh.Buffer(true);
 };
 
 /**
@@ -95,25 +95,23 @@ nassh.Stream.SSHAgentRelay.prototype.close = function() {
 nassh.Stream.SSHAgentRelay.prototype.trySendPacket_ = function() {
   // See if we've scanned the message length yet (first 4 bytes).
   if (this.pendingMessageSize_ === null) {
-    if (this.writeBuffer_.length < 4) {
+    if (this.writeBuffer_.getQueuedBytes() < 4) {
       return;
     }
 
     // Pull out the 32-bit message length.
-    const dv = new DataView(
-        this.writeBuffer_.buffer, this.writeBuffer_.byteOffset);
+    const bytes = this.writeBuffer_.read(4);
+    const dv = new DataView(bytes.buffer);
     this.pendingMessageSize_ = dv.getUint32(0);
-    this.writeBuffer_ = this.writeBuffer_.subarray(4);
   }
 
   // See if we've got the message body yet.
-  if (this.writeBuffer_.length < this.pendingMessageSize_) {
+  if (this.writeBuffer_.getQueuedBytes() < this.pendingMessageSize_) {
     return;
   }
 
   // Send the body to the extension.
-  const data = this.writeBuffer_.subarray(0, this.pendingMessageSize_);
-  this.writeBuffer_ = this.writeBuffer_.subarray(this.pendingMessageSize_);
+  const data = this.writeBuffer_.read(this.pendingMessageSize_);
   // Restart the message process.
   this.pendingMessageSize_ = null;
 
@@ -136,8 +134,7 @@ nassh.Stream.SSHAgentRelay.prototype.asyncWrite = function(data, onSuccess) {
     return;
   }
 
-  this.writeBuffer_ = lib.array.concatTyped(
-      this.writeBuffer_, new Uint8Array(data));
+  this.writeBuffer_.write(data);
 
   setTimeout(this.trySendPacket_.bind(this), 0);
 
