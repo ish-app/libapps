@@ -20,7 +20,7 @@ nassh.Stream.GoogleRelay = function(fd) {
   this.backoffMS_ = 0;
   this.backoffTimeout_ = null;
 
-  this.writeBuffer_ = new Uint8Array();
+  this.writeBuffer_ = new nassh.Buffer();
   this.writeCount_ = 0;
   this.onWriteSuccess_ = null;
 
@@ -86,8 +86,7 @@ nassh.Stream.GoogleRelay.prototype.asyncWrite = function(data, onSuccess) {
     return;
   }
 
-  this.writeBuffer_ = lib.array.concatTyped(
-      this.writeBuffer_, new Uint8Array(data));
+  this.writeBuffer_.write(data);
   this.onWriteSuccess_ = onSuccess;
 
   if (!this.backoffTimeout_)
@@ -220,7 +219,8 @@ nassh.Stream.GoogleRelayXHR.prototype.resumeRead_ = function() {
  * Send the next pending write.
  */
 nassh.Stream.GoogleRelayXHR.prototype.sendWrite_ = function() {
-  if (!this.writeBuffer_.length || this.isRequestBusy_(this.writeRequest_)) {
+  if (this.writeBuffer_.getQueuedBytes() == 0 ||
+      this.isRequestBusy_(this.writeRequest_)) {
     // Nothing to write, or a write is in progress.
     return;
   }
@@ -230,7 +230,7 @@ nassh.Stream.GoogleRelayXHR.prototype.sendWrite_ = function() {
     return;
   }
 
-  const dataBuffer = this.writeBuffer_.subarray(0, this.maxMessageLength);
+  const dataBuffer = this.writeBuffer_.read(this.maxMessageLength);
   const data = nassh.base64ToBase64Url(btoa(
       lib.codec.codeUnitArrayToString(dataBuffer)));
   this.writeRequest_.open('GET', this.relay_.relayServer +
@@ -287,7 +287,7 @@ nassh.Stream.GoogleRelayXHR.prototype.onWriteDone_ = function(e) {
   if (this.writeRequest_.status != 200)
     return this.onRequestError_(e);
 
-  this.writeBuffer_ = this.writeBuffer_.subarray(this.lastWriteSize_);
+  this.writeBuffer_.ack(this.lastWriteSize_);
   this.writeCount_ += this.lastWriteSize_;
 
   this.requestSuccess_(false);
@@ -318,9 +318,6 @@ nassh.Stream.GoogleRelayWS = function(fd) {
   nassh.Stream.GoogleRelay.apply(this, [fd]);
 
   this.socket_ = null;
-
-  // Amount of data in buffer that were sent but not acknowledged yet.
-  this.sentCount_ = 0;
 
   // Time when data was sent most recently.
   this.ackTime_ = 0;
@@ -370,8 +367,6 @@ nassh.Stream.GoogleRelayWS.prototype.resumeRead_ = function() {
     this.socket_.onmessage = this.onSocketData_.bind(this);
     this.socket_.onclose = this.socket_.onerror =
         this.onSocketError_.bind(this);
-
-    this.sentCount_ = 0;
   }
 };
 
@@ -425,8 +420,7 @@ nassh.Stream.GoogleRelayWS.prototype.onSocketData_ = function(e) {
 
   // Unsigned 24 bits wrap-around delta.
   var delta = ((ack & 0xffffff) - (this.writeCount_ & 0xffffff)) & 0xffffff;
-  this.writeBuffer_ = this.writeBuffer_.subarray(delta);
-  this.sentCount_ -= delta;
+  this.writeBuffer_.ack(delta);
   this.writeCount_ += delta;
 
   // This creates a copy of the ArrayBuffer, but there doesn't seem to be an
@@ -459,7 +453,7 @@ nassh.Stream.GoogleRelayWS.prototype.onSocketError_ = function(e) {
 
 nassh.Stream.GoogleRelayWS.prototype.sendWrite_ = function() {
   if (!this.socket_ || this.socket_.readyState != 1 ||
-      this.sentCount_ == this.writeBuffer_.length) {
+      this.writeBuffer_.getQueuedBytes() == 0) {
     // Nothing to write or socket is not ready.
     return;
   }
@@ -469,8 +463,7 @@ nassh.Stream.GoogleRelayWS.prototype.sendWrite_ = function() {
     return;
   }
 
-  const dataBuffer = this.writeBuffer_.subarray(
-      this.sentCount_, this.sentCount_ + this.maxMessageLength);
+  const dataBuffer = this.writeBuffer_.read(this.maxMessageLength);
   const buf = new ArrayBuffer(dataBuffer.length + 4);
   const u8 = new Uint8Array(buf, 4);
   const dv = new DataView(buf);
@@ -483,18 +476,17 @@ nassh.Stream.GoogleRelayWS.prototype.sendWrite_ = function() {
   u8.set(dataBuffer);
 
   this.socket_.send(buf);
-  this.sentCount_ += dataBuffer.length;
 
   // Track ack latency.
   this.ackTime_ = Date.now();
-  this.expectedAck_ = (this.writeCount_ + this.sentCount_) & 0xffffff;
+  this.expectedAck_ = this.writeCount_ & 0xffffff;
 
   if (typeof this.onWriteSuccess_ == 'function') {
     // Notify nassh that we are ready to consume more data.
-    this.onWriteSuccess_(this.writeCount_ + this.sentCount_);
+    this.onWriteSuccess_(this.writeCount_);
   }
 
-  if (this.sentCount_ < this.writeBuffer_.length) {
+  if (this.writeBuffer_.getQueuedBytes()) {
     // We have more data to send but due to message limit we didn't send it.
     // We don't know when data was sent so just send new portion async.
     setTimeout(this.sendWrite_.bind(this), 0);
