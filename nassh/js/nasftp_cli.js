@@ -1661,6 +1661,37 @@ nasftp.Cli.commandPut_ = function(args, opts) {
         return new Promise((resolveOneFile) => {
           // Read the next chunk from the file and add it to the queue.
           const reader = new lib.fs.FileReader();
+          let readOffset = 0;
+          const readChunk = () => {
+            if (this.userInterrupted_) {
+              return Promise.resolve(nassh.WorkerPipeline.FINISHED);
+            }
+
+            // We use chunk sizes that match the SFTP write chunk size to
+            // avoid any further fragmentation.
+            const chunk = file.slice(
+                readOffset, readOffset + this.client.writeChunkSize);
+            if (chunk.size == 0) {
+              return Promise.resolve(nassh.WorkerPipeline.FINISHED);
+            }
+
+            return reader.readAsArrayBuffer(chunk).then((result) => {
+              const ret = {offset: readOffset, chunk: new Uint8Array(result)};
+              readOffset += result.byteLength;
+              return ret;
+            })
+            .catch(() => {
+              this.showError_(nassh.msg('NASFTP_ERROR_FILE_READING',
+                                        [file.name, event]));
+              return nassh.WorkerPipeline.FINISHED;
+            });
+          };
+
+          // Read the next chunk from the queue and send to the server.
+          const writeChunk = (work) => {
+            return this.client.writeChunk(openHandle, work.offset, work.chunk)
+              .then(() => spinner.update(work.offset));
+          };
 
           // Clobber whatever file might already exist.
           const flags = nassh.sftp.packets.OpenFlags.WRITE |
@@ -1673,32 +1704,17 @@ nasftp.Cli.commandPut_ = function(args, opts) {
             .then((handle) => {
               openHandle = handle;
 
-              let offset = 0;
-              const readThenWrite = () => {
-                spinner.update(offset);
-                if (this.userInterrupted_) {
-                  return;
-                }
-
-                // We use chunk sizes that match the SFTP write chunk size to
-                // avoid any further fragmentation.
-                const chunk = file.slice(
-                    offset, offset + this.client.writeChunkSize);
-                if (chunk.size == 0) {
-                  return;
-                }
-
-                return reader.readAsArrayBuffer(chunk)
-                  .then((result) => {
-                    return this.client.writeChunk(handle, offset, result);
-                  })
-                  .then(() => {
-                    offset += chunk.size;
-                    return readThenWrite();
-                  });
-              };
-
-              return readThenWrite();
+              // Kick off the worker.
+              const worker = new nassh.WorkerPipeline(readChunk, writeChunk, {
+                // While 50msec is short for slower internet connections, we
+                // need to balance faster LAN connections.
+                producerDelay: 50,
+                // 10msec is short, but local disk reading should be faster than
+                // network transfers, so when we reschedule, the queue shouldn't
+                // still be empty.
+                consumerDelay: 10,
+              });
+              return worker.run();
             })
             .then(() => {
               if (opts.fsync) {
