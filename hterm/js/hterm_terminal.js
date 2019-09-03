@@ -1658,6 +1658,13 @@ hterm.Terminal.prototype.focus = function() {
 };
 
 /**
+ * Unfocus the terminal.
+ */
+hterm.Terminal.prototype.blur = function() {
+  this.scrollPort_.blur();
+};
+
+/**
  * Return the HTML Element for a given row index.
  *
  * This is a method from the RowProvider interface.  The ScrollPort uses
