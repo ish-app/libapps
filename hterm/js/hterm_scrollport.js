@@ -1592,8 +1592,8 @@ hterm.ScrollPort.prototype.scrollWheelDelta = function(e) {
 /**
  * Clients can override this if they want to hear touch events.
  *
- * Clients may call event.preventDefault() if they want to keep the scrollport
- * from also handling the events.
+ * Clients may call event.preventDefault() or return false if they want to keep
+ * the scrollport from also handling the events.
  */
 hterm.ScrollPort.prototype.onTouch = function(e) {};
 
@@ -1601,9 +1601,7 @@ hterm.ScrollPort.prototype.onTouch = function(e) {};
  * Handler for touch events.
  */
 hterm.ScrollPort.prototype.onTouch_ = function(e) {
-  this.onTouch(e);
-
-  if (e.defaultPrevented)
+  if (this.onTouch(e) === false || e.defaultPrevented)
     return;
 
   // Extract the fields from the Touch event that we need.  If we saved the
