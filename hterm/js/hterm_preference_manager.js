@@ -461,6 +461,13 @@ hterm.PreferenceManager.defaultPreferences = {
       `The foreground color for text with no other color attributes.`
   ),
 
+  'enable-resize-notice': hterm.PreferenceManager.definePref_(
+      'Show notification when window resizes',
+      hterm.PreferenceManager.categories.Appearance,
+      true, 'bool',
+      `Whether to show a notification when the terminal window changes size.`
+  ),
+
   'hide-mouse-while-typing': hterm.PreferenceManager.definePref_(
       'Hide mouse cursor while typing',
       hterm.PreferenceManager.categories.Keyboard,

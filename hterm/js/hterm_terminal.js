@@ -3388,7 +3388,8 @@ hterm.Terminal.prototype.copySelectionToClipboard = function() {
 };
 
 hterm.Terminal.prototype.overlaySize = function() {
-  this.showOverlay(this.screenSize.width + 'x' + this.screenSize.height);
+  if (this.prefs_.get('enable-resize-notice'))
+    this.showOverlay(this.screenSize.width + 'x' + this.screenSize.height);
 };
 
 /**
