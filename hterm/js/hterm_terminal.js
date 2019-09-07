@@ -3741,6 +3741,7 @@ hterm.Terminal.prototype.onResize_ = function() {
 
   var isNewSize = (columnCount != this.screenSize.width ||
                    rowCount != this.screenSize.height);
+  var wasScrolledEnd = this.scrollPort_.isScrolledEnd;
 
   // We do this even if the size didn't change, just to be sure everything is
   // in sync.
@@ -3752,6 +3753,9 @@ hterm.Terminal.prototype.onResize_ = function() {
 
   this.restyleCursor_();
   this.scheduleSyncCursorPosition_();
+
+  if (wasScrolledEnd)
+    this.scrollEnd();
 };
 
 /**

@@ -916,7 +916,6 @@ hterm.ScrollPort.prototype.resize = function() {
   this.publish(
       'resize', { scrollPort: this },
       function() {
-        self.scrollRowToBottom(self.rowProvider_.getRowCount());
         self.scheduleRedraw();
       });
 };
