@@ -261,12 +261,12 @@ hterm.AccessibilityReader.prototype.assertiveAnnounce = function(str) {
   // So we slightly change the string to ensure that the attribute change gets
   // registered.
   str = str.trim();
-  if (str == this.assertiveLiveElement_.getAttribute('aria-label')) {
+  if (str == this.assertiveLiveElement_.innerText) {
     str = '\n' + str;
   }
 
   this.clear();
-  this.assertiveLiveElement_.setAttribute('aria-label', str);
+  this.assertiveLiveElement_.innerText = str;
 };
 
 /**
@@ -280,8 +280,8 @@ hterm.AccessibilityReader.prototype.newLine = function() {
  * Clear the live region and any in-flight announcements.
  */
 hterm.AccessibilityReader.prototype.clear = function() {
-  this.liveElement_.setAttribute('aria-label', '');
-  this.assertiveLiveElement_.setAttribute('aria-label', '');
+  this.liveElement_.innerText = '';
+  this.assertiveLiveElement_.innerText = '';
   clearTimeout(this.nextReadTimer_);
   this.nextReadTimer_ = null;
   this.queue_ = [];
