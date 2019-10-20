@@ -13,23 +13,31 @@
  * background page and let it do the open for us.
  *
  * @param {string} url The URL to open.
- * @returns {Promise} A promise resolving once the window opens.
+ * @return {!Promise} A promise resolving once the window opens.
  */
 const openNewWindow = function(url) {
-  return new Promise((resolve) => {
-    chrome.runtime.getBackgroundPage((bg) => {
-      bg.window.lib.f.openWindow(
-          url, '',
-          'chrome=no,close=yes,resize=yes,scrollbars=yes,minimizable=yes,' +
-          `width=${window.innerWidth},height=${window.innerHeight}`);
-      resolve();
+  return new Promise((resolve, reject) => {
+    chrome.runtime.sendMessage({
+      command: 'nassh',
+      width: window.innerWidth,
+      height: window.innerHeight,
+      url: url,
+      window: true,
+    }, null, (response) => {
+      if (response.error) {
+        reject(`request failed: ${response.message}`);
+      } else {
+        resolve();
+      }
     });
   });
 };
 
-// CSP means that we can't kick off the initialization from the html file,
-// so we do it like this instead.
-window.onload = function() {
+/**
+ * CSP means that we can't kick off the initialization from the html file,
+ * so we do it like this instead.
+ */
+window.addEventListener('DOMContentLoaded', (event) => {
   // Workaround https://crbug.com/924656.
   if (nassh.workaroundMissingChromeRuntime()) {
     return;
@@ -42,9 +50,9 @@ window.onload = function() {
     // Delete the 'openas' string so we don't get into a loop.  We want to
     // preserve the rest of the query string when opening the window.
     params.delete('openas');
-    const url = new URL(document.location);
+    const url = new URL(document.location.toString());
     url.search = params.toString();
-    openNewWindow(url.href).then(window.close);
+    openNewWindow(url.href).then(() => window.close);
     return;
   }
 
@@ -55,12 +63,12 @@ window.onload = function() {
     hterm.notifyCopyMessage = nassh.msg('NOTIFY_COPY');
 
     var terminal = new hterm.Terminal(profileName);
-    terminal.decorate(document.querySelector('#terminal'));
+    terminal.decorate(lib.notNull(document.querySelector('#terminal')));
     const runNassh = function() {
       terminal.setCursorPosition(0, 0);
       terminal.setCursorVisible(true);
-      terminal.runCommandClass(nassh.CommandInstance,
-                               document.location.hash.substr(1));
+      terminal.runCommandClass(
+          nassh.CommandInstance, 'nassh', [document.location.hash.substr(1)]);
     };
     terminal.onTerminalReady = function() {
       if (window.chrome && chrome.accessibilityFeatures &&
@@ -77,18 +85,20 @@ window.onload = function() {
     };
 
     terminal.contextMenu.setItems([
-      [nassh.msg('TERMINAL_CLEAR_MENU_LABEL'),
-       function() { terminal.wipeContents(); }],
-      [nassh.msg('TERMINAL_RESET_MENU_LABEL'),
-       function() { terminal.reset(); }],
-      [nassh.msg('NEW_WINDOW_MENU_LABEL'),
-       function() { openNewWindow(lib.f.getURL('/html/nassh.html')); }],
-      [nassh.msg('FAQ_MENU_LABEL'),
-       function() { lib.f.openWindow('https://goo.gl/muppJj', '_blank'); }],
-      [nassh.msg('CLEAR_KNOWN_HOSTS_MENU_LABEL'),
-       function() { terminal.command.removeAllKnownHosts(); }],
-      [nassh.msg('OPTIONS_BUTTON_LABEL'),
-       function() { nassh.openOptionsPage(); }],
+      {name: nassh.msg('TERMINAL_CLEAR_MENU_LABEL'),
+       action: function() { terminal.wipeContents(); }},
+      {name: nassh.msg('TERMINAL_RESET_MENU_LABEL'),
+       action: function() { terminal.reset(); }},
+      {name: nassh.msg('NEW_WINDOW_MENU_LABEL'),
+       action: function() { openNewWindow(lib.f.getURL('/html/nassh.html')); }},
+      {name: nassh.msg('FAQ_MENU_LABEL'),
+       action: function() {
+         lib.f.openWindow('https://goo.gl/muppJj', '_blank');
+       }},
+      {name: nassh.msg('CLEAR_KNOWN_HOSTS_MENU_LABEL'),
+       action: function() { terminal.command.removeAllKnownHosts(); }},
+      {name: nassh.msg('OPTIONS_BUTTON_LABEL'),
+       action: function() { nassh.openOptionsPage(); }},
     ]);
 
     // Useful for console debugging.
@@ -100,4 +110,4 @@ window.onload = function() {
 
   nassh.disableTabDiscarding();
   lib.init(execNaSSH, console.log.bind(console));
-};
+});

@@ -54,97 +54,112 @@ hterm.notifyCopyMessage = '\u2702';
  */
 hterm.desktopNotificationTitle = '\u266A %(title) \u266A';
 
-/**
- * The hterm init function, registered with lib.registerInit().
- *
- * This is called during lib.init().
- *
- * @param {function} onInit The function lib.init() wants us to invoke when
- *     initialization is complete.
- */
-lib.registerInit('hterm', function(onInit) {
-  function initOs(os) {
-    hterm.os = os;
+/** @type {?lib.MessageManager} */
+hterm.messageManager = null;
 
-    onInit();
-  }
+lib.registerInit(
+    'hterm',
+    /**
+     * The hterm init function, registered with lib.registerInit().
+     *
+     * This is called during lib.init().
+     *
+     * @param {function()} onInit The function lib.init() wants us to invoke
+     *     when initialization is complete.
+     */
+    function(onInit) {
+      function initOs(os) {
+        hterm.os = os;
 
-  function initMessageManager() {
-    lib.i18n.getAcceptLanguages((languages) => {
-      if (!hterm.messageManager)
-        hterm.messageManager = new lib.MessageManager(languages);
+        onInit();
+      }
 
-      // If OS detection fails, then we'll still set the value to something.
-      // The OS logic in hterm tends to be best effort anyways.
-      lib.f.getOs().then(initOs).catch(initOs);
+      function initMessageManager() {
+        lib.i18n.getAcceptLanguages((languages) => {
+          if (!hterm.messageManager)
+            hterm.messageManager = new lib.MessageManager(languages);
+
+          // If OS detection fails, then we'll still set the value to something.
+          // The OS logic in hterm tends to be best effort anyways.
+          lib.f.getOs().then(initOs).catch(initOs);
+        });
+      }
+
+      function onWindow(window) {
+        hterm.windowType = window.type;
+        initMessageManager();
+      }
+
+      function onTab(tab) {
+        if (tab && window.chrome) {
+          chrome.windows.get(tab.windowId, null, onWindow);
+        } else {
+          // TODO(rginda): This is where we end up for a v1 app's background
+          // page. Maybe windowType = 'none' would be more appropriate, or
+          // something.
+          hterm.windowType = 'normal';
+          initMessageManager();
+        }
+      }
+
+      if (!hterm.defaultStorage) {
+        if (window.chrome && chrome.storage && chrome.storage.sync) {
+          hterm.defaultStorage = new lib.Storage.Chrome(chrome.storage.sync);
+        } else {
+          hterm.defaultStorage = new lib.Storage.Local();
+        }
+      }
+
+      // The chrome.tabs API is not supported in packaged apps, and detecting if
+      // you're a packaged app is a little awkward.
+      var isPackagedApp = false;
+      if (window.chrome && chrome.runtime && chrome.runtime.getManifest) {
+        var manifest = chrome.runtime.getManifest();
+        isPackagedApp = manifest.app && manifest.app.background;
+      }
+
+      if (isPackagedApp) {
+        // Packaged apps are never displayed in browser tabs.
+        setTimeout(onWindow.bind(null, {type: 'popup'}), 0);
+      } else {
+        if (window.chrome && chrome.tabs) {
+          // The getCurrent method gets the tab that is "currently running", not
+          // the topmost or focused tab.
+          chrome.tabs.getCurrent(onTab);
+        } else {
+          setTimeout(onWindow.bind(null, {type: 'normal'}), 0);
+        }
+      }
     });
-  }
-
-  function onWindow(window) {
-    hterm.windowType = window.type;
-    initMessageManager();
-  }
-
-  function onTab(tab) {
-    if (tab && window.chrome) {
-      chrome.windows.get(tab.windowId, null, onWindow);
-    } else {
-      // TODO(rginda): This is where we end up for a v1 app's background page.
-      // Maybe windowType = 'none' would be more appropriate, or something.
-      hterm.windowType = 'normal';
-      initMessageManager();
-    }
-  }
-
-  if (!hterm.defaultStorage) {
-    if (window.chrome && chrome.storage && chrome.storage.sync) {
-      hterm.defaultStorage = new lib.Storage.Chrome(chrome.storage.sync);
-    } else {
-      hterm.defaultStorage = new lib.Storage.Local();
-    }
-  }
-
-  // The chrome.tabs API is not supported in packaged apps, and detecting if
-  // you're a packaged app is a little awkward.
-  var isPackagedApp = false;
-  if (window.chrome && chrome.runtime && chrome.runtime.getManifest) {
-    var manifest = chrome.runtime.getManifest();
-    isPackagedApp = manifest.app && manifest.app.background;
-  }
-
-  if (isPackagedApp) {
-    // Packaged apps are never displayed in browser tabs.
-    setTimeout(onWindow.bind(null, {type: 'popup'}), 0);
-  } else {
-    if (window.chrome && chrome.tabs) {
-      // The getCurrent method gets the tab that is "currently running", not the
-      // topmost or focused tab.
-      chrome.tabs.getCurrent(onTab);
-    } else {
-      setTimeout(onWindow.bind(null, {type: 'normal'}), 0);
-    }
-  }
-});
 
 /**
- * Return decimal { width, height } for a given dom node.
+ * Return decimal { width, height } for a given DOM element.
+ *
+ * @param {!Element} element The element whose size to lookup.
+ * @return {!DOMRect} The size of the element.
  */
-hterm.getClientSize = function(dom) {
-  return dom.getBoundingClientRect();
+hterm.getClientSize = function(element) {
+  return element.getBoundingClientRect();
 };
 
 /**
- * Return decimal width for a given dom node.
+ * Return decimal width for a given DOM element.
+ *
+ * @param {!Element} element The element whose width to lookup.
+ * @return {number} The width of the element.
  */
-hterm.getClientWidth = function(dom) {
-  return dom.getBoundingClientRect().width;
+hterm.getClientWidth = function(element) {
+  return element.getBoundingClientRect().width;
 };
 
 /**
- * Return decimal height for a given dom node.
+ * Return decimal height for a given DOM element.
+ *
+ * @param {!Element} element The element whose height to lookup.
+ * @return {number} The height of the element.
  */
-hterm.getClientHeight = function(dom) {
-  return dom.getBoundingClientRect().height;
+hterm.getClientHeight = function(element) {
+  return element.getBoundingClientRect().height;
 };
 
 /**
@@ -152,8 +167,9 @@ hterm.getClientHeight = function(dom) {
  *
  * We'll create selections on demand based on the content to copy.
  *
- * @param {HTMLDocument} document The document with the selection to copy.
+ * @param {!Document} document The document with the selection to copy.
  * @param {string} str The string data to copy out.
+ * @return {!Promise<void>}
  */
 hterm.copySelectionToClipboard = function(document, str) {
   // Request permission if need be.
@@ -265,7 +281,7 @@ hterm.copySelectionToClipboard = function(document, str) {
  * "clipboardRead" permission.  In other environments, this might always
  * fail as the browser frequently blocks access for security reasons.
  *
- * @param {HTMLDocument} The document to paste into.
+ * @param {!Document} document The document to paste into.
  * @return {boolean} True if the paste succeeded.
  */
 hterm.pasteFromClipboard = function(document) {
@@ -282,7 +298,7 @@ hterm.pasteFromClipboard = function(document) {
  * Return a formatted message in the current locale.
  *
  * @param {string} name The name of the message to return.
- * @param {Array<string>=} args The message arguments, if required.
+ * @param {!Array<string>=} args The message arguments, if required.
  * @param {string=} string The default message text.
  * @return {string} The localized message.
  */
@@ -293,9 +309,11 @@ hterm.msg = function(name, args = [], string) {
 /**
  * Create a new notification.
  *
- * @param {Object} params Various parameters for the notification.
- * @param {string} params.title The title (defaults to the window's title).
- * @param {string} params.body The message body (main text).
+ * @param {{title:(string|undefined), body:(string|undefined)}=} params Various
+ *     parameters for the notification.
+ *     title The title (defaults to the window's title).
+ *     body The message body (main text).
+ * @return {!Notification}
  */
 hterm.notify = function(params) {
   var def = (curr, fallback) => curr !== undefined ? curr : fallback;
@@ -317,7 +335,7 @@ hterm.notify = function(params) {
   var n = new Notification(title, options);
   n.onclick = function() {
     window.focus();
-    this.close();
+    n.close();
   };
   return n;
 };
@@ -342,8 +360,9 @@ hterm.openUrl = function(url) {
  *
  * Instances of this class have public read/write members for width and height.
  *
- * @param {integer} width The width of this record.
- * @param {integer} height The height of this record.
+ * @param {number} width The width of this record.
+ * @param {number} height The height of this record.
+ * @constructor
  */
 hterm.Size = function(width, height) {
   this.width = width;
@@ -353,8 +372,8 @@ hterm.Size = function(width, height) {
 /**
  * Adjust the width and height of this record.
  *
- * @param {integer} width The new width of this record.
- * @param {integer} height The new height of this record.
+ * @param {number} width The new width of this record.
+ * @param {number} height The new height of this record.
  */
 hterm.Size.prototype.resize = function(width, height) {
   this.width = width;
@@ -364,8 +383,8 @@ hterm.Size.prototype.resize = function(width, height) {
 /**
  * Return a copy of this record.
  *
- * @return {hterm.Size} A new hterm.Size instance with the same width and
- * height.
+ * @return {!hterm.Size} A new hterm.Size instance with the same width and
+ *     height.
  */
 hterm.Size.prototype.clone = function() {
   return new hterm.Size(this.width, this.height);
@@ -374,7 +393,7 @@ hterm.Size.prototype.clone = function() {
 /**
  * Set the height and width of this instance based on another hterm.Size.
  *
- * @param {hterm.Size} that The object to copy from.
+ * @param {!hterm.Size} that The object to copy from.
  */
 hterm.Size.prototype.setTo = function(that) {
   this.width = that.width;
@@ -384,7 +403,7 @@ hterm.Size.prototype.setTo = function(that) {
 /**
  * Test if another hterm.Size instance is equal to this one.
  *
- * @param {hterm.Size} that The other hterm.Size instance.
+ * @param {!hterm.Size} that The other hterm.Size instance.
  * @return {boolean} True if both instances have the same width/height, false
  *     otherwise.
  */
@@ -397,6 +416,7 @@ hterm.Size.prototype.equals = function(that) {
  *
  * @return {string} A string that identifies the width and height of this
  *     instance.
+ * @override
  */
 hterm.Size.prototype.toString = function() {
   return '[hterm.Size: ' + this.width + ', ' + this.height + ']';
@@ -414,10 +434,11 @@ hterm.Size.prototype.toString = function() {
  * happens normally, but any attempt to print new characters causes a cr/lf
  * first.
  *
- * @param {integer} row The row of this record.
- * @param {integer} column The column of this record.
- * @param {boolean} opt_overflow Optional boolean indicating that the RowCol
+ * @param {number} row The row of this record.
+ * @param {number} column The column of this record.
+ * @param {boolean=} opt_overflow Optional boolean indicating that the RowCol
  *     has overflowed.
+ * @constructor
  */
 hterm.RowCol = function(row, column, opt_overflow) {
   this.row = row;
@@ -428,9 +449,9 @@ hterm.RowCol = function(row, column, opt_overflow) {
 /**
  * Adjust the row and column of this record.
  *
- * @param {integer} row The new row of this record.
- * @param {integer} column The new column of this record.
- * @param {boolean} opt_overflow Optional boolean indicating that the RowCol
+ * @param {number} row The new row of this record.
+ * @param {number} column The new column of this record.
+ * @param {boolean=} opt_overflow Optional boolean indicating that the RowCol
  *     has overflowed.
  */
 hterm.RowCol.prototype.move = function(row, column, opt_overflow) {
@@ -442,8 +463,8 @@ hterm.RowCol.prototype.move = function(row, column, opt_overflow) {
 /**
  * Return a copy of this record.
  *
- * @return {hterm.RowCol} A new hterm.RowCol instance with the same row and
- * column.
+ * @return {!hterm.RowCol} A new hterm.RowCol instance with the same row and
+ *     column.
  */
 hterm.RowCol.prototype.clone = function() {
   return new hterm.RowCol(this.row, this.column, this.overflow);
@@ -452,7 +473,7 @@ hterm.RowCol.prototype.clone = function() {
 /**
  * Set the row and column of this instance based on another hterm.RowCol.
  *
- * @param {hterm.RowCol} that The object to copy from.
+ * @param {!hterm.RowCol} that The object to copy from.
  */
 hterm.RowCol.prototype.setTo = function(that) {
   this.row = that.row;
@@ -463,7 +484,7 @@ hterm.RowCol.prototype.setTo = function(that) {
 /**
  * Test if another hterm.RowCol instance is equal to this one.
  *
- * @param {hterm.RowCol} that The other hterm.RowCol instance.
+ * @param {!hterm.RowCol} that The other hterm.RowCol instance.
  * @return {boolean} True if both instances have the same row/column, false
  *     otherwise.
  */
@@ -477,6 +498,7 @@ hterm.RowCol.prototype.equals = function(that) {
  *
  * @return {string} A string that identifies the row and column of this
  *     instance.
+ * @override
  */
 hterm.RowCol.prototype.toString = function() {
   return ('[hterm.RowCol: ' + this.row + ', ' + this.column + ', ' +

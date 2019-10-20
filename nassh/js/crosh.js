@@ -4,9 +4,11 @@
 
 'use strict';
 
-// CSP means that we can't kick off the initialization from the html file,
-// so we do it like this instead.
-window.onload = function() {
+/**
+ * CSP means that we can't kick off the initialization from the html file,
+ * so we do it like this instead.
+ */
+window.addEventListener('DOMContentLoaded', (event) => {
   // Workaround https://crbug.com/928045.
   if (nassh.workaroundMissingChromeRuntime()) {
     return;
@@ -19,21 +21,24 @@ window.onload = function() {
     // Delete the 'openas' string so we don't get into a loop.  We want to
     // preserve the rest of the query string when opening the window.
     params.delete('openas');
-    const url = new URL(document.location);
+    const url = new URL(document.location.toString());
     url.search = params.toString();
-    Crosh.openNewWindow_(url.href).then(window.close);
+    Crosh.openNewWindow_(url.href).then(() => window.close());
     return;
   }
 
-  // If we want to execute something other than the default crosh.
-  if (params.has('command')) {
-    Crosh.prototype.commandName = params.get('command');
-  }
-  window.document.title = Crosh.prototype.commandName;
-
   nassh.disableTabDiscarding();
+  lib.registerInit('messages', (onInit) => {
+    lib.i18n.getAcceptLanguages(async (languages) => {
+      // Replace and load hterm.messageManager.
+      hterm.messageManager = new lib.MessageManager(languages, true);
+      const url =  lib.f.getURL('/_locales/$1/messages.json');
+      await hterm.messageManager.findAndLoadMessages(url);
+      onInit();
+    });
+  });
   lib.init(Crosh.init);
-};
+});
 
 /**
  * The Crosh-powered terminal command.
@@ -42,10 +47,14 @@ window.onload = function() {
  * The Crosh command uses terminalPrivate extension API to create and use crosh
  * process on Chrome OS machine.
  *
- *
- * @param {Object} argv The argument object passed in from the Terminal.
+ * @param {{
+     commandName: string,
+ *   args: !Array<string>,
+ * }} argv The argument object passed in from the Terminal.
+ * @constructor
  */
 function Crosh(argv) {
+  this.commandName = argv.commandName;
   this.argv_ = argv;
   this.io = null;
   this.keyboard_ = null;
@@ -59,17 +68,34 @@ function Crosh(argv) {
 Crosh.croshBuiltinId = 'nkoccljplnhpfnfiajclkommnmllphnl';
 
 /**
+ * Return a formatted message in the current locale.
+ *
+ * @param {string} name The name of the message to return.
+ * @param {!Array=} args The message arguments, if required.
+ * @return {string} The localized & formatted message.
+ */
+Crosh.msg = function(name, args) {
+  return hterm.messageManager.get(name, args);
+};
+
+/**
  * Static initializer called from crosh.html.
  *
  * This constructs a new Terminal instance and instructs it to run the Crosh
  * command.
+ *
+ * @return {boolean}
  */
 Crosh.init = function() {
   const params = new URLSearchParams(document.location.search);
   const profileName = params.get('profile');
   var terminal = new hterm.Terminal(profileName);
 
-  terminal.decorate(document.querySelector('#terminal'));
+  // If we want to execute something other than the default crosh.
+  const commandName = params.get('command') || 'crosh';
+  window.document.title = commandName;
+
+  terminal.decorate(lib.notNull(document.querySelector('#terminal')));
   const runCrosh = function() {
     terminal.keyboard.bindings.addBinding('Ctrl-Shift-P', function() {
       nassh.openOptionsPage();
@@ -78,7 +104,7 @@ Crosh.init = function() {
 
     terminal.setCursorPosition(0, 0);
     terminal.setCursorVisible(true);
-    terminal.runCommandClass(Crosh, params.getAll('args[]'));
+    terminal.runCommandClass(Crosh, commandName, params.getAll('args[]'));
 
     terminal.command.keyboard_ = terminal.keyboard;
   };
@@ -97,24 +123,26 @@ Crosh.init = function() {
   };
 
   terminal.contextMenu.setItems([
-    [nassh.msg('TERMINAL_CLEAR_MENU_LABEL'),
-     function() { terminal.wipeContents(); }],
-    [nassh.msg('TERMINAL_RESET_MENU_LABEL'),
-     function() { terminal.reset(); }],
-    [nassh.msg('NEW_WINDOW_MENU_LABEL'),
-     function() {
+    {name: Crosh.msg('TERMINAL_CLEAR_MENU_LABEL'),
+     action: function() { terminal.wipeContents(); }},
+    {name: Crosh.msg('TERMINAL_RESET_MENU_LABEL'),
+     action: function() { terminal.reset(); }},
+    {name: Crosh.msg('NEW_WINDOW_MENU_LABEL'),
+     action: function() {
        // Preserve the full URI in case it has args like for vmshell.
        Crosh.openNewWindow_(document.location.href);
-     }],
-    [nassh.msg('FAQ_MENU_LABEL'),
-     function() { lib.f.openWindow('https://goo.gl/muppJj', '_blank'); }],
-    [nassh.msg('OPTIONS_BUTTON_LABEL'),
-     function() { nassh.openOptionsPage(); }],
+     }},
+    {name: Crosh.msg('FAQ_MENU_LABEL'),
+     action: function() {
+       lib.f.openWindow('https://goo.gl/muppJj', '_blank');
+     }},
+    {name: Crosh.msg('OPTIONS_BUTTON_LABEL'),
+     action: function() { nassh.openOptionsPage(); }},
   ]);
 
   // Useful for console debugging.
   window.term_ = terminal;
-  console.log(nassh.msg(
+  console.log(Crosh.msg(
       'CONSOLE_CROSH_OPTIONS_NOTICE',
       ['Ctrl-Shift-P', lib.f.getURL('/html/nassh_preferences_editor.html')]));
 
@@ -132,7 +160,7 @@ Crosh.init = function() {
  * page at all.
  *
  * @param {string} url The URL to open.
- * @returns {Promise} A promise resolving once the window opens.
+ * @return {!Promise} A promise resolving once the window opens.
  */
 Crosh.openNewWindow_ = function(url) {
   return new Promise((resolve) => {
@@ -147,22 +175,14 @@ Crosh.openNewWindow_ = function(url) {
 };
 
 /**
- * The name of this command used in messages to the user.
- *
- * Perhaps this will also be used by the user to invoke this command, if we
- * build a shell command.
- */
-Crosh.prototype.commandName = 'crosh';
-
-/**
  * Called when an event from the crosh process is detected.
  *
- * @param id Id of the process the event came from.
- * @param type Type of the event.
+ * @param {string} id Id of the process the event came from.
+ * @param {string} type Type of the event.
  *             'stdout': Process output detected.
  *             'exit': Process has exited.
- * @param text Text that was detected on process output.
-**/
+ * @param {string} text Text that was detected on process output.
+ */
 Crosh.prototype.onProcessOutput_ = function(id, type, text) {
   if (this.id_ === null || id !== this.id_) {
     return;
@@ -188,15 +208,15 @@ Crosh.prototype.run = function() {
   if (hterm.windowType != 'popup') {
     const params = new URLSearchParams(document.location.search);
     params.set('openas', 'window');
-    const url = new URL(document.location);
+    const url = new URL(document.location.toString());
     url.search = params.toString();
-    this.io.println(nassh.msg('OPEN_AS_WINDOW_TIP',
+    this.io.println(Crosh.msg('OPEN_AS_WINDOW_TIP',
                               [`\x1b]8;;${url.href}\x07[crosh]\x1b]8;;\x07`]));
     this.io.println('');
   }
 
   if (!chrome.terminalPrivate) {
-    this.io.println(nassh.msg('COMMAND_NOT_SUPPORTED', [this.commandName]));
+    this.io.println(Crosh.msg('COMMAND_NOT_SUPPORTED', [this.commandName]));
     this.exit(1);
     return;
   }
@@ -210,7 +230,7 @@ Crosh.prototype.run = function() {
 
   const pidInit = (id) => {
     if (id === undefined) {
-      this.io.println(nassh.msg('COMMAND_STARTUP_FAILED',
+      this.io.println(Crosh.msg('COMMAND_STARTUP_FAILED',
                                 [this.commandName, lib.f.lastError('')]));
       this.exit(1);
       return;
@@ -224,15 +244,16 @@ Crosh.prototype.run = function() {
                            this.io.terminal_.screenSize.height);
   };
 
-  // The optional arguments field is new to Chrome M65.  Once that goes stable
-  // everywhere, we can drop this fallback logic.
-  const args = this.argv_.argString;
-  if (args.length)
-    chrome.terminalPrivate.openTerminalProcess(this.commandName, args, pidInit);
-  else
-    chrome.terminalPrivate.openTerminalProcess(this.commandName, pidInit);
+  chrome.terminalPrivate.openTerminalProcess(
+      this.commandName, this.argv_.args, pidInit);
 };
 
+/**
+ * Registers with window.onbeforeunload and runs when page is unloading.
+ *
+ * @param {?Event} e Before unload event.
+ * @return {string} Message to display.
+ */
 Crosh.prototype.onBeforeUnload_ = function(e) {
   // Note: This message doesn't seem to be shown by browsers.
   const msg = `Closing this tab will exit ${this.commandName}.`;
@@ -254,7 +275,7 @@ Crosh.prototype.sendString_ = function(string) {
 
 /**
  * Closes crosh terminal and exits the crosh command.
-**/
+ */
 Crosh.prototype.close_ = function() {
   if (this.id_ === null) {
     return;
@@ -266,8 +287,8 @@ Crosh.prototype.close_ = function() {
 /**
  * Notify process about new terminal size.
  *
- * @param {string|integer} terminal width.
- * @param {string|integer} terminal height.
+ * @param {string|number} width The new terminal width.
+ * @param {string|number} height The new terminal height.
  */
 Crosh.prototype.onTerminalResize_ = function(width, height) {
   if (this.id_ === null) {
@@ -285,6 +306,8 @@ Crosh.prototype.onTerminalResize_ = function(width, height) {
 
 /**
  * Exit the crosh command.
+ *
+ * @param {number} code Exit code, 0 for success.
  */
 Crosh.prototype.exit = function(code) {
   this.close_();
@@ -297,8 +320,8 @@ Crosh.prototype.exit = function(code) {
     return;
   }
 
-  this.io.println(nassh.msg('COMMAND_COMPLETE', [this.commandName, code]));
-  this.io.println(nassh.msg('RECONNECT_MESSAGE'));
+  this.io.println(Crosh.msg('COMMAND_COMPLETE', [this.commandName, code]));
+  this.io.println(Crosh.msg('RECONNECT_MESSAGE'));
   this.io.onVTKeystroke = (string) => {
     var ch = string.toLowerCase();
     if (ch == 'r' || ch == ' ' || ch == '\x0d' /* enter */ ||

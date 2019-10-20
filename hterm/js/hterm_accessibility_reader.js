@@ -14,8 +14,9 @@
  * row of a large piece of output to the screen as it wouldn't be performant.
  * But we want the screen reader to read it all out in order.
  *
- * @param {HTMLDivElement} div The div element where the live region should be
+ * @param {!Element} div The div element where the live region should be
  *     added.
+ * @constructor
  */
 hterm.AccessibilityReader = function(div) {
   this.document_ = div.ownerDocument;
@@ -86,8 +87,8 @@ hterm.AccessibilityReader = function(div) {
  * aria updates make it to the screen reader. We want this to be short so
  * there's not a big delay between typing/executing commands and hearing output.
  *
- * @constant
- * @type {integer}
+ * @const
+ * @type {number}
  */
 hterm.AccessibilityReader.DELAY = 50;
 
@@ -109,7 +110,7 @@ hterm.AccessibilityReader.prototype.setAccessibilityEnabled =
  * Decorate the document where the terminal <x-screen> resides. This is needed
  * for listening to keystrokes on the screen.
  *
- * @param {HTMLDocument} doc The document where the <x-screen> resides.
+ * @param {!Document} doc The document where the <x-screen> resides.
  */
 hterm.AccessibilityReader.prototype.decorate = function(doc) {
   const handlers = ['keydown', 'keypress', 'keyup', 'textInput'];
@@ -125,9 +126,9 @@ hterm.AccessibilityReader.prototype.decorate = function(doc) {
  *
  * @param {string} cursorRowString The text in the row that the cursor is
  *     currently on.
- * @param {integer} cursorRow The index of the row that the cursor is currently
+ * @param {number} cursorRow The index of the row that the cursor is currently
  *     on, including rows in the scrollback buffer.
- * @param {integer} cursorColumn The index of the column that the cursor is
+ * @param {number} cursorColumn The index of the column that the cursor is
  *     currently on.
  */
 hterm.AccessibilityReader.prototype.beforeCursorChange =
@@ -160,9 +161,9 @@ hterm.AccessibilityReader.prototype.beforeCursorChange =
  *
  * @param {string} cursorRowString The text in the row that the cursor is
  *     currently on.
- * @param {integer} cursorRow The index of the row that the cursor is currently
+ * @param {number} cursorRow The index of the row that the cursor is currently
  *     on, including rows in the scrollback buffer.
- * @param {integer} cursorColumn The index of the column that the cursor is
+ * @param {number} cursorColumn The index of the column that the cursor is
  *     currently on.
  */
 hterm.AccessibilityReader.prototype.afterCursorChange =
@@ -308,10 +309,11 @@ hterm.AccessibilityReader.prototype.clear = function() {
  *
  * @param {string} cursorRowString The text in the row that the cursor is
  *     currently on.
- * @param {integer} cursorRow The index of the row that the cursor is currently
+ * @param {number} cursorRow The index of the row that the cursor is currently
  *     on, including rows in the scrollback buffer.
- * @param {integer} cursorColumn The index of the column that the cursor is
+ * @param {number} cursorColumn The index of the column that the cursor is
  *     currently on.
+ * @return {boolean} Whether anything was announced.
  */
 hterm.AccessibilityReader.prototype.announceAction_ =
     function(cursorRowString, cursorRow, cursorColumn) {
@@ -319,6 +321,8 @@ hterm.AccessibilityReader.prototype.announceAction_ =
   if (this.lastCursorRow_ != cursorRow) {
     return false;
   }
+
+  lib.assert(this.lastCursorRowString_ !== null);
 
   // The case when the row of text hasn't changed at all.
   if (this.lastCursorRowString_ == cursorRowString) {

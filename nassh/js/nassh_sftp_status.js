@@ -8,6 +8,10 @@
  * The SFTP Status Error extends the Error class. It takes a
  * nassh.sftp.statusPacket and an expectedPacketType and creates an informative
  * Error message while preserving the status code.
+ *
+ * @param {!Object} statusPacket
+ * @param {string} expectedPacketType
+ * @constructor
  */
 nassh.sftp.StatusError = function(statusPacket, expectedPacketType) {
   this.name = 'StatusError';
@@ -18,4 +22,5 @@ nassh.sftp.StatusError = function(statusPacket, expectedPacketType) {
 };
 
 nassh.sftp.StatusError.prototype = Object.create(Error.prototype);
+/** @override */
 nassh.sftp.StatusError.prototype.constructor = nassh.sftp.StatusError;

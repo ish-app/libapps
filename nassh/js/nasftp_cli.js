@@ -5,7 +5,7 @@
 'use strict';
 
 /**
- * @fileoverview: This file manages the command line sftp client logic.  Not to
+ * @fileoverview This file manages the command line sftp client logic.  Not to
  *                be confused with the nassh.sftp.client class which provides a
  *                JS API only.
  */
@@ -15,22 +15,23 @@
  *
  * @param {!hterm.Terminal} terminal The terminal to display to.
  * @param {number=} max The highest byte count we expect.
+ * @constructor
  */
 nasftp.ProgressBar = function(terminal, max) {
   this.terminal_ = terminal;
   this.io_ = terminal.io;
 
-  this.mode_ = max === undefined ? this.RANDOM : this.PERCENTAGE;
-
   this.startTime_ = performance.now();
   this.endTime_ = this.startTime_;
 
-  if (this.mode_ == this.RANDOM) {
+  if (max === undefined) {
+    this.mode_ = this.RANDOM;
     // Unicode 6-dot block range.
     this.min_ = 0x2801;
     this.max_ = 0x283F;
     this.pos_ = this.min_;
   } else {
+    this.mode_ = this.PERCENTAGE;
     this.min_ = 0;
     this.max_ = max;
     this.pos_ = 0;
@@ -101,6 +102,7 @@ nasftp.ProgressBar.prototype.summarize = function(max) {
  * The command line sftp client.
  *
  * @param {!nassh.CommandInstance} commandInstance The command instance to bind.
+ * @constructor
  */
 nasftp.Cli = function(commandInstance) {
   // The nassh command instance we're bound to.
@@ -240,7 +242,7 @@ nasftp.Cli.prototype.rawprintln_ = function(string) {
 /**
  * Run a specific internal command.
  *
- * @param {string|Array<string>} userArgs The command to run.
+ * @param {string|!Array<string>} userArgs The command to run.
  * @return {!Promise} A promise that resolves once the command finishes.
  */
 nasftp.Cli.prototype.dispatchCommand_ = function(userArgs) {
@@ -687,7 +689,7 @@ nasftp.Cli.colorMap_ = {
  */
 nasftp.Cli.prototype.showPrompt_ = function() {
   let prompt = this.prompt_;
-  const defaultPrompt = nassh.msg('NASFTP_PROMPT', '%(cwd)');
+  const defaultPrompt = nassh.msg('NASFTP_PROMPT', ['%(cwd)']);
   if (prompt === undefined) {
     // Normally one should not mess with translation text.  But it's a bit hard
     // to preserve colorization settings.  So hand insert it if possible.
@@ -709,7 +711,7 @@ nasftp.Cli.prototype.showPrompt_ = function() {
     'cwd': this.escapeString_(this.cwd),
   });
 
-  this.io.print(lib.f.replaceVars(prompt, vars));
+  this.io.print(lib.f.replaceVars(lib.notUndefined(prompt), vars));
 };
 
 /**
@@ -728,13 +730,13 @@ nasftp.Cli.prototype.showError_ = function(msg) {
  * @param {string} argName The human readable name for the argument.
  * @param {string} argValue The argument from the user to parse.
  * @param {number=} defaultValue The default value.
- * @param {?number=} radix The radix to parse the argument.
- * @return {number|boolean} The parsed number, or false if the value is invalid.
+ * @param {number=} radix The radix to parse the argument.
+ * @return {?number} The parsed number, or false if the value is invalid.
  */
 nasftp.Cli.prototype.parseInt_ = function(
-    cmd, argName, argValue, defaultValue = 0, radix = null) {
+    cmd, argName, argValue, defaultValue = 0, radix) {
   if (argValue === undefined) {
-    argValue = defaultValue;
+    return defaultValue;
   }
 
   const ret = parseInt(argValue, radix);
@@ -742,7 +744,7 @@ nasftp.Cli.prototype.parseInt_ = function(
     this.showError_(nassh.msg('NASFTP_ERROR_INVALID_NUMBER', [
       cmd, argName, argValue,
     ]));
-    return false;
+    return null;
   }
 
   return ret;
@@ -852,14 +854,22 @@ nasftp.Cli.commands = {};
  *
  * @param {!Array<string>} commands The commands (and aliases) to register.
  * @param {number} minArgs The minimum number of arguments this command needs.
- * @param {number} maxArgs The maximum number of arguments this command accepts.
- * @param {string=} optstring Supported short options.
+ * @param {?number} maxArgs The maximum number of arguments this command
+ *     accepts.
+ * @param {string} optstring Supported short options.
  * @param {string} usage Example command arguments.
- * @param {function(!Array<string>)} callback The function to run the command.
+ * @param {function(!Array<string>, !Object)} callback The function to run the
+ *     command.
  */
 nasftp.Cli.addCommand_ = function(
     commands, minArgs, maxArgs, optstring, usage, callback) {
   commands.forEach((command) => {
+
+    /**
+     * @this {nasftp.Cli}
+     * @param {!Array<string>} args
+     * @return {!Promise<void>}
+     */
     const wrapper = function(args) {
       // Parse the options first.  Always run this to support -- even if the
       // command doesn't support short options otherwise.
@@ -894,6 +904,7 @@ nasftp.Cli.addCommand_ = function(
 /**
  * User command to dump a file.
  *
+ * @this {nasftp.Cli}
  * @param {!Array<string>} args The command arguments.
  * @return {!Promise<void>}
  */
@@ -902,7 +913,7 @@ nasftp.Cli.commandCat_ = function(args) {
   const offset = this.parseInt_(args.cmd, 'offset', args.shift());
   let length = this.parseInt_(args.cmd, 'length', args.shift(), -1);
 
-  if (length === false || offset === false) {
+  if (length === null || offset === null) {
     return Promise.resolve();
   }
 
@@ -945,8 +956,7 @@ nasftp.Cli.commandCat_ = function(args) {
     }
   };
 
-  return this.client.readFile(this.makePath_(path), handleChunk,
-                              {offset: offset, length: length})
+  return this.client.readFile(this.makePath_(path), handleChunk, offset, length)
     .then(() => {
       if (!finalNewline) {
         this.io.println('');
@@ -959,6 +969,7 @@ nasftp.Cli.addCommand_(['cat'], 1, 3, '', '<path> [offset] [length]',
 /**
  * User command to change the directory.
  *
+ * @this {nasftp.Cli}
  * @param {!Array<string>} args The command arguments.
  * @return {!Promise<void>}
  */
@@ -1000,6 +1011,7 @@ nasftp.Cli.addCommand_(['chdir', 'cd'], 0, 1, '', '[path]',
 /**
  * User command to change path permissions.
  *
+ * @this {nasftp.Cli}
  * @param {!Array<string>} args The command arguments.
  * @return {!Promise<void>}
  */
@@ -1022,13 +1034,14 @@ nasftp.Cli.addCommand_(['chmod'], 2, null, '', '<mode> <paths...>',
 /**
  * User command to change user/group ownership.
  *
+ * @this {nasftp.Cli}
  * @param {!Array<string>} args The command arguments.
  * @return {!Promise<void>}
  */
 nasftp.Cli.commandChown_ = function(args) {
   const account = this.parseInt_(args.cmd, 'account', args.shift());
 
-  if (account === false) {
+  if (account === null) {
     return Promise.resolve();
   }
 
@@ -1056,6 +1069,7 @@ nasftp.Cli.addCommand_(['chgrp', 'chown'], 2, null, '', '<account> <paths...>',
 /**
  * User command to clear the screen.
  *
+ * @this {nasftp.Cli}
  * @param {!Array<string>} _args The command arguments.
  * @return {!Promise<void>}
  */
@@ -1069,6 +1083,7 @@ nasftp.Cli.addCommand_(['clear'], 0, 0, '', '',
 /**
  * User command to copy a file to the clipboard.
  *
+ * @this {nasftp.Cli}
  * @param {!Array<string>} args The command arguments.
  * @return {!Promise<void>}
  */
@@ -1078,7 +1093,7 @@ nasftp.Cli.commandClip_ = function(args) {
   const length = this.parseInt_(args.cmd, 'length', args.shift(),
                                 10 * 1024 * 1024);
 
-  if (length === false || offset === false) {
+  if (length === null || offset === null) {
     return Promise.resolve();
   }
 
@@ -1095,12 +1110,8 @@ nasftp.Cli.commandClip_ = function(args) {
     chunks.push(chunk);
   };
 
-  return this.client.readFile(this.makePath_(path), handleChunk,
-                              {offset: offset, length: length})
-    .then(() => {
-      const reader = new lib.fs.FileReader();
-      return reader.readAsText(new Blob(chunks));
-    })
+  return this.client.readFile(this.makePath_(path), handleChunk, offset, length)
+    .then(() => (new Blob(chunks)).text())
     .then((string) => {
       this.io.println(nassh.msg('NASFTP_CMD_CLIP_SUMMARY', [string.length]));
       this.terminal.copyStringToClipboard(string);
@@ -1113,6 +1124,7 @@ nasftp.Cli.addCommand_(['clip', 'clipboard'], 1, 3, '',
 /**
  * User command to toggle color support.
  *
+ * @this {nasftp.Cli}
  * @param {!Array<string>} _args The command arguments.
  * @return {!Promise<void>}
  */
@@ -1136,6 +1148,7 @@ nasftp.Cli.addCommand_(['color'], 0, 0, '', '',
 /**
  * User command to copy files.
  *
+ * @this {nasftp.Cli}
  * @param {!Array<string>} args The command arguments.
  * @return {!Promise<void>}
  */
@@ -1197,6 +1210,7 @@ nasftp.Cli.addCommand_(['copy', 'cp'], 2, 2, '', '<src> <dst>',
 /**
  * User command to get filesystem information.
  *
+ * @this {nasftp.Cli}
  * @param {!Array<string>} args The command arguments.
  * @param {!Object} opts The set of seen options.
  * @return {!Promise<void>}
@@ -1264,6 +1278,7 @@ nasftp.Cli.addCommand_(['df'], 0, null, 'hi', '[paths...]',
  *
  * Note: Large files will run into Chrome's data-uri limit which is 1MB - 2MB.
  *
+ * @this {nasftp.Cli}
  * @param {!Array<string>} args The command arguments.
  * @return {!Promise<void>}
  */
@@ -1323,6 +1338,7 @@ nasftp.Cli.addCommand_(['get'], 1, 2, '', '<remote name> [local name]',
 /**
  * User command to show all registered commands.
  *
+ * @this {nasftp.Cli}
  * @param {!Array<string>} _args The command arguments.
  * @return {!Promise<void>}
  */
@@ -1357,6 +1373,7 @@ nasftp.Cli.addCommand_(['help', '?'], 0, 0, '', '',
 /**
  * User command to list information about files/directories.
  *
+ * @this {nasftp.Cli}
  * @param {!Array<string>} args The command arguments.
  * @param {!Object} opts The set of seen options.
  * @return {!Promise<void>}
@@ -1405,6 +1422,28 @@ nasftp.Cli.commandList_ = function(args, opts) {
         })
         .finally(() => this.client.closeFile(handle));
       })
+      .catch((response) => {
+        if (response instanceof nassh.sftp.StatusError) {
+          // Maybe they tried to list a file.  Synthesize a result.
+          if (response.code == nassh.sftp.packets.StatusCodes.NO_SUCH_FILE) {
+            return this.client.linkStatus(path)
+              .then((attrs) => {
+                const mode =
+                    nassh.sftp.packets.bitsToUnixModeLine(attrs.permissions);
+                const date =
+                    nassh.sftp.packets.epochToLocal(attrs.lastModified);
+                const longFilename =
+                    `${mode}  ${attrs.uid} ${attrs.gid}  ${attrs.size}  ` +
+                    `${date.toDateString()}  ${path}`;
+                return [Object.assign({
+                  filename: path,
+                  longFilename: longFilename,
+                }, attrs)];
+              });
+          }
+        }
+        throw response;
+      })
       .then((entries) => {
         spinner.update();
         if (this.userInterrupted_) {
@@ -1419,7 +1458,7 @@ nasftp.Cli.commandList_ = function(args, opts) {
           if (opts.size) {
             sort = (a, b) => a.size < b.size ? less : more;
           } else if (opts.time) {
-            sort = (a, b) => a.last_modified < b.last_modified ? less : more;
+            sort = (a, b) => a.lastModified < b.lastModified ? less : more;
           } else {
             sort = (a, b) => a.filename > b.filename ? less : more;
           }
@@ -1431,7 +1470,7 @@ nasftp.Cli.commandList_ = function(args, opts) {
           // One entry per line.
           entries.forEach((file) => {
             if (opts.all || !file.filename.startsWith('.')) {
-              this.rawprintln_(opts.long ? file.long_filename : file.filename);
+              this.rawprintln_(opts.long ? file.longFilename : file.filename);
             }
           });
         } else {
@@ -1533,6 +1572,7 @@ nasftp.Cli.addCommand_(['list', 'ls', 'dir'], 0, null, '1aflrRSt', '[dirs...]',
 /**
  * User command to create hardlinks & symlinks.
  *
+ * @this {nasftp.Cli}
  * @param {!Array<string>} args The command arguments.
  * @param {!Object} opts The set of seen options.
  * @return {!Promise<void>}
@@ -1552,6 +1592,7 @@ nasftp.Cli.addCommand_(['ln'], 2, 2, 's', '<target> <path>',
 /**
  * User command to create directories.
  *
+ * @this {nasftp.Cli}
  * @param {!Array<string>} args The command arguments.
  * @return {!Promise<void>}
  */
@@ -1567,6 +1608,7 @@ nasftp.Cli.addCommand_(['mkdir'], 1, null, '', '<paths...>',
 /**
  * User command to rename paths.
  *
+ * @this {nasftp.Cli}
  * @param {!Array<string>} args The command arguments.
  * @return {!Promise<void>}
  */
@@ -1581,6 +1623,7 @@ nasftp.Cli.addCommand_(['move', 'mv', 'ren', 'rename'], 2, 2, '', '<src> <dst>',
 /**
  * User command to control the prompt.
  *
+ * @this {nasftp.Cli}
  * @param {!Array<string>} args The command arguments.
  * @return {!Promise<void>}
  */
@@ -1602,6 +1645,7 @@ nasftp.Cli.addCommand_(['prompt'], 0, 1, '', '[prompt]',
 /**
  * User command to upload files.
  *
+ * @this {nasftp.Cli}
  * @param {!Array<string>} args The command arguments.
  * @param {!Object} opts The set of seen options.
  * @return {!Promise<void>}
@@ -1660,7 +1704,6 @@ nasftp.Cli.commandPut_ = function(args, opts) {
         // Next promise waits for the file to be processed (read+uploaded).
         return new Promise((resolveOneFile) => {
           // Read the next chunk from the file and add it to the queue.
-          const reader = new lib.fs.FileReader();
 
           // Clobber whatever file might already exist.
           const flags = nassh.sftp.packets.OpenFlags.WRITE |
@@ -1688,7 +1731,7 @@ nasftp.Cli.commandPut_ = function(args, opts) {
                   return;
                 }
 
-                return reader.readAsArrayBuffer(chunk)
+                return chunk.arrayBuffer()
                   .then((result) => {
                     return this.client.writeChunk(handle, offset, result);
                   })
@@ -1729,6 +1772,7 @@ nasftp.Cli.addCommand_(['put'], 0, 1, 'f', '[remote name]',
 /**
  * User command to show the active working directory.
  *
+ * @this {nasftp.Cli}
  * @param {!Array<string>} _args The command arguments.
  * @return {!Promise<void>}
  */
@@ -1744,12 +1788,13 @@ nasftp.Cli.addCommand_(['pwd'], 0, 0, '', '',
 /**
  * User command to quit the session.
  *
+ * @this {nasftp.Cli}
  * @param {!Array<string>} _args The command arguments.
  * @return {!Promise<void>}
  */
 nasftp.Cli.commandQuit_ = function(_args) {
   this.terminal.keyboard.bindings.clear();
-  this.commandInstance_.exit(0);
+  this.commandInstance_.exit(0, /*noReconnect=*/false);
   return Promise.resolve();
 };
 nasftp.Cli.addCommand_(['exit', 'quit', 'bye'], 0, 0, '', '',
@@ -1758,6 +1803,7 @@ nasftp.Cli.addCommand_(['exit', 'quit', 'bye'], 0, 0, '', '',
 /**
  * User command to read a symlink.
  *
+ * @this {nasftp.Cli}
  * @param {!Array<string>} args The command arguments.
  * @return {!Promise<void>}
  */
@@ -1777,6 +1823,7 @@ nasftp.Cli.addCommand_(['readlink'], 1, null, '', '<paths...>',
 /**
  * User command to resolve a path remotely.
  *
+ * @this {nasftp.Cli}
  * @param {!Array<string>} args The command arguments.
  * @return {!Promise<void>}
  */
@@ -1796,6 +1843,7 @@ nasftp.Cli.addCommand_(['realpath'], 1, null, '', '<paths...>',
 /**
  * User command to remove files.
  *
+ * @this {nasftp.Cli}
  * @param {!Array<string>} args The command arguments.
  * @param {!Object} opts The set of seen options.
  * @return {!Promise<void>}
@@ -1828,6 +1876,7 @@ nasftp.Cli.addCommand_(['del', 'rm'], 1, null, 'rRfv', '<paths...>',
 /**
  * User command to remove directories.
  *
+ * @this {nasftp.Cli}
  * @param {!Array<string>} args The command arguments.
  * @return {!Promise<void>}
  */
@@ -1843,6 +1892,7 @@ nasftp.Cli.addCommand_(['rmdir'], 1, null, '', '<paths...>',
 /**
  * User command to show images.
  *
+ * @this {nasftp.Cli}
  * @param {!Array<string>} args The command arguments.
  * @return {!Promise<void>}
  */
@@ -1877,6 +1927,7 @@ nasftp.Cli.addCommand_(['show'], 1, null, '', '<paths...>',
 /**
  * User command to show path status/details.
  *
+ * @this {nasftp.Cli}
  * @param {!Array<string>} args The command arguments.
  * @return {!Promise<void>}
  */
@@ -1894,10 +1945,10 @@ nasftp.Cli.commandStat_ = function(args) {
           attrs.gid,
           `0${lib.f.zpad(attrs.permissions.toString(8), 7)} ` +
           `(${nassh.sftp.packets.bitsToUnixModeLine(attrs.permissions)})`,
-          `${attrs.last_accessed} (` +
-          `${nassh.sftp.packets.epochToLocal(attrs.last_accessed)})`,
-          `${attrs.last_modified} (` +
-          `${nassh.sftp.packets.epochToLocal(attrs.last_modified)})`,
+          `${attrs.lastAccessed} (` +
+          `${nassh.sftp.packets.epochToLocal(attrs.lastAccessed)})`,
+          `${attrs.lastModified} (` +
+          `${nassh.sftp.packets.epochToLocal(attrs.lastModified)})`,
         ]));
         if (attrs.extensions) {
           this.io.println(nassh.msg('NASFTP_CMD_STAT_EXTENSIONS_HEADER'));
@@ -1917,6 +1968,7 @@ nasftp.Cli.addCommand_(['stat', 'lstat'], 1, null, '', '<paths...>',
 /**
  * User command to truncate files.
  *
+ * @this {nasftp.Cli}
  * @param {!Array<string>} args The command arguments.
  * @return {!Promise<void>}
  */
@@ -1938,6 +1990,7 @@ nasftp.Cli.addCommand_(['truncate'], 1, null, '', '<paths...>',
 /**
  * User command to create symlinks.
  *
+ * @this {nasftp.Cli}
  * @param {!Array<string>} args The command arguments.
  * @return {!Promise<void>}
  */
@@ -1953,6 +2006,7 @@ nasftp.Cli.addCommand_(['symlink'], 2, 2, '', '<target> <path>',
 /**
  * User command to show the active SFTP version.
  *
+ * @this {nasftp.Cli}
  * @param {!Array<string>} _args The command arguments.
  * @return {!Promise<void>}
  */
@@ -1979,6 +2033,7 @@ nasftp.Cli.addCommand_(['version'], 0, 0, '', '',
 /**
  * Run self tests.
  *
+ * @this {nasftp.Cli}
  * @param {!Array<string>} _args The command arguments.
  * @return {!Promise<void>}
  */
@@ -2048,6 +2103,7 @@ nasftp.Cli.addCommand_(['_run_test_cli'], 0, 0, '', '',
 /**
  * Run live tests of the FSP code.
  *
+ * @this {nasftp.Cli}
  * @param {!Array<string>} _args The command arguments.
  * @return {!Promise<void>}
  */
@@ -2097,8 +2153,14 @@ nasftp.Cli.commandTestFsp_ = function(_args) {
     const pass = (test, msg='-') => this.rawprintln_(`PASS: ${test}: ${msg}`);
     const failed = (test, msg) => this.rawprintln_(`FAIL: ${test}: ${msg}`);
 
-    // Wrapper for FSP functions to get a Promise based API.
-    const wrap = (name) => new Promise((resolve, reject) => {
+    /**
+     * Wrapper for FSP functions to get a Promise based API.
+     *
+     * @param {string} name
+     * @param {!Object} opts
+     * @return {!Promise<!Array<*>>}
+     */
+    const wrap = (name, opts) => new Promise((resolve, reject) => {
       nassh.sftp.fsp[name](
           opts,
           (...args) => {
@@ -2340,7 +2402,7 @@ nasftp.Cli.commandTestFsp_ = function(_args) {
               failed('/newdir/symdir is not a symlink', metadata);
               return Promise.reject();
             }
-          })
+          });
       })
       .then(() => {
         return this.client.linkStatus('/newdir/symfile')
@@ -2349,7 +2411,7 @@ nasftp.Cli.commandTestFsp_ = function(_args) {
               failed('/newdir/symfile is not a symlink', metadata);
               return Promise.reject();
             }
-          })
+          });
       })
       // We should even copy broken symlinks.
       .then(() => {
@@ -2359,7 +2421,7 @@ nasftp.Cli.commandTestFsp_ = function(_args) {
               failed('/newdir/brok is not a symlink', metadata);
               return Promise.reject();
             }
-          })
+          });
       })
 
       // Clean up the scratch dir.

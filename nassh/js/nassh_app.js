@@ -7,10 +7,10 @@
 /**
  * The singleton app instance for the nassh packaged app, created by the
  * background page.
+ *
+ * @constructor
  */
-nassh.App = function(manifest) {
-  this.onInit = new lib.Event();
-
+nassh.App = function() {
   this.prefs_ = new nassh.PreferenceManager();
   this.omniMatches_ = [];
   this.omniDefault_ = null;
@@ -67,8 +67,8 @@ nassh.App.prototype.omniboxOnInputStarted_ = function() {
  * Callback when the user changes the input at all.
  *
  * @param {string} text Current input in the omnibox.
- * @param {function} suggest Function for us to call to notify of our
- *     matches against the text.
+ * @param {function(!Array<{content: string, description: string}>)} suggest
+ *     Function for us to call to notify of our matches against the text.
  */
 nassh.App.prototype.omniboxOnInputChanged_ = function(text, suggest) {
   var resultsUhp = [];
@@ -136,7 +136,7 @@ nassh.App.prototype.omniboxOnInputEntered_ = function(text, disposition) {
     }
   }
 
-  var url = chrome.runtime.getURL('html/nassh.html#' + text);
+  var url = chrome.runtime.getURL('/html/nassh.html#' + text);
   switch (disposition) {
     default:
       console.warn('unknown disposition: ' + disposition);
@@ -183,7 +183,7 @@ nassh.App.prototype.omniboxOnInputCancelled_ = function() {
 /**
  * Bind our callbacks to the omnibox.
  *
- * @param {object} omnibox The omnibox instance to bind to.
+ * @param {!chrome.Omnibox} omnibox The omnibox instance to bind to.
  */
 nassh.App.prototype.installOmnibox = function(omnibox) {
   this.omnibox_ = omnibox;
@@ -208,34 +208,30 @@ nassh.App.prototype.installBrowserAction = function() {
 /**
  * Bind our callbacks to the runtime.
  *
- * @param {object} runtime The runtime instance to bind to.
+ * @param {!Object} runtime The runtime instance to bind to.
  */
 nassh.App.prototype.installHandlers = function(runtime) {
   runtime.onLaunched.addListener(this.onLaunched.bind(this));
   runtime.onRestarted.addListener(this.onLaunched.bind(this));
 };
 
-nassh.App.prototype.onLaunched = function(e) {
+/**
+ * Called on app launch.
+ */
+nassh.App.prototype.onLaunched = function() {
   const width = 900;
   const height = 600;
-  if (chrome.app.window) {
+  if (nassh.v2) {
     chrome.app.window.create('/html/nassh.html', {
-      'bounds': {
-        'width': width,
-        'height': height,
+      innerBounds: {
+        width: width,
+        height: height,
       },
-      'id': 'mainWindow',
+      id: 'mainWindow',
     });
   } else {
     lib.f.openWindow(lib.f.getURL('/html/nassh.html'), '',
                      'chrome=no,close=yes,resize=yes,scrollbars=yes,' +
                      `minimizable=yes,width=${width},height=${height}`);
   }
-};
-
-/**
- * The firstCallback of the onInit event.
- */
-nassh.App.prototype.onInit_ = function() {
-  console.log('nassh: Application initialized: ' + chrome.runtime.getURL(''));
 };

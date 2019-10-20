@@ -14,36 +14,34 @@ nassh.agent = {};
 /**
  * Create an SSH agent message from a raw byte array containing the message
  * contents.
- * @see https://tools.ietf.org/id/draft-miller-ssh-agent-00.html#rfc.section.4
  *
+ * @see https://tools.ietf.org/id/draft-miller-ssh-agent-00.html#rfc.section.4
  * @param {!nassh.agent.messages.Numbers} type The type of the message as per
  *     Section 7.1 of the specification.
- * @param {?Uint8Array} [data] The raw data of the message, if any.
+ * @param {!Uint8Array=} data The raw data of the message, if any.
  * @constructor
  */
-nassh.agent.Message = function(type, data) {
+nassh.agent.Message = function(type, data = new Uint8Array(0)) {
   /**
    * Type of the message.
-   * @see https://tools.ietf.org/id/draft-miller-ssh-agent-00.html#rfc.section.7.1
    *
-   * @member {!nassh.agent.messages.Numbers}
+   * @see https://tools.ietf.org/id/draft-miller-ssh-agent-00.html#rfc.section.7.1
+   * @type {!nassh.agent.messages.Numbers}
    */
   this.type = type;
 
   /**
    * The raw data of the message.
    *
-   * @member {?Uint8Array}
-   * @private
+   * @private {!Uint8Array}
    */
-  this.data_ = new Uint8Array(data);
+  this.data_ = data;
 
   /**
    * The current offset into the raw message data. This is only used when
    * reading raw messages (i.e. requests).
    *
-   * @member {!number}
-   * @private
+   * @private {number}
    */
   this.offset_ = 0;
 
@@ -51,16 +49,16 @@ nassh.agent.Message = function(type, data) {
    * The fields encoded in the message data. This is only used when reading raw
    * messages (i.e. requests) that contain data.
    *
-   * @member {!Object}
+   * @type {!Object}
    */
   this.fields = {};
 };
 
 /**
  * Get the raw, length-encoded representation of the message.
- * @see https://tools.ietf.org/id/draft-miller-ssh-agent-00.html#rfc.section.3
  *
- * @returns {!Uint8Array}
+ * @see https://tools.ietf.org/id/draft-miller-ssh-agent-00.html#rfc.section.3
+ * @return {!Uint8Array}
  */
 nassh.agent.Message.prototype.rawMessage = function() {
   const buffer = new ArrayBuffer(5);
@@ -74,7 +72,7 @@ nassh.agent.Message.prototype.rawMessage = function() {
 /**
  * Check whether the end of the raw message data has been reached.
  *
- * @returns {!boolean} true if the end of the raw message data has been reached;
+ * @return {boolean} true if the end of the raw message data has been reached;
  *  false otherwise.
  */
 nassh.agent.Message.prototype.eom = function() {
@@ -83,16 +81,16 @@ nassh.agent.Message.prototype.eom = function() {
 
 /**
  * Read a uint32 from the raw message data.
+ *
  * @see https://tools.ietf.org/html/rfc4251#section-5
  * @throws Will throw an error if there are less than four more bytes available.
- *
- * @returns {!number}
+ * @return {number}
  */
 nassh.agent.Message.prototype.readUint32 = function() {
   if (this.data_.length < this.offset_ + 4) {
     throw new Error('Message.readUint32: end of data_ reached prematurely');
   }
-  const dv = new DataView(this.data_.buffer, this.data_.buffer.byteOffset);
+  const dv = new DataView(this.data_.buffer, this.data_.byteOffset);
   const uint32 = dv.getUint32(this.offset_);
   this.offset_ += 4;
   return uint32;
@@ -100,8 +98,9 @@ nassh.agent.Message.prototype.readUint32 = function() {
 
 /**
  * Write a uint32 to the raw message data.
+ *
  * @see https://tools.ietf.org/html/rfc4251#section-5
- * @param {!number} uint32 An unsigned 32-bit integer.
+ * @param {number} uint32 An unsigned 32-bit integer.
  */
 nassh.agent.Message.prototype.writeUint32 = function(uint32) {
   if (!Number.isSafeInteger(uint32)) {
@@ -115,11 +114,11 @@ nassh.agent.Message.prototype.writeUint32 = function(uint32) {
 
 /**
  * Read a string from the raw message data.
+ *
  * @see https://tools.ietf.org/html/rfc4251#section-5
  * @throws Will throw an error if there are less bytes available than indicated
- *  by the length field.
- *
- * @returns {!Uint8Array}
+ *    by the length field.
+ * @return {!Uint8Array}
  */
 nassh.agent.Message.prototype.readString = function() {
   const length = this.readUint32();
@@ -133,8 +132,8 @@ nassh.agent.Message.prototype.readString = function() {
 
 /**
  * Write a string to the raw message data.
- * @see https://tools.ietf.org/html/rfc4251#section-5
  *
+ * @see https://tools.ietf.org/html/rfc4251#section-5
  * @param {!Uint8Array} string
  */
 nassh.agent.Message.prototype.writeString = function(string) {
@@ -148,12 +147,12 @@ nassh.agent.Message.prototype.writeString = function(string) {
 
 /**
  * Parse a raw SSH agent message into a Message object.
+ *
  * @see https://tools.ietf.org/id/draft-miller-ssh-agent-00.html#rfc.section.3
  * @see https://tools.ietf.org/id/draft-miller-ssh-agent-00.html#rfc.section.4
- *
  * @constructs nassh.agent.Message
  * @param {!Uint8Array} rawMessage
- * @returns {?nassh.agent.Message} A Message object created from the raw message
+ * @return {?nassh.agent.Message} A Message object created from the raw message
  *     data; null if the raw message data is malformed.
  */
 nassh.agent.Message.fromRawMessage = function(rawMessage) {
@@ -165,6 +164,8 @@ nassh.agent.Message.fromRawMessage = function(rawMessage) {
   if (length + 4 !== rawMessage.length) {
     return null;
   }
-  const message = new nassh.agent.Message(rawMessage[4], rawMessage.slice(5));
+  const message = new nassh.agent.Message(
+      /** @type {!nassh.agent.messages.Numbers} */ (rawMessage[4]),
+      rawMessage.slice(5));
   return nassh.agent.messages.read(message);
 };

@@ -23,15 +23,17 @@ lib.fs = {};
  *   Great for debugging or times when you want to log a message before
  *   invoking a callback passed in to your method.
  *
+ * @template T
  * @param {string} msg The message prefix to use in the log.
- * @param {function(*)} opt_callback A function to invoke after logging.
+ * @param {T=} callback A function to invoke after logging.
+ * @return {T} The wrapper function to call.
  */
-lib.fs.log = function(msg, opt_callback) {
-  return function() {
-    var ary = Array.apply(null, arguments);
-    console.log(msg + ': ' + ary.join(', '));
-    if (opt_callback)
-      opt_callback.call(null, arguments);
+lib.fs.log = function(msg, callback) {
+  return function(...args) {
+    console.log(msg + ': ' + args.join(', '));
+    if (callback) {
+      callback.apply(null, args);
+    }
   };
 };
 
@@ -41,15 +43,17 @@ lib.fs.log = function(msg, opt_callback) {
  * This is exactly like fs.log(), except the message in the JS console will
  * be styled as an error.  See fs.log() for some use cases.
  *
+ * @template T
  * @param {string} msg The message prefix to use in the log.
- * @param {function(*)} opt_callback A function to invoke after logging.
+ * @param {T=} callback A function to invoke after logging.
+ * @return {T} The wrapper function to call.
  */
-lib.fs.err = function(msg, opt_callback) {
-  return function() {
-    var ary = Array.apply(null, arguments);
-    console.error(msg + ': ' + ary.join(', '), lib.f.getStack());
-    if (opt_callback)
-      opt_callback.call(null, arguments);
+lib.fs.err = function(msg, callback) {
+  return function(...args) {
+    console.error(msg + ': ' + args.join(', '), lib.f.getStack());
+    if (callback) {
+      callback.apply(null, args);
+    }
   };
 };
 
@@ -59,52 +63,36 @@ lib.fs.err = function(msg, opt_callback) {
  * Replace the contents of a file with the string provided.  If the file
  * doesn't exist it is created.  If it does, it is removed and re-created.
  *
- * @param {DirectoryEntry} root The directory to consider as the root of the
+ * @param {!DirectoryEntry} root The directory to consider as the root of the
  *     path.
  * @param {string} path The path of the target file, relative to root.
- * @param {Blob|string} contents The new contents of the file.
- * @param {function()} onSuccess The function to invoke after success.
- * @param {function(DOMError)} opt_onError Optional function to invoke if the
- *     operation fails.
+ * @param {!Blob|string} contents The new contents of the file.
+ * @return {!Promise<void>}
  */
-lib.fs.overwriteFile = function(root, path, contents, onSuccess, opt_onError) {
-  function onFileRemoved() {
-    lib.fs.getOrCreateFile(root, path,
-                          onFileFound,
-                          lib.fs.log('Error creating: ' + path, opt_onError));
+lib.fs.overwriteFile = function(root, path, contents) {
+  if (!(contents instanceof Blob)) {
+    contents = new Blob([contents], {type: 'text/plain'});
   }
 
-  function onFileFound(fileEntry) {
-    fileEntry.createWriter(onFileWriter,
-                           lib.fs.log('Error creating writer for: ' + path,
-                                      opt_onError));
-  }
-
-  function onFileWriter(writer) {
-    writer.onwriteend = onSuccess;
-    writer.onerror = lib.fs.log('Error writing to: ' + path, opt_onError);
-
-    if (!(contents instanceof Blob)) {
-      contents = new Blob([contents], {type: 'text/plain'});
-    }
-
-    writer.write(contents);
-  }
-
-  root.getFile(path, {create: false},
-               function(fileEntry) {
-                 fileEntry.remove(onFileRemoved, onFileRemoved);
-               },
-               onFileRemoved);
+  return lib.fs.removeFile(root, path)
+    .catch(() => {})
+    .then(() => lib.fs.getOrCreateFile(root, path))
+    .then((fileEntry) => new Promise((resolve, reject) => {
+      fileEntry.createWriter((writer) => {
+        writer.onwriteend = resolve;
+        writer.onerror = reject;
+        writer.write(contents);
+      }, reject);
+    }));
 };
 
 /**
  * Open a file on an HTML5 filesystem.
  *
- * @param {DirectoryEntry} root The directory to consider as the root of the
+ * @param {!DirectoryEntry} root The directory to consider as the root of the
  *     path.
  * @param {string} path The path of the target file, relative to root.
- * @return {!Promise(File)} The open file handle.
+ * @return {!Promise<!File>} The open file handle.
  */
 lib.fs.openFile = function(root, path) {
   return new Promise((resolve, reject) => {
@@ -117,49 +105,38 @@ lib.fs.openFile = function(root, path) {
 /**
  * Read a file on an HTML5 filesystem.
  *
- * @param {DirectoryEntry} root The directory to consider as the root of the
+ * @param {!DirectoryEntry} root The directory to consider as the root of the
  *     path.
  * @param {string} path The path of the target file, relative to root.
- * @return {!Promise(string)} The file content.
+ * @return {!Promise<string>} The file content.
  */
 lib.fs.readFile = function(root, path) {
   return lib.fs.openFile(root, path)
-    .then((file) => {
-      const reader = new lib.fs.FileReader();
-      return reader.readAsText(file);
-    });
+    .then((file) => file.text());
 };
-
 
 /**
  * Remove a file from an HTML5 filesystem.
  *
- * @param {DirectoryEntry} root The directory to consider as the root of the
+ * @param {!DirectoryEntry} root The directory to consider as the root of the
  *     path.
  * @param {string} path The path of the target file, relative to root.
- * @param {function(string)} opt_onSuccess Optional function to invoke after
- *     success.
- * @param {function(DOMError)} opt_onError Optional function to invoke if the
- *     operation fails.
+ * @return {!Promise<void>}
  */
-lib.fs.removeFile = function(root, path, opt_onSuccess, opt_onError) {
-  root.getFile(
-      path, {},
-      function (f) {
-        f.remove(lib.fs.log('Removed: ' + path, opt_onSuccess),
-                 lib.fs.err('Error removing' + path, opt_onError));
-      },
-      lib.fs.log('Error finding: ' + path, opt_onError)
-  );
+lib.fs.removeFile = function(root, path) {
+  return new Promise((resolve, reject) => {
+    root.getFile(path, {}, (f) => f.remove(resolve, reject), reject);
+  });
 };
 
 /**
  * Build a list of all FileEntrys in an HTML5 filesystem.
  *
- * @param {DirectoryEntry} root The directory to consider as the root of the
+ * @param {!DirectoryEntry} root The directory to consider as the root of the
  *     path.
  * @param {string} path The path of the target file, relative to root.
- * @return {!Promise(!Array<FileSystemEntry>)} All the entries in the directory.
+ * @return {!Promise<!Array<!Entry>>} All the entries in the
+ *     directory.
  */
 lib.fs.readDirectory = function(root, path) {
   return new Promise((resolve, reject) => {
@@ -174,20 +151,19 @@ lib.fs.readDirectory = function(root, path) {
  * Locate the file referred to by path, creating directories or the file
  * itself if necessary.
  *
- * @param {DirectoryEntry} root The directory to consider as the root of the
+ * @param {!DirectoryEntry} root The directory to consider as the root of the
  *     path.
  * @param {string} path The path of the target file, relative to root.
- * @param {function(string)} onSuccess The function to invoke after
- *     success.
- * @param {function(DOMError)} opt_onError Optional function to invoke if the
- *     operation fails.
+ * @return {!Promise<!FileEntry>}
  */
-lib.fs.getOrCreateFile = function(root, path, onSuccess, opt_onError) {
+lib.fs.getOrCreateFile = function(root, path) {
   var dirname = null;
   var basename = null;
 
   function onDirFound(dirEntry) {
-    dirEntry.getFile(basename, { create: true }, onSuccess, opt_onError);
+    return new Promise((resolve, reject) => {
+      dirEntry.getFile(lib.notNull(basename), {create: true}, resolve, reject);
+    });
   }
 
   var i = path.lastIndexOf('/');
@@ -199,104 +175,38 @@ lib.fs.getOrCreateFile = function(root, path, onSuccess, opt_onError) {
   }
 
   if (!dirname) {
-    onDirFound(root);
-    return;
+    return onDirFound(root);
   }
 
-  lib.fs.getOrCreateDirectory(root, dirname, onDirFound, opt_onError);
+  return lib.fs.getOrCreateDirectory(root, dirname).then(onDirFound);
 };
 
 /**
  * Locate the directory referred to by path, creating directories along the
  * way.
  *
- * @param {DirectoryEntry} root The directory to consider as the root of the
+ * @param {!DirectoryEntry} root The directory to consider as the root of the
  *     path.
  * @param {string} path The path of the target file, relative to root.
- * @param {function(string)} onSuccess The function to invoke after success.
- * @param {function(DOMError)} opt_onError Optional function to invoke if the
- *     operation fails.
+ * @return {!Promise<!DirectoryEntry>}
  */
-lib.fs.getOrCreateDirectory = function(root, path, onSuccess, opt_onError) {
-  var names = path.split('/');
+lib.fs.getOrCreateDirectory = function(root, path) {
+  const names = path.split('/');
 
-  function getOrCreateNextName(dir) {
-    if (!names.length)
-      return onSuccess(dir);
-
-    var name = names.shift();
-
-    if (!name || name == '.') {
-      getOrCreateNextName(dir);
-    } else {
-      dir.getDirectory(name, { create: true }, getOrCreateNextName,
-                       opt_onError);
-    }
-  }
-
-  getOrCreateNextName(root);
-};
-
-/**
- * A Promise API around the FileReader API.
- *
- * The FileReader API is old, so wrap its callbacks with a Promise.
- */
-lib.fs.FileReader = function() {
-};
-
-/**
- * Internal helper for wrapping all the readAsXxx funcs.
- *
- * @param {Blob} blob The blob of data to read.
- * @param {string} method The specific readAsXxx function to call.
- * @param {Promise} A promise to resolve when reading finishes or fails.
- */
-lib.fs.FileReader.prototype.readAs_ = function(blob, method) {
   return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onabort = reader.onerror = () => reject(reader);
-    reader[method](blob);
+    function getOrCreateNextName(dir) {
+      if (!names.length) {
+        return resolve(dir);
+      }
+
+      const name = names.shift();
+      if (!name || name == '.') {
+        getOrCreateNextName(dir);
+      } else {
+        dir.getDirectory(name, {create: true}, getOrCreateNextName, reject);
+      }
+    }
+
+    getOrCreateNextName(root);
   });
-};
-
-/**
- * Wrapper around FileReader.readAsArrayBuffer.
- *
- * @param {Blob} blob The blob of data to read.
- * @param {Promise} A promise to resolve when reading finishes or fails.
- */
-lib.fs.FileReader.prototype.readAsArrayBuffer = function(blob) {
-  return this.readAs_(blob, 'readAsArrayBuffer');
-};
-
-/**
- * Wrapper around FileReader.readAsBinaryString.
- *
- * @param {Blob} blob The blob of data to read.
- * @param {Promise} A promise to resolve when reading finishes or fails.
- */
-lib.fs.FileReader.prototype.readAsBinaryString = function(blob) {
-  return this.readAs_(blob, 'readAsBinaryString');
-};
-
-/**
- * Wrapper around FileReader.readAsDataURL.
- *
- * @param {Blob} blob The blob of data to read.
- * @param {Promise} A promise to resolve when reading finishes or fails.
- */
-lib.fs.FileReader.prototype.readAsDataURL = function(blob) {
-  return this.readAs_(blob, 'readAsDataURL');
-};
-
-/**
- * Wrapper around FileReader.readAsText.
- *
- * @param {Blob} blob The blob of data to read.
- * @param {Promise} A promise to resolve when reading finishes or fails.
- */
-lib.fs.FileReader.prototype.readAsText = function(blob) {
-  return this.readAs_(blob, 'readAsText');
 };

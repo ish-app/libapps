@@ -12,30 +12,31 @@
 /**
  * Relay ssh-agent messages to an nassh.agent.Agent instance.
  *
- * @param fd
+ * @param {number} fd
  * @param {{authAgent: !nassh.agent.Agent}} args
  * @constructor
- * @implements nassh.Stream
+ * @extends {nassh.Stream}
  */
 nassh.Stream.SSHAgent = function(fd, args) {
   nassh.Stream.apply(this, [fd]);
 
   this.authAgent_ = args.authAgent;
   this.pendingMessageSize_ = null;
-  this.writeBuffer_ = new Uint8Array();
+  this.writeBuffer_ = new Uint8Array(0);
 };
 
 nassh.Stream.SSHAgent.prototype = Object.create(nassh.Stream.prototype);
+/** @override */
 nassh.Stream.SSHAgent.constructor = nassh.Stream.SSHAgent;
 
 /**
  * Open a connection to the agent and let it initialize its backends.
  *
- * @param args
- * @param onComplete
- * @private
+ * @param {!Object} settings
+ * @param {function(boolean, ?string=)} onComplete
+ * @override
  */
-nassh.Stream.SSHAgent.prototype.asyncOpen_ = function(args, onComplete) {
+nassh.Stream.SSHAgent.prototype.asyncOpen = function(settings, onComplete) {
   try {
     this.authAgent_.ping().then(() => onComplete(true));
   } catch (e) {
@@ -47,6 +48,7 @@ nassh.Stream.SSHAgent.prototype.asyncOpen_ = function(args, onComplete) {
 /**
  * Check whether there is enough data in the write buffer to constitute a
  * packet. If so, send packet to Agent and relay its reply.
+ *
  * @private
  */
 nassh.Stream.SSHAgent.prototype.trySendPacket_ = function() {
@@ -82,8 +84,9 @@ nassh.Stream.SSHAgent.prototype.trySendPacket_ = function() {
 /**
  * Append data to write buffer.
  *
- * @param {ArrayBuffer} data The bytes to append to the current stream.
+ * @param {!ArrayBuffer} data The bytes to append to the current stream.
  * @param {function(number)} onSuccess Callback once the data is queued.
+ * @override
  */
 nassh.Stream.SSHAgent.prototype.asyncWrite = function(data, onSuccess) {
   if (!data.byteLength) {

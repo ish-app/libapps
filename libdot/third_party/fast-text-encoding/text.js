@@ -35,7 +35,8 @@ if (scope['TextEncoder'] && scope['TextDecoder']) {
 function FastTextEncoder(utfLabel='utf-8') {
   if (utfLabel !== 'utf-8') {
     throw new RangeError(
-      `Failed to construct 'TextEncoder': The encoding label provided ('${utfLabel}') is invalid.`);
+        `Failed to construct 'TextEncoder': ` +
+        `The encoding label provided ('${utfLabel}') is invalid.`);
   }
 }
 
@@ -53,7 +54,6 @@ FastTextEncoder.prototype.encode = function(string, options={stream: false}) {
 
   let pos = 0;
   const len = string.length;
-  const out = [];
 
   let at = 0;  // output position
   let tlen = Math.max(32, len + (len >> 1) + 7);  // 1.5x size
@@ -99,7 +99,7 @@ FastTextEncoder.prototype.encode = function(string, options={stream: false}) {
       target[at++] = ((value >> 12) & 0x3f) | 0x80;
       target[at++] = ((value >>  6) & 0x3f) | 0x80;
     } else {
-      // FIXME: do we care
+      // TODO: do we care
       continue;
     }
 
@@ -107,7 +107,7 @@ FastTextEncoder.prototype.encode = function(string, options={stream: false}) {
   }
 
   return target.slice(0, at);
-}
+};
 
 /**
  * @constructor
@@ -117,10 +117,13 @@ FastTextEncoder.prototype.encode = function(string, options={stream: false}) {
 function FastTextDecoder(utfLabel='utf-8', options={fatal: false}) {
   if (utfLabel !== 'utf-8') {
     throw new RangeError(
-      `Failed to construct 'TextDecoder': The encoding label provided ('${utfLabel}') is invalid.`);
+        `Failed to construct 'TextDecoder': ` +
+        `The encoding label provided ('${utfLabel}') is invalid.`);
   }
   if (options.fatal) {
-    throw new Error(`Failed to construct 'TextDecoder': the 'fatal' option is unsupported.`);
+    throw new Error(
+        `Failed to construct 'TextDecoder': ` +
+        `the 'fatal' option is unsupported.`);
   }
 }
 
@@ -133,6 +136,7 @@ Object.defineProperty(FastTextDecoder.prototype, 'ignoreBOM', {value: false});
 /**
  * @param {(!ArrayBuffer|!ArrayBufferView)} buffer
  * @param {{stream: boolean}=} options
+ * @return {string}
  */
 FastTextDecoder.prototype.decode = function(buffer, options={stream: false}) {
   if (options['stream']) {
@@ -165,23 +169,25 @@ FastTextDecoder.prototype.decode = function(buffer, options={stream: false}) {
       const byte4 = bytes[pos++] & 0x3f;
 
       // this can be > 0xffff, so possibly generate surrogates
-      let codepoint = ((byte1 & 0x07) << 0x12) | (byte2 << 0x0c) | (byte3 << 0x06) | byte4;
+      let codepoint =
+          ((byte1 & 0x07) << 0x12) | (byte2 << 0x0c) | (byte3 << 0x06) | byte4;
       if (codepoint > 0xffff) {
         // codepoint &= ~0x10000;
         codepoint -= 0x10000;
-        out.push((codepoint >>> 10) & 0x3ff | 0xd800)
+        out.push((codepoint >>> 10) & 0x3ff | 0xd800);
         codepoint = 0xdc00 | codepoint & 0x3ff;
       }
       out.push(codepoint);
     } else {
-      // FIXME: we're ignoring this
+      // TODO: we're ignoring this
     }
   }
 
   return String.fromCharCode.apply(null, out);
-}
+};
 
 scope['TextEncoder'] = FastTextEncoder;
 scope['TextDecoder'] = FastTextDecoder;
-
-}(typeof window !== 'undefined' ? window : (typeof global !== 'undefined' ? global : this)));
+}(typeof window !== 'undefined' ?
+      window :
+      (typeof global !== 'undefined' ? global : this)));

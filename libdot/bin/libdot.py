@@ -9,7 +9,7 @@
 from __future__ import print_function
 
 import argparse
-import glob
+import importlib.machinery
 import logging
 import logging.handlers
 import os
@@ -17,6 +17,7 @@ import shutil
 import subprocess
 import sys
 import time
+import types
 import urllib.request
 
 
@@ -29,20 +30,52 @@ DIR = os.path.dirname(BIN_DIR)
 LIBAPPS_DIR = os.path.dirname(DIR)
 
 
-def setup_logging(debug=False):
+class ColoredFormatter(logging.Formatter):
+    """Colorize warning/error messages automatically."""
+
+    _COLOR_MAPPING = {
+        'WARNING': '\033[1;33m',
+        'ERROR': '\033[1;31m'
+    }
+    _RESET = '\033[m'
+
+    def __init__(self, *args, **kwargs):
+        """Initialize!"""
+        self._use_colors = 'NOCOLOR' not in os.environ
+        super(ColoredFormatter, self).__init__(*args, **kwargs)
+
+    def format(self, record):
+        """Formats |record| with color."""
+        msg = super(ColoredFormatter, self).format(record)
+        color = self._COLOR_MAPPING.get(record.levelname)
+        if self._use_colors and color:
+            msg = '%s%s%s' % (color, msg, self._RESET)
+        return msg
+
+
+def setup_logging(debug=False, quiet=0):
     """Setup the logging module."""
-    fmt = u'%(asctime)s: %(levelname)-7s: '
+    fmt = '%(asctime)s: %(levelname)-7s: '
     if debug:
-        fmt += u'%(filename)s:%(funcName)s: '
-    fmt += u'%(message)s'
+        fmt += '%(filename)s:%(funcName)s: '
+    fmt += '%(message)s'
 
     # 'Sat, 05 Oct 2013 18:58:50 -0400 (EST)'
     tzname = time.strftime('%Z', time.localtime())
-    datefmt = u'%a, %d %b %Y %H:%M:%S ' + tzname
+    datefmt = '%a, %d %b %Y %H:%M:%S ' + tzname
 
-    level = logging.DEBUG if debug else logging.INFO
+    if debug:
+        level = logging.DEBUG
+    elif quiet <= 0:
+        level = logging.INFO
+    elif quiet <= 1:
+        level = logging.WARNING
+    elif quiet <= 2:
+        level = logging.ERROR
+    elif quiet <= 3:
+        level = logging.CRITICAL
 
-    formatter = logging.Formatter(fmt, datefmt)
+    formatter = ColoredFormatter(fmt, datefmt)
     handler = logging.StreamHandler(stream=sys.stdout)
     handler.setFormatter(formatter)
 
@@ -51,102 +84,29 @@ def setup_logging(debug=False):
     logger.setLevel(level)
 
 
-def html_test_runner_parser():
-    """Get a parser for our test runner."""
-    parser = argparse.ArgumentParser(
-        description='HTML test runner',
-        formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('-d', '--debug', action='store_true',
-                        help='Run with debug output.')
-    parser.add_argument('--browser', default=os.getenv('CHROME_BIN'),
-                        help='Browser program to run tests against.')
-    parser.add_argument('--profile', default=os.getenv('CHROME_TEST_PROFILE'),
-                        help='Browser profile dir to run against.')
-    parser.add_argument('--skip-mkdeps', dest='run_mkdeps',
-                        action='store_false', default=True,
-                        help='Skip (re)building of dependencies.')
-    parser.add_argument('--visible', action='store_true',
-                        help='Show the browser window to interact with.')
-    # Note: This CLI option matches Chrome's own naming.
-    parser.add_argument('--no-sandbox', dest='sandbox',
-                        action='store_false', default=True,
-                        help='Disable Chrome sandboxing.')
-    return parser
+class ArgumentParser(argparse.ArgumentParser):
+    """Custom parser to hold a consistent set of options & runtime env."""
 
+    def __init__(self, **kwargs):
+        """Initialize!"""
+        super(ArgumentParser, self).__init__(**kwargs)
 
-def html_test_runner_main(argv, path, serve=False, mkdeps=False):
-    """Open the test page at |path|.
+        self.add_common_arguments()
 
-    Args:
-      argv: The program's command line arguments.
-      path: Path to the test page.
-      serve: Whether to launch a webserver or load the page from disk.
-      mkdeps: Callback to build dependencies after we've initialized.
-    """
-    parser = html_test_runner_parser()
-    opts = parser.parse_args(argv)
-    setup_logging(debug=opts.debug)
+    def parse_args(self, args=None, namespace=None):
+        """Parse all the |args| and save the results to |namespace|."""
+        namespace = argparse.ArgumentParser.parse_args(
+            self, args=args, namespace=namespace)
+        setup_logging(debug=namespace.debug, quiet=namespace.quiet)
+        return namespace
 
-    # Try to use default X session.
-    os.environ.setdefault('DISPLAY', ':0')
-
-    # Ensure chai/mocha node modules exist.
-    node_and_npm_setup()
-
-    # Set up any deps.
-    if mkdeps:
-        if opts.run_mkdeps:
-            mkdeps(opts)
-        else:
-            logging.info('Skipping building dependencies due to --skip-mkdeps')
-
-    # Set up a unique profile to avoid colliding with user settings.
-    profile_dir = opts.profile
-    if not profile_dir:
-        profile_dir = os.path.expanduser('~/.config/google-chrome-run_local')
-    os.makedirs(profile_dir, exist_ok=True)
-
-    # Find a Chrome version to run against.
-    browser = opts.browser
-    if not browser:
-        browser = chrome_setup()
-
-    # Kick off server if needed.
-    if serve:
-        server = subprocess.Popen(['http-server', '-a', 'localhost', '-c-1',
-                                   '--cors'],
-                                  cwd=LIBAPPS_DIR)
-        path = 'http://localhost:8080/%s' % path
-
-    # Some environments are unable to utilize the sandbox: we're not running as
-    # root, and userns is unavailable.  For example, while using docker.
-    if opts.sandbox:
-        sb_arg = mocha_sb_arg = []
-    else:
-        sb_arg = ['--no-sandbox']
-        # The wrapper requires omitting the leading dashes for no real reason.
-        mocha_sb_arg = ['--args=no-sandbox']
-
-    try:
-        # Kick off test runner in the background so we exit.
-        logging.info('Running tests against browser "%s".', browser)
-        logging.info('Tests page: %s', path)
-        if opts.visible:
-            subprocess.Popen([browser, '--user-data-dir=%s' % (profile_dir,),
-                              path] + sb_arg)
-        else:
-            run(['mocha-headless-chrome', '-e', browser, '-f', path] +
-                mocha_sb_arg)
-    finally:
-        # Wait for the server if it exists.
-        if serve:
-            if opts.visible:
-                try:
-                    server.wait()
-                except KeyboardInterrupt:
-                    pass
-            else:
-                server.terminate()
+    def add_common_arguments(self):
+        """Add our custom/consistent set of command line flags."""
+        self.add_argument('-d', '--debug', action='store_true',
+                          help='Run with debug output.')
+        self.add_argument('-q', '--quiet', action='count', default=0,
+                          help='Use once to hide info messages, twice to hide '
+                               'warnings, and thrice to hide errors.')
 
 
 def touch(path):
@@ -173,6 +133,9 @@ def symlink(target, path):
 
 def cmdstr(cmd):
     """Return a string for the |cmd| list w/reasonable quoting."""
+    if isinstance(cmd, str):
+        return cmd
+
     quoted = []
     for arg in cmd:
         if ' ' in arg:
@@ -194,26 +157,33 @@ def run(cmd, check=True, cwd=None, **kwargs):
     if cwd is None:
         cwd = os.getcwd()
     logging.info('Running: %s\n  (cwd = %s)', cmdstr(cmd), cwd)
-    # Python 3.4 doesn't support run.
-    if sys.version_info < (3, 5):
-        result = subprocess.Popen(cmd, cwd=cwd, **kwargs)
-        stdout, stderr = result.communicate()
-        result.stdout = stdout
-        result.stderr = stderr
-    else:
-        result = subprocess.run(cmd, cwd=cwd, **kwargs)
+    result = subprocess.run(cmd, cwd=cwd, **kwargs)
     if check and result.returncode:
         logging.error('Running %s failed!', cmd[0])
+        if result.stdout is not None:
+            logging.error('stdout:\n%s', result.stdout)
+        if result.stderr is not None:
+            logging.error('stderr:\n%s', result.stderr)
         sys.exit(result.returncode)
     return result
 
 
-def unpack(archive, cwd=None):
+def unpack(archive, cwd=None, files=()):
     """Unpack |archive| into |cwd|."""
     if cwd is None:
         cwd = os.getcwd()
+    if files:
+        files = ['--'] + list(files)
+    else:
+        files = []
+
     logging.info('Unpacking %s', os.path.basename(archive))
-    run(['tar', '-xf', archive], cwd=cwd)
+    # We use relpath here to help out tar on platforms where it doesn't like
+    # paths with colons in them (e.g. Windows).  We have to construct the full
+    # before running through relpath as relative archives will implicitly be
+    # checked against os.getcwd rather than the explicit cwd.
+    src = os.path.relpath(os.path.join(cwd, archive), cwd)
+    run(['tar', '-xf', src] + files, cwd=cwd)
 
 
 def fetch(uri, output):
@@ -266,121 +236,15 @@ def fetch(uri, output):
     os.rename(tmpfile, output)
 
 
-# The hash of the node_modules that we maintain.
-# Allow a long line for easy automated updating.
-# pylint: disable=line-too-long
-NODE_MODULES_HASH = '6aa8e3885b83f646e15bd56f9f53b97a481fe1907da55519fd789ca755d9eca5'
-# pylint: enable=line-too-long
-
-# In sync with Chromium's DEPS file because it's easier to use something that
-# already exists than maintain our own.  Look for 'node_linux64' here:
-# https://chromium.googlesource.com/chromium/src/+/master/DEPS
-NODE_VER = '10.15.3'
-
-# Run `./node_sync_with_chromium` to update these hashes.
-NODE_LINUX_HASH = '3f578b6dec3fdddde88a9e889d9dd5d660c26db9'
-NODE_MAC_HASH = '37d5bb727fa6f3f29a8981962903d0a2371a3f2d'
-
-# Bucket maintained by Chromium.
-# gsutil ls gs://chromium-nodejs/
-NODE_BASE_URI = 'https://storage.googleapis.com/chromium-nodejs'
-
-# Bucket maintained by us.
-NODE_MODULES_GS_FRAGMENT = 'chromeos-localmirror/secureshell/distfiles'
-NODE_MODULES_GS_URI = 'gs://%s' % (NODE_MODULES_GS_FRAGMENT,)
-NODE_MODULES_BASE_URI = ('https://storage.googleapis.com/%s'
-                         % (NODE_MODULES_GS_FRAGMENT,))
-
-# The node_modules & node/npm paths.
-NODE_MODULES_DIR = os.path.join(LIBAPPS_DIR, 'node_modules')
-NODE_BIN_DIR = os.path.join(NODE_MODULES_DIR, '.bin')
-NODE = os.path.join(NODE_BIN_DIR, 'node')
-NPM = os.path.join(NODE_BIN_DIR, 'npm')
-# Use a dotdir as npm expects to manage everything under node_modules/.
-NODE_DIR = os.path.join(NODE_MODULES_DIR, '.node')
-
-
-def node_update():
-    """Download & update our copy of node."""
-    osname = os.uname().sysname
-    if osname == 'Linux':
-        node_hash = NODE_LINUX_HASH
-    elif osname == 'Darwin':
-        node_hash = NODE_MAC_HASH
-    # We don't support Windows yet.
-    #elif osname == 'Windows':
-    #    node_hash = NODE_WIN_HASH
-    else:
-        raise RuntimeError('Unknown OS %s' % (osname,))
-
-    # In case of an upgrade, nuke existing dir.
-    hash_file = os.path.join(NODE_DIR, node_hash)
-    if not os.path.exists(hash_file):
-        shutil.rmtree(NODE_DIR, ignore_errors=True)
-
-    if not os.path.exists(NODE):
-        os.makedirs(NODE_BIN_DIR, exist_ok=True)
-        os.makedirs(NODE_DIR, exist_ok=True)
-
-        # Download & unpack the archive.
-        uri = os.path.join(NODE_BASE_URI, NODE_VER, node_hash)
-        output = os.path.join(NODE_DIR, node_hash)
-        fetch(uri, output)
-        unpack(output, cwd=NODE_DIR)
-        unlink(output)
-
-        # Create canonical symlinks for node & npm.
-        paths = glob.glob(os.path.join(NODE_DIR, '*', 'bin', 'node'))
-        #relpath = os.path.relpath(paths[0], NODE_BIN_DIR)
-        #os.symlink(relpath, NODE)
-        symlink(paths[0], NODE)
-        paths = glob.glob(os.path.join(NODE_DIR, '*', '*', 'node_modules',
-                                       'npm', 'bin', 'npm-cli.js'))
-        #relpath = os.path.relpath(paths[0], NODE_BIN_DIR)
-        #os.symlink(relpath, NPM)
-        symlink(paths[0], NPM)
-
-        # Mark the hash of this checkout.
-        touch(hash_file)
-
-
-def node_modules_update():
-    """Download & update our copy of node_modules."""
-    hash_file = os.path.join(NODE_MODULES_DIR, '.hash')
-    old_hash = None
-    try:
-        with open(hash_file, 'r', encoding='utf-8') as fp:
-            old_hash = fp.read().strip()
-    except FileNotFoundError:
-        pass
-
-    # In case of an upgrade, nuke existing dir.
-    if old_hash != NODE_MODULES_HASH:
-        shutil.rmtree(NODE_MODULES_DIR, ignore_errors=True)
-
-    if not os.path.exists(hash_file):
-        # Download & unpack the archive.
-        tar = 'node_modules-%s.tar.xz' % (NODE_MODULES_HASH,)
-        uri = os.path.join(NODE_MODULES_BASE_URI, tar)
-        output = os.path.join(LIBAPPS_DIR, tar)
-        fetch(uri, output)
-        unpack(output, cwd=LIBAPPS_DIR)
-        unlink(output)
-
-        # Mark the hash of this checkout.
-        with open(hash_file, 'w', encoding='utf-8') as fp:
-            fp.write(NODE_MODULES_HASH)
-
-
 def node_and_npm_setup():
     """Download our copies of node & npm to our tree and updates env ($PATH)."""
     # We have to update modules first as it'll nuke the dir node lives under.
-    node_modules_update()
-    node_update()
+    node.modules_update()
+    node.update()
 
     # Make sure our tools show up first in $PATH to override the system.
     path = os.getenv('PATH')
-    os.environ['PATH'] = '%s:%s' % (NODE_BIN_DIR, path)
+    os.environ['PATH'] = '%s:%s' % (node.NODE_BIN_DIR, path)
 
 
 # A snapshot of Chrome that we update from time to time.
@@ -397,7 +261,7 @@ CHROME_VERSION = 'google-chrome-stable_75.0.3770.142-1'
 
 def chrome_setup():
     """Download our copy of Chrome for headless testing."""
-    puppeteer = os.path.join(NODE_MODULES_DIR, 'puppeteer')
+    puppeteer = os.path.join(node.NODE_MODULES_DIR, 'puppeteer')
     download_dir = os.path.join(puppeteer, '.local-chromium')
     chrome_dir = os.path.join(download_dir, CHROME_VERSION)
     chrome_bin = os.path.join(chrome_dir, 'opt', 'google', 'chrome', 'chrome')
@@ -411,7 +275,7 @@ def chrome_setup():
 
     # Get the snapshot deb archive.
     chrome_deb = os.path.join(tmpdir, 'deb')
-    uri = '%s/%s_amd64.deb' % (NODE_MODULES_BASE_URI, CHROME_VERSION)
+    uri = '%s/%s_amd64.deb' % (node.NODE_MODULES_BASE_URI, CHROME_VERSION)
     fetch(uri, chrome_deb)
 
     # Unpack the deb archive, then clean it all up.
@@ -424,3 +288,62 @@ def chrome_setup():
     os.rename(tmpdir, chrome_dir)
 
     return chrome_bin
+
+
+def load_module(name, path):
+    """Load a module from the filesystem.
+
+    Args:
+      name: The name of the new module to import.
+      path: The full path to the file to import.
+    """
+    loader = importlib.machinery.SourceFileLoader(name, path)
+    module = types.ModuleType(loader.name)
+    loader.exec_module(module)
+    return module
+
+
+class HelperProgram:
+    """Wrapper around local programs that get reused by other projects.
+
+    This allows people to do inprocess execution rather than having to fork+exec
+    another Python instance.
+
+    This allows us to avoid filesystem symlinks (which aren't portable), and to
+    avoid naming programs with .py extensions, and to avoid clashes between
+    projects that use the same program name (e.g. "import lint" would confuse
+    libdot/bin/lint & nassh/bin/lint), and to avoid merging all libdot helpers
+    into the single libdot.py module.
+    """
+
+    def __init__(self, name, path=None):
+        """Initialize.
+
+        Args:
+          name: The base name of the program to import.
+          path: The full path to the file.  It defaults to libdot/bin/|name|.
+        """
+        self._name = name
+        if path is None:
+            path = os.path.join(BIN_DIR, name)
+        self._path = path
+        self._module_cache = None
+
+    @property
+    def _module(self):
+        """Load & cache the program module."""
+        if self._module_cache is None:
+            self._module_cache = load_module(self._name, self._path)
+        return self._module_cache
+
+    def __getattr__(self, name):
+        """Dynamic forwarder to module members."""
+        return getattr(self._module, name)
+
+
+# Wrappers around libdot/bin/ programs for other tools to access directly.
+concat = HelperProgram('concat')
+lint = HelperProgram('lint')
+load_tests = HelperProgram('load_tests')
+node = HelperProgram('node')
+pylint = HelperProgram('pylint')

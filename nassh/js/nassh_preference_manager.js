@@ -8,9 +8,15 @@
  * PreferenceManager subclass managing global NaSSH preferences.
  *
  * This is currently just an ordered list of known connection profiles.
+ *
+ * @param {!Storage=} storage
+ * @constructor
+ * @extends {lib.PreferenceManager}
  */
-nassh.PreferenceManager = function(opt_storage) {
-  var storage = opt_storage || nassh.defaultStorage;
+nassh.PreferenceManager = function(storage) {
+  if (!storage) {
+    storage = nassh.defaultStorage;
+  }
   lib.PreferenceManager.call(this, storage, '/nassh/');
 
   this.defineChildren('profile-ids', function(parent, id) {
@@ -32,14 +38,16 @@ nassh.PreferenceManager = function(opt_storage) {
 
 nassh.PreferenceManager.prototype =
     Object.create(lib.PreferenceManager.prototype);
+/** @override */
 nassh.PreferenceManager.constructor = nassh.PreferenceManager;
 
 /**
  * Entry point when loading the nassh preferences.
  *
  * @param {function()=} callback Callback when the storage is loaded.
+ * @override
  */
-nassh.PreferenceManager.prototype.readStorage = function(callback=undefined) {
+nassh.PreferenceManager.prototype.readStorage = function(callback) {
   // Handle renaming the "relay-options" field to "nassh-options".
   // We can probably delete this migration by Dec 2019.
   const onRead = () => {
@@ -63,20 +71,33 @@ nassh.PreferenceManager.prototype.readStorage = function(callback=undefined) {
   lib.PreferenceManager.prototype.readStorage.call(this, onRead);
 };
 
+/** @return {!nassh.PreferenceManager} */
 nassh.PreferenceManager.prototype.createProfile = function() {
-  return this.createChild('profile-ids');
+  return /** @type {!nassh.PreferenceManager} */ (
+      this.createChild('profile-ids'));
 };
 
+/** @param {string} id */
 nassh.PreferenceManager.prototype.removeProfile = function(id) {
-  return this.removeChild('profile-ids', id);
+  this.removeChild('profile-ids', id);
 };
 
+/**
+ * @param {string} id
+ * @return {!nassh.PreferenceManager}
+ */
 nassh.PreferenceManager.prototype.getProfile = function(id) {
-  return this.getChild('profile-ids', id);
+  return /** @type {!nassh.PreferenceManager} */ (
+      this.getChild('profile-ids', id));
 };
 
 /**
  * lib.PreferenceManager subclass managing per-connection preferences.
+ *
+ * @param {!lib.PreferenceManager} parent
+ * @param {string} id
+ * @constructor
+ * @extends {lib.PreferenceManager}
  */
 nassh.ProfilePreferenceManager = function(parent, id) {
   lib.PreferenceManager.call(this, parent.storage,
@@ -144,4 +165,5 @@ nassh.ProfilePreferenceManager = function(parent, id) {
 
 nassh.ProfilePreferenceManager.prototype =
     Object.create(lib.PreferenceManager.prototype);
+/** @override */
 nassh.ProfilePreferenceManager.constructor = nassh.ProfilePreferenceManager;

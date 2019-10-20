@@ -29,7 +29,7 @@ def src_configure(metadata):
         logging.info('Makefile exists; skipping ./configure step')
         return
 
-    env = ssh_client.pnacl_env()
+    tc = metadata['toolchain']
 
     EXTRA_LIBS = ['-lcrypto']
     EXTRA_CFLAGS = [
@@ -44,7 +44,6 @@ def src_configure(metadata):
         '-DHAVE_ENDGRENT',
         '-DHAVE_FD_MASK',
         '-include', 'sys/cdefs.h',
-        '-I%s' % (os.path.join(env['SYSROOT_INCDIR'], 'glibc-compat'),),
     ]
 
     EXTRA_CONFIGURE_FLAGS = [
@@ -89,14 +88,15 @@ def src_configure(metadata):
 
     cmd = [
         './configure',
-        '--host=nacl',
+        '--build=%s' % (tc.cbuild,),
+        '--host=%s' % (tc.chost,),
         # The prefix path matches what is used at runtime.
         '--prefix=/',
         '--cache-file=../config.cache',
         'CFLAGS=%s' % (' '.join(EXTRA_CFLAGS),),
         'LIBS=%s' % (' '.join(EXTRA_LIBS),),
     ]
-    ssh_client.run(cmd + EXTRA_CONFIGURE_FLAGS, env=env)
+    ssh_client.run(cmd + EXTRA_CONFIGURE_FLAGS)
 
     # Build the html man pages.  Since we're hooking the Makefile, we need can
     # do this only after we've run configure.
@@ -110,7 +110,7 @@ def src_configure(metadata):
         ])
 
 
-def src_compile(_metadata):
+def src_compile(metadata):
     """Compile the source."""
     # These are the few objects we care about for our tools.
     objects = [
@@ -127,17 +127,22 @@ def src_compile(_metadata):
         'html',
     ]
 
-    env = ssh_client.pnacl_env()
-    ssh_client.emake(*targets, env=env)
-    ssh_client.run([env['AR'], 'rcs', 'libopenssh.a'] + objects)
+    tc = metadata['toolchain']
+    ssh_client.emake(*targets)
+    ssh_client.run([tc.ar, 'rcs', 'libopenssh.a'] + objects)
 
 
-def src_install(_metadata):
+def src_install(metadata):
     """Install the package."""
+    tc = metadata['toolchain']
+    # Turn "8.0p1" into just "8.0".
+    major_minor_version = metadata['PV'][:3]
     for lib in ('libopenssh.a', 'libssh.a',
                 'openbsd-compat/libopenbsd-compat.a'):
-        ssh_client.copy(lib,
-                        os.path.join(ssh_client.OUTPUT, os.path.basename(lib)))
+        # Transform libssh.a to libssh-8.0.a.
+        base, ext = os.path.splitext(os.path.basename(lib))
+        target = '%s-%s%s' % (base, major_minor_version, ext)
+        ssh_client.copy(lib, os.path.join(tc.libdir, target))
 
     plugin_docs = os.path.join(ssh_client.OUTPUT, 'plugin', 'docs')
     os.makedirs(plugin_docs, exist_ok=True)
@@ -145,4 +150,4 @@ def src_install(_metadata):
         ssh_client.copy(path, os.path.join(plugin_docs, path))
 
 
-ssh_client.build_package(sys.modules[__name__])
+ssh_client.build_package(sys.modules[__name__], 'pnacl')

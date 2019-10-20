@@ -8,12 +8,17 @@
  * UI Element that controls the multi-column list in the connect dialog.
  *
  * Maybe it should be promoted to a shared lib at some point.
+ *
+ * @param {!Element} div
+ * @param {!Object} items
+ * @param {number=} columnCount
+ * @constructor
  */
-nassh.ColumnList = function(div, items, opt_columnCount) {
+nassh.ColumnList = function(div, items, columnCount = 2) {
   this.div_ = div || null;
   this.items_ = items;
-  this.columnCount = opt_columnCount || 2;
-  this.activeIndex = null;
+  this.columnCount = columnCount;
+  this.activeIndex = 0;
 
   // List of callbacks to invoke after the next redraw().
   this.afterRedraw_ = [];
@@ -26,6 +31,8 @@ nassh.ColumnList = function(div, items, opt_columnCount) {
 
 /**
  * Turn a div into a ColumnList.
+ *
+ * @param {!Element} div
  */
 nassh.ColumnList.prototype.decorate = function(div) {
   this.div_ = div;
@@ -33,13 +40,14 @@ nassh.ColumnList.prototype.decorate = function(div) {
 
   this.div_.style.overflowY = 'auto';
   this.div_.style.overflowX = 'hidden';
-  this.div_.addEventListener('keydown', this.onKeyDown_.bind(this));
+  this.div_.addEventListener('keydown',
+      /** @type {!EventListener} */ (this.onKeyDown_.bind(this)));
 
   var baseId = this.div_.getAttribute('id');
   if (!baseId) {
     baseId =  lib.f.randomInt(1, 0xffff).toString(16);
-    baseId = lib.f.zpad(baseID, 4);
-    baseId = 'columnlist-' + baseID;
+    baseId = lib.f.zpad(baseId, 4);
+    baseId = 'columnlist-' + baseId;
   }
 
   this.baseId_ = baseId;
@@ -59,8 +67,10 @@ nassh.ColumnList.prototype.focus = function() {
 
 /**
  * Add an event listener.
+ *
+ * @param {...*} args
  */
-nassh.ColumnList.prototype.addEventListener = function(var_args) {
+nassh.ColumnList.prototype.addEventListener = function(...args) {
   if (!this.div_)
     throw 'Not initialized.';
 
@@ -150,13 +160,20 @@ nassh.ColumnList.prototype.redraw = function() {
  * Use this if you're doing something that will cause a redraw (like modifying a
  * preference linked to the list), and you have something to finish after the
  * redraw.
+ *
+ * @param {function()} callback
  */
 nassh.ColumnList.prototype.afterNextRedraw = function(callback) {
   this.afterRedraw_.push(callback);
 };
 
+/** @typedef {{before: number, now: number}} */
+nassh.ColumnList.ActiveIndexChangedEvent;
+
 /**
  * Set the index of the item that should be considered "active".
+ *
+ * @param {number} i
  */
 nassh.ColumnList.prototype.setActiveIndex = function(i) {
   if (isNaN(i))
@@ -183,6 +200,8 @@ nassh.ColumnList.prototype.setActiveIndex = function(i) {
 
 /**
  * Return the outer DOM node for the active item.
+ *
+ * @return {!Node}
  */
 nassh.ColumnList.prototype.getActiveNode_ = function() {
   return this.getNodeByIndex_(this.activeIndex);
@@ -190,16 +209,22 @@ nassh.ColumnList.prototype.getActiveNode_ = function() {
 
 /**
  * Given an index into the list, return the (row, column) location.
+ *
+ * @param {number} i
+ * @return {{row:number, column:number}}
  */
 nassh.ColumnList.prototype.getRowColByIndex_ = function(i) {
   return {
-    row: parseInt(i / this.columnCount),
+    row: parseInt(i / this.columnCount, 10),
     column: i % this.columnCount
   };
 };
 
 /**
  * Given a 1d index into the list, return the DOM node.
+ *
+ * @param {number} i
+ * @return {!Node}
  */
 nassh.ColumnList.prototype.getNodeByIndex_ = function(i) {
   var rc = this.getRowColByIndex_(i);
@@ -208,6 +233,10 @@ nassh.ColumnList.prototype.getNodeByIndex_ = function(i) {
 
 /**
  * Given a (row, column) location, return an index into the list.
+ *
+ * @param {number} row
+ * @param {number} column
+ * @return {number}
  */
 nassh.ColumnList.prototype.getIndexByRowCol_ = function(
     row, column) {
@@ -216,18 +245,26 @@ nassh.ColumnList.prototype.getIndexByRowCol_ = function(
 
 /**
  * Given a (row, column) location, return a DOM node.
+ *
+ * @param {number} row
+ * @param {number} column
+ * @return {!Element}
  */
 nassh.ColumnList.prototype.getNodeByRowCol_ = function(row, column) {
-  return this.div_.querySelector(
-      '[row="' + row + '"][column="' + column + '"]');
+  return lib.notNull(this.div_.querySelector(
+      '[row="' + row + '"][column="' + column + '"]'));
 };
 
 /**
  * Someone clicked on an item in the list.
+ *
+ * @param {!Node} srcNode
+ * @param {!Event} e
+ * @return {boolean}
  */
 nassh.ColumnList.prototype.onItemClick_ = function(srcNode, e) {
-  var i = this.getIndexByRowCol_(parseInt(srcNode.getAttribute('row')),
-                                 parseInt(srcNode.getAttribute('column')));
+  var i = this.getIndexByRowCol_(parseInt(srcNode.getAttribute('row'), 10),
+                                 parseInt(srcNode.getAttribute('column'), 10));
   this.setActiveIndex(i);
 
   e.preventDefault();
@@ -236,6 +273,9 @@ nassh.ColumnList.prototype.onItemClick_ = function(srcNode, e) {
 
 /**
  * Return the height (in items) of a given, zero-based column.
+ *
+ * @param {number} column
+ * @return {number}
  */
 nassh.ColumnList.prototype.getColumnHeight_ = function(column) {
   var tallestColumn = Math.ceil(this.items_.length / this.columnCount);
@@ -248,6 +288,8 @@ nassh.ColumnList.prototype.getColumnHeight_ = function(column) {
 
 /**
  * Clients can override this to learn when the active index changes.
+ *
+ * @param {!nassh.ColumnList.ActiveIndexChangedEvent} e
  */
 nassh.ColumnList.prototype.onActiveIndexChanged = function(e) { };
 
@@ -256,11 +298,15 @@ nassh.ColumnList.prototype.onActiveIndexChanged = function(e) { };
  *
  * They can return false (literally) to block the ColumnList from also
  * handling the event.
+ *
+ * @param {!KeyboardEvent} e
  */
 nassh.ColumnList.prototype.onKeyDown = function(e) { };
 
 /**
  * Handle a key down event on the div.
+ *
+ * @param {!KeyboardEvent} e
  */
 nassh.ColumnList.prototype.onKeyDown_ = function(e) {
   if (this.onKeyDown(e) === false)
@@ -268,7 +314,6 @@ nassh.ColumnList.prototype.onKeyDown_ = function(e) {
 
   var i = this.activeIndex;
   var rc = this.getRowColByIndex_(i);
-  var node = this.getActiveNode_();
 
   switch (e.keyCode) {
     case 38:  // UP

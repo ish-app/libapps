@@ -73,7 +73,7 @@ lib.colors.re_ = {
  * Each 'ddd' component is a one byte value specified in decimal.
  *
  * @param {string} value The CSS color value to convert.
- * @return {string} The X11 color value or null if the value could not be
+ * @return {?string} The X11 color value or null if the value could not be
  *     converted.
  */
 lib.colors.rgbToX11 = function(value) {
@@ -90,7 +90,7 @@ lib.colors.rgbToX11 = function(value) {
 };
 
 /**
- * Convert a legacy X11 colover value into an CSS rgb(...) color value.
+ * Convert a legacy X11 color value into an CSS rgb(...) color value.
  *
  * They take the form:
  * 12 bit: #RGB          -> #R000G000B000
@@ -100,6 +100,10 @@ lib.colors.rgbToX11 = function(value) {
  * These are the most significant bits.
  *
  * Truncate values back down to 24 bit since that's all CSS supports.
+ *
+ * @param {string} v The X11 hex color value to convert.
+ * @return {?string} The CSS color value or null if the value could not be
+ *     converted.
  */
 lib.colors.x11HexToCSS = function(v) {
   if (!v.startsWith('#'))
@@ -138,8 +142,8 @@ lib.colors.x11HexToCSS = function(v) {
  * rgb:hhhh/hhhh/hhhh.  If a component value is less than 4 digits it is
  * padded out to 4, then scaled down to fit in a single byte.
  *
- * @param {string} value The X11 color value to convert.
- * @return {string} The CSS color value or null if the value could not be
+ * @param {string} v The X11 color value to convert.
+ * @return {?string} The CSS color value or null if the value could not be
  *     converted.
  */
 lib.colors.x11ToCSS = function(v) {
@@ -194,38 +198,25 @@ lib.colors.x11ToCSS = function(v) {
  * Arrays are converted in place. If a value cannot be converted, it is
  * replaced with null.
  *
- * @param {string|Array.<string>} A single RGB value or array of RGB values to
- *     convert.
- * @return {string|Array.<string>} The converted value or values.
+ * @param {string} hex A single RGB value to convert.
+ * @return {?string} The converted value.
  */
-lib.colors.hexToRGB = function(arg) {
+lib.colors.hexToRGB = function(hex) {
   var hex16 = lib.colors.re_.hex16;
   var hex24 = lib.colors.re_.hex24;
 
-  function convert(hex) {
-    if (hex.length == 4) {
-      hex = hex.replace(hex16, function(h, r, g, b) {
-        return "#" + r + r + g + g + b + b;
-      });
-    }
-    var ary = hex.match(hex24);
-    if (!ary)
-      return null;
-
-    return 'rgb(' + parseInt(ary[1], 16) + ', ' +
-        parseInt(ary[2], 16) + ', ' +
-        parseInt(ary[3], 16) + ')';
+  if (hex.length == 4) {
+    hex = hex.replace(hex16, function(h, r, g, b) {
+      return "#" + r + r + g + g + b + b;
+    });
   }
+  var ary = hex.match(hex24);
+  if (!ary)
+    return null;
 
-  if (arg instanceof Array) {
-    for (var i = 0; i < arg.length; i++) {
-      arg[i] = convert(arg[i]);
-    }
-  } else {
-    arg = convert(arg);
-  }
-
-  return arg;
+  return 'rgb(' + parseInt(ary[1], 16) + ', ' +
+      parseInt(ary[2], 16) + ', ' +
+      parseInt(ary[3], 16) + ')';
 };
 
 /**
@@ -236,35 +227,23 @@ lib.colors.hexToRGB = function(arg) {
  * Arrays are converted in place. If a value cannot be converted, it is
  * replaced with null.
  *
- * @param {string|Array.<string>} A single rgb(...) value or array of rgb(...)
- *     values to convert.
- * @return {string|Array.<string>} The converted value or values.
+ * @param {string} rgb A single rgb(...) value to convert.
+ * @return {?string} The converted value.
  */
-lib.colors.rgbToHex = function(arg) {
-  function convert(rgb) {
-    var ary = lib.colors.crackRGB(rgb);
-    if (!ary)
-      return null;
-    return '#' + lib.f.zpad(((parseInt(ary[0]) << 16) |
-                             (parseInt(ary[1]) <<  8) |
-                             (parseInt(ary[2]) <<  0)).toString(16), 6);
-  }
-
-  if (arg instanceof Array) {
-    for (var i = 0; i < arg.length; i++) {
-      arg[i] = convert(arg[i]);
-    }
-  } else {
-    arg = convert(arg);
-  }
-
-  return arg;
+lib.colors.rgbToHex = function(rgb) {
+  var ary = lib.colors.crackRGB(rgb);
+  if (!ary)
+    return null;
+  return '#' + lib.f.zpad(((parseInt(ary[0], 10) << 16) |
+                           (parseInt(ary[1], 10) <<  8) |
+                           (parseInt(ary[2], 10) <<  0)).toString(16), 6);
 };
 
 /**
  * Take any valid css color definition and turn it into an rgb or rgba value.
  *
- * Returns null if the value could not be normalized.
+ * @param {string} def The CSS color spec to normalize.
+ * @return {?string} The converted value.
  */
 lib.colors.normalizeCSS = function(def) {
   if (def.startsWith('#'))
@@ -278,6 +257,9 @@ lib.colors.normalizeCSS = function(def) {
 
 /**
  * Convert a 3 or 4 element array into an rgba(...) string.
+ *
+ * @param {?Array<string|number>} ary The RGB or RGBA elements to convert.
+ * @return {string} The normalized CSS color spec.
  */
 lib.colors.arrayToRGBA = function(ary) {
   var alpha = (ary.length > 3) ? ary[3] : 1;
@@ -286,15 +268,24 @@ lib.colors.arrayToRGBA = function(ary) {
 
 /**
  * Overwrite the alpha channel of an rgb/rgba color.
+ *
+ * @param {string} rgb The normalized CSS color spec.
+ * @param {number} alpha The alpha channel.
+ * @return {string} The normalized CSS color spec with updated alpha channel.
  */
 lib.colors.setAlpha = function(rgb, alpha) {
   var ary = lib.colors.crackRGB(rgb);
-  ary[3] = alpha;
+  ary[3] = alpha.toString();
   return lib.colors.arrayToRGBA(ary);
 };
 
 /**
  * Mix a percentage of a tint color into a base color.
+ *
+ * @param  {string} base The normalized CSS base color spec.
+ * @param  {string} tint The normalized CSS color to tint with.
+ * @param  {number} percent The percentage of the tinting.
+ * @return {string} The new tinted CSS color spec.
  */
 lib.colors.mix = function(base, tint, percent) {
   var ary1 = lib.colors.crackRGB(base);
@@ -302,7 +293,7 @@ lib.colors.mix = function(base, tint, percent) {
 
   for (var i = 0; i < 4; ++i) {
     var diff = ary2[i] - ary1[i];
-    ary1[i] = Math.round(parseInt(ary1[i]) + diff * percent);
+    ary1[i] = Math.round(parseInt(ary1[i], 10) + diff * percent).toString();
   }
 
   return lib.colors.arrayToRGBA(ary1);
@@ -313,6 +304,9 @@ lib.colors.mix = function(base, tint, percent) {
  *
  * On success, a 4 element array will be returned.  For rgb values, the alpha
  * will be set to 1.
+ *
+ * @param {string} color The RGB/RGBA CSS color spec.
+ * @return {?Array<string>} The RGB/RGBA values split out.
  */
 lib.colors.crackRGB = function(color) {
   if (color.startsWith('rgba')) {
@@ -344,7 +338,7 @@ lib.colors.crackRGB = function(color) {
  * rgb.txt file.
  *
  * @param {string} name The color name to convert.
- * @return {string} The corresponding CSS rgb(...) value.
+ * @return {?string} The corresponding CSS rgb(...) value.
  */
 lib.colors.nameToRGB = function(name) {
   if (name in lib.colors.colorNames)
@@ -363,9 +357,11 @@ lib.colors.nameToRGB = function(name) {
 
 /**
  * The stock color palette.
+ *
+ * @type {!Array<string>}
  */
-lib.colors.stockColorPalette = lib.colors.hexToRGB
-  ([// The "ANSI 16"...
+lib.colors.stockColorPalette = [
+     // The "ANSI 16"...
     '#000000', '#CC0000', '#4E9A06', '#C4A000',
     '#3465A4', '#75507B', '#06989A', '#D3D7CF',
     '#555753', '#EF2929', '#00BA13', '#FCE94F',
@@ -419,7 +415,7 @@ lib.colors.stockColorPalette = lib.colors.hexToRGB
     '#444444', '#4E4E4E', '#585858', '#626262', '#6C6C6C', '#767676',
     '#808080', '#8A8A8A', '#949494', '#9E9E9E', '#A8A8A8', '#B2B2B2',
     '#BCBCBC', '#C6C6C6', '#D0D0D0', '#DADADA', '#E4E4E4', '#EEEEEE'
-   ]);
+   ].map(lib.colors.hexToRGB);
 
 /**
  * The current color palette, possibly with user changes.

@@ -5,11 +5,14 @@
 'use strict';
 
 /**
- * A general packet. Utilizes an offset to keep track of data being read/written.
+ * A general packet. Utilizes an offset to keep track of data being
+ * read/written.
  *
- * @param {number|Array<number>=} arg The initial data for the new packet.
+ * @param {number|!ArrayBufferView|!Array<number>=} arg The initial data for
+ *     the new packet.
+ * @constructor
  */
-nassh.sftp.Packet = function(arg) {
+nassh.sftp.Packet = function(arg = []) {
   this.offset_ = 0;
   const u8 = new Uint8Array(arg);
   this.packet_ = u8.buffer;
@@ -22,6 +25,7 @@ nassh.sftp.Packet = function(arg) {
  * Expand the array buffer storage.
  *
  * @param {number} size How many bytes to add.
+ * @private
  */
 nassh.sftp.Packet.prototype.addSpace_ = function(size) {
   const newSize = this.offset_ + size;
@@ -38,6 +42,8 @@ nassh.sftp.Packet.prototype.addSpace_ = function(size) {
 
 /**
  * Sets a uint8 at the current offset.
+ *
+ * @param {number} uint8
  */
 nassh.sftp.Packet.prototype.setUint8 = function(uint8) {
   this.addSpace_(1);
@@ -47,6 +53,8 @@ nassh.sftp.Packet.prototype.setUint8 = function(uint8) {
 
 /**
  * Sets a uint32 at the current offset.
+ *
+ * @param {number} uint32
  */
 nassh.sftp.Packet.prototype.setUint32 = function(uint32) {
   this.addSpace_(4);
@@ -59,6 +67,8 @@ nassh.sftp.Packet.prototype.setUint32 = function(uint32) {
  *
  * Note: Because JavaScript lacks a native 64-bit interger type, the argument
  * is actually limited to 53 bits.
+ *
+ * @param {number} uint64
  */
 nassh.sftp.Packet.prototype.setUint64 = function(uint64) {
   this.addSpace_(8);
@@ -74,11 +84,12 @@ nassh.sftp.Packet.prototype.setUint64 = function(uint64) {
  * binary data with no encoding.  This function writes the specified string
  * to the packet with no encoding -- the bytes are directly appended.
  *
- * @param {string} string The binary string to append to the packet.
+ * @param {!ArrayBufferView|string} binaryString The binary string to append
+ *     to the packet.
  */
 nassh.sftp.Packet.prototype.setString = function(binaryString) {
   if (typeof binaryString == 'string') {
-    binaryString = lib.codec.stringToCodeUnitArray(binaryString, Uint8Array);
+    binaryString = lib.codec.stringToCodeUnitArray(binaryString);
   }
   this.setUint32(binaryString.length);
   this.setData(binaryString);
@@ -100,6 +111,8 @@ nassh.sftp.Packet.prototype.setUtf8String = function(string) {
 
 /**
  * Sets data at the current offset.
+ *
+ * @param {!ArrayBufferView} data
  */
 nassh.sftp.Packet.prototype.setData = function(data) {
   this.addSpace_(data.length);
@@ -110,6 +123,8 @@ nassh.sftp.Packet.prototype.setData = function(data) {
 
 /**
  * Gets a uint8 from the current offset, if possible.
+ *
+ * @return {number}
  */
 nassh.sftp.Packet.prototype.getUint8 = function() {
   const ret = this.dv_.getUint8(this.offset_);
@@ -119,6 +134,8 @@ nassh.sftp.Packet.prototype.getUint8 = function() {
 
 /**
  * Gets a uint32 from the current offset, if possible.
+ *
+ * @return {number}
  */
 nassh.sftp.Packet.prototype.getUint32 = function() {
   const ret = this.dv_.getUint32(this.offset_);
@@ -132,6 +149,8 @@ nassh.sftp.Packet.prototype.getUint32 = function() {
  * Note: Because JavaScript lacks a native 64-bit interger type, the return is
  * actually limited to 53 bits.  The byteArrayStringToInt function will enforce
  * that limit for us.
+ *
+ * @return {number}
  */
 nassh.sftp.Packet.prototype.getUint64 = function() {
   const hi32 = this.dv_.getUint32(this.offset_);
@@ -177,7 +196,7 @@ nassh.sftp.Packet.prototype.getUtf8String = function() {
  * Gets raw data from the packet at the current offset.
  *
  * @param {number=} length How many bytes to read.
- * @return {Uint8Array} The raw bytes from the packet.
+ * @return {!Uint8Array} The raw bytes from the packet.
  */
 nassh.sftp.Packet.prototype.getData = function(length=undefined) {
   const data = new Uint8Array(this.packet_, this.offset_, length);
@@ -187,6 +206,9 @@ nassh.sftp.Packet.prototype.getData = function(length=undefined) {
 
 /**
  * Returns the toString representation of the packet.
+ *
+ * @return {string}
+ * @override
  */
 nassh.sftp.Packet.prototype.toString = function() {
   // We don't use this.decoder_ because this is the entire packet with binary
@@ -197,7 +219,7 @@ nassh.sftp.Packet.prototype.toString = function() {
 /**
  * Returns an Array of bytes representation of the packet.
  *
- * @return {Uint8Array} The data bytes.
+ * @return {!Uint8Array} The data bytes.
  */
 nassh.sftp.Packet.prototype.toByteArray = function() {
   return new Uint8Array(this.packet_);
@@ -206,7 +228,7 @@ nassh.sftp.Packet.prototype.toByteArray = function() {
 /**
  * Returns the ArrayBuffer representation of the packet.
  *
- * @return {ArrayBuffer} The data buffer.
+ * @return {!ArrayBuffer} The data buffer.
  */
 nassh.sftp.Packet.prototype.toArrayBuffer = function() {
   return this.packet_;
@@ -214,6 +236,8 @@ nassh.sftp.Packet.prototype.toArrayBuffer = function() {
 
 /**
  * Returns the length of the packet.
+ *
+ * @return {number}
  */
 nassh.sftp.Packet.prototype.getLength = function() {
   return this.packet_.byteLength;
@@ -222,7 +246,7 @@ nassh.sftp.Packet.prototype.getLength = function() {
 /**
  * Check whether the end of the packet data has been reached.
  *
- * @returns {!boolean} true If the end of the packet data has been reached.
+ * @return {boolean} true If the end of the packet data has been reached.
  */
 nassh.sftp.Packet.prototype.eod = function() {
   return this.offset_ === this.getLength();

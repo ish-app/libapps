@@ -12,6 +12,10 @@ describe('nasftp_cli_tests.js', () => {
 
 /**
  * A mock object for nasftp.Cli usage.
+ *
+ * @param {!hterm.Terminal} terminal The terminal to display to.
+ * @constructor
+ * @extends {nassh.CommandInstance}
  */
 const MockSftpCommandInstance = function(terminal) {
   this.terminal = terminal;
@@ -22,6 +26,8 @@ const MockSftpCommandInstance = function(terminal) {
 
 /**
  * Mock for the exit method.
+ *
+ * @override
  */
 MockSftpCommandInstance.prototype.exit = function() {
   this.exited_ = true;
@@ -129,7 +135,7 @@ it('nasftp-unknown-argv', function(done) {
  * Check known command with too few arguments.
  */
 it('nasftp-too-few-args', function(done) {
-  this.client.symLink.return = () => fail();
+  this.client.symLink.return = () => assert.fail();
 
   this.cli.dispatchCommand_('symlink 1')
     .then(() => done());
@@ -139,7 +145,7 @@ it('nasftp-too-few-args', function(done) {
  * Check known command with too many arguments.
  */
 it('nasftp-too-many-args', function(done) {
-  this.client.symLink.return = () => fail();
+  this.client.symLink.return = () => assert.fail();
 
   this.cli.dispatchCommand_('symlink 1 2 3')
     .then(() => done());

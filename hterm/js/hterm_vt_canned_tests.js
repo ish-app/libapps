@@ -17,6 +17,10 @@
  * The ../bin/vtscope.py script can be used to replay canned data to one
  * or more terminals at the same time.  It understands how to ignore the header
  * information contained in the pre-recorded sessions.
+ */
+
+/*
+ * (This documentation moved out of JSDoc block due to use of '@@')
  *
  * Pre-recorded sessions look like this...
  *
@@ -115,8 +119,7 @@ afterEach(function() {
 /**
  * Test a can of data.
  *
- * @param {TestManager.Result} result The result object associated with this
- *     test.
+ * @param {!hterm.Terminal} terminal The terminal to run canned tests against.
  * @param {string} name The name of canned test.
  */
 const testData = function(terminal, name) {

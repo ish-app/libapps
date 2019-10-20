@@ -7,9 +7,14 @@ __pycache__/
 *.swp
 
 # Stuff we build for distribution
+/artifacts/
 dist
 /ssh_client-image.tar*
 
 # npm related dirs.
 node_modules
 package-lock.json
+
+# Stuff left over from unit tests
+terminal/js/nassh_deps.concat.js
+terminal/js/nassh_deps.rollup.js

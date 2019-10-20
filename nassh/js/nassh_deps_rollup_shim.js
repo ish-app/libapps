@@ -42,3 +42,14 @@ export {pkijs};
 import {toASCII} from 'punycode';
 const punycode = {toASCII};
 export {punycode};
+
+/**
+ * lit-element is used for the terminal's settings page.
+ * TODO(juwa@google.com): I know this isn't the correct place for this import,
+ * and that it should be in the terminal directory. I am not sure how best to
+ * accomplish this though, as the terminal app currently does not manage its
+ * own dependencies, but instead includes nassh's.
+ */
+import {LitElement, html, css} from 'lit-element/lit-element';
+const litelement = {LitElement, html, css}
+export {litelement};

@@ -16,21 +16,36 @@ import nassh
 import libdot
 
 
+# Path to generated deps file that terminal uses for libdot/hterm/etc...
+DEPS_FILE = os.path.join(nassh.DIR, 'js', 'nassh_deps.concat.js')
+
+
+def _get_default_paths():
+    """Get list of paths to lint by default."""
+    # All files in js/*.js excluding generated files.
+    # Use relpath for nicer default output.
+    # Sort to ensure nasftp.js comes before nasftp_cli.js, etc.
+    return sorted(
+        os.path.relpath(x, os.getcwd())
+        for x in glob.glob(os.path.join(nassh.DIR, 'js', '*.js'))
+        if not os.path.basename(x).startswith('nassh_deps'))
+
+
+def mkdeps(_opts):
+    """Build the deps we might use when linting."""
+    if not os.path.exists(DEPS_FILE):
+        libdot.run([os.path.join(nassh.DIR, 'bin', 'mkdeps')])
+
+
 def main(argv):
     """The main func!"""
-    if not argv:
-        os.chdir(nassh.DIR)
-        argv = glob.glob(os.path.join('js', '*.js'))
-
-    libdot.setup_logging()
-    libdot.node_and_npm_setup()
-
-    # We know our tools are first in $PATH now.
-    libdot.run(['eslint'] + argv)
-    # We allow ECMAScript 2017 (aka 8) due to use of async keywords.
-    libdot.run([
-        'closure-compiler', '--checks-only', '--jscomp_warning=lintChecks',
-        '--language_in=ECMASCRIPT_2017'] + argv)
+    externs = ['--js_module_root=nassh'] + [
+        '--externs=%s' % os.path.relpath(x) for x in
+        glob.glob(os.path.join(nassh.DIR, 'externs', '*.js'))]
+    closure_args = list(libdot.lint.DEFAULT_CLOSURE_ARGS) + externs + [
+        os.path.relpath(DEPS_FILE)]
+    return libdot.lint.main(argv, paths=_get_default_paths(), mkdeps=mkdeps,
+                            closure_args=closure_args)
 
 
 if __name__ == '__main__':

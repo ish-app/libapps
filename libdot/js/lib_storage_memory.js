@@ -7,6 +7,9 @@
 /**
  * In-memory storage class with an async interface that is interchangeable with
  * other lib.Storage.* implementations.
+ *
+ * @constructor
+ * @implements {lib.Storage}
  */
 lib.Storage.Memory = function() {
   this.observers_ = [];
@@ -16,8 +19,9 @@ lib.Storage.Memory = function() {
 /**
  * Register a function to observe storage changes.
  *
- * @param {function(map)} callback The function to invoke when the storage
+ * @param {function(!Object)} callback The function to invoke when the storage
  *     changes.
+ * @override
  */
 lib.Storage.Memory.prototype.addObserver = function(callback) {
   this.observers_.push(callback);
@@ -26,7 +30,8 @@ lib.Storage.Memory.prototype.addObserver = function(callback) {
 /**
  * Unregister a change observer.
  *
- * @param {function} observer A previously registered callback.
+ * @param {function(!Object)} callback A previously registered callback.
+ * @override
  */
 lib.Storage.Memory.prototype.removeObserver = function(callback) {
   var i = this.observers_.indexOf(callback);
@@ -37,13 +42,14 @@ lib.Storage.Memory.prototype.removeObserver = function(callback) {
 /**
  * Delete everything in this storage.
  *
- * @param {function(map)} callback The function to invoke when the delete
- *     has completed.
+ * @param {function(!Object)=} callback The function to invoke when the
+ *     delete has completed.
+ * @override
  */
-lib.Storage.Memory.prototype.clear = function(opt_callback) {
+lib.Storage.Memory.prototype.clear = function(callback) {
   var e = {};
   for (var key in this.storage_) {
-    e[key] = {oldValue: this.storage_[key], newValue: (void 0)};
+    e[key] = {oldValue: this.storage_[key], newValue: undefined};
   }
 
   this.storage_ = {};
@@ -54,16 +60,18 @@ lib.Storage.Memory.prototype.clear = function(opt_callback) {
     }
   }.bind(this), 0);
 
-  if (opt_callback)
-    setTimeout(opt_callback, 0);
+  if (callback) {
+    setTimeout(callback, 0);
+  }
 };
 
 /**
  * Return the current value of a storage item.
  *
  * @param {string} key The key to look up.
- * @param {function(value) callback The function to invoke when the value has
+ * @param {function(*)} callback The function to invoke when the value has
  *     been retrieved.
+ * @override
  */
 lib.Storage.Memory.prototype.getItem = function(key, callback) {
   var value = this.storage_[key];
@@ -82,12 +90,16 @@ lib.Storage.Memory.prototype.getItem = function(key, callback) {
 /**
  * Fetch the values of multiple storage items.
  *
- * @param {Array} keys The keys to look up.
- * @param {function(map) callback The function to invoke when the values have
- *     been retrieved.
+ * @param {?Array<string>} keys The keys to look up.  Pass null for all keys.
+ * @param {function(!Object)} callback The function to invoke when the values
+ *     have been retrieved.
+ * @override
  */
 lib.Storage.Memory.prototype.getItems = function(keys, callback) {
   var rv = {};
+  if (!keys) {
+    keys = Object.keys(this.storage_);
+  }
 
   for (var i = keys.length - 1; i >= 0; i--) {
     var key = keys[i];
@@ -113,11 +125,12 @@ lib.Storage.Memory.prototype.getItems = function(keys, callback) {
  * @param {string} key The key for the value to be stored.
  * @param {*} value The value to be stored.  Anything that can be serialized
  *     with JSON is acceptable.
- * @param {function()} opt_callback Optional function to invoke when the
- *     set is complete.  You don't have to wait for the set to complete in order
- *     to read the value, since the local cache is updated synchronously.
+ * @param {function()=} callback Function to invoke when the set is complete.
+ *     You don't have to wait for the set to complete in order to read the value
+ *     since the local cache is updated synchronously.
+ * @override
  */
-lib.Storage.Memory.prototype.setItem = function(key, value, opt_callback) {
+lib.Storage.Memory.prototype.setItem = function(key, value, callback) {
   var oldValue = this.storage_[key];
   this.storage_[key] = JSON.stringify(value);
 
@@ -130,19 +143,21 @@ lib.Storage.Memory.prototype.setItem = function(key, value, opt_callback) {
     }
   }.bind(this), 0);
 
-  if (opt_callback)
-  setTimeout(opt_callback, 0);
+  if (callback) {
+    setTimeout(callback, 0);
+  }
 };
 
 /**
  * Set multiple values in storage.
  *
- * @param {Object} map A map of key/values to set in storage.
- * @param {function()} opt_callback Optional function to invoke when the
- *     set is complete.  You don't have to wait for the set to complete in order
- *     to read the value, since the local cache is updated synchronously.
+ * @param {!Object} obj A map of key/values to set in storage.
+ * @param {function()=} callback Function to invoke when the set is complete.
+ *     You don't have to wait for the set to complete in order to read the value
+ *     since the local cache is updated synchronously.
+ * @override
  */
-lib.Storage.Memory.prototype.setItems = function(obj, opt_callback) {
+lib.Storage.Memory.prototype.setItems = function(obj, callback) {
   var e = {};
 
   for (var key in obj) {
@@ -156,38 +171,43 @@ lib.Storage.Memory.prototype.setItems = function(obj, opt_callback) {
     }
   }.bind(this));
 
-  if (opt_callback)
-  setTimeout(opt_callback, 0);
+  if (callback) {
+    setTimeout(callback, 0);
+  }
 };
 
 /**
  * Remove an item from storage.
  *
  * @param {string} key The key to be removed.
- * @param {function()} opt_callback Optional function to invoke when the
- *     remove is complete.  You don't have to wait for the set to complete in
- *     order to read the value, since the local cache is updated synchronously.
+ * @param {function()=} callback Function to invoke when the remove is complete.
+ *     You don't have to wait for the set to complete in order to read the value
+ *     since the local cache is updated synchronously.
+ * @override
  */
-lib.Storage.Memory.prototype.removeItem = function(key, opt_callback) {
+lib.Storage.Memory.prototype.removeItem = function(key, callback) {
   delete this.storage_[key];
 
-  if (opt_callback)
-  setTimeout(opt_callback, 0);
+  if (callback) {
+    setTimeout(callback, 0);
+  }
 };
 
 /**
  * Remove multiple items from storage.
  *
- * @param {Array} keys The keys to be removed.
- * @param {function()} opt_callback Optional function to invoke when the
- *     remove is complete.  You don't have to wait for the set to complete in
- *     order to read the value, since the local cache is updated synchronously.
+ * @param {!Array<string>} ary The keys to be removed.
+ * @param {function()=} callback Function to invoke when the remove is complete.
+ *     You don't have to wait for the set to complete in order to read the value
+ *     since the local cache is updated synchronously.
+ * @override
  */
-lib.Storage.Memory.prototype.removeItems = function(ary, opt_callback) {
+lib.Storage.Memory.prototype.removeItems = function(ary, callback) {
   for (var i = 0; i < ary.length; i++) {
     delete this.storage_[ary[i]];
   }
 
-  if (opt_callback)
-  setTimeout(opt_callback, 0);
+  if (callback) {
+    setTimeout(callback, 0);
+  }
 };

@@ -13,7 +13,6 @@ We currently support png and jpg files.
 
 from __future__ import print_function
 
-import argparse
 import base64
 import glob
 import logging
@@ -78,9 +77,9 @@ def process_file(pool, path):
         pool.apply_async(run, (path, [JPG_CRUSHER, path]))
 
 
-def process_dir(pool, path):
-    """Process all the paths under |path|."""
-    for root, dirs, files in os.walk(path):
+def process_dir(pool, topdir):
+    """Process all the paths under |topdir|."""
+    for root, dirs, files in os.walk(topdir):
         # Not really needed, but makes things consistent.
         dirs.sort()
         files.sort()
@@ -91,9 +90,7 @@ def process_dir(pool, path):
 
 def get_parser():
     """Get a command line parser."""
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('-d', '--debug', action='store_true',
-                        help='Run with debug output.')
+    parser = libdot.ArgumentParser(description=__doc__)
     parser.add_argument('paths', nargs='+',
                         help='Image files or directories to crush.')
     return parser
@@ -103,7 +100,6 @@ def main(argv):
     """The main func!"""
     parser = get_parser()
     opts = parser.parse_args(argv)
-    libdot.setup_logging(debug=opts.debug)
 
     pool = multiprocessing.Pool()
 

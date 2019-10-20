@@ -5,7 +5,7 @@
 'use strict';
 
 /**
- * @fileoverview: Runtime SFTP connect dialog.
+ * @fileoverview Runtime SFTP connect dialog.
  */
 
 /**
@@ -14,7 +14,8 @@
  * There should only be one of these, and it assumes there is only one in the
  * current window.
  *
- * @param {nassh.sftp.Client} client The SFTP client to dynamically config.
+ * @param {!nassh.sftp.Client} client The SFTP client to dynamically config.
+ * @constructor
  */
 nassh.ConfigDialog = function(client) {
   this.client_ = client;
@@ -102,9 +103,9 @@ nassh.ConfigDialog.prototype.refresh_ = function() {
 /**
  * Get the SFTP client from the background page handle.
  *
- * @param {window} bg The extension's background page.
- * @param {string} fsId The unique filesystem id.
- * @return {nassh.ConfigDialog} The new runtime dialog.
+ * @param {!Window} bg The extension's background page.
+ * @param {?string} fsId The unique filesystem id.
+ * @return {?nassh.ConfigDialog} The new runtime dialog.
  */
 nassh.ConfigDialog.fromBackgroundPage = function(bg, fsId) {
   if (!bg.nassh.sftp.fsp.sftpInstances[fsId]) {
@@ -118,7 +119,7 @@ nassh.ConfigDialog.fromBackgroundPage = function(bg, fsId) {
 /**
  * Event when the window finishes loading.
  */
-window.onload = function() {
+window.addEventListener('DOMContentLoaded', (event) => {
   lib.init(() => {
     const params = new URLSearchParams(document.location.search);
     const profileId = params.get('profile-id');
@@ -131,4 +132,4 @@ window.onload = function() {
         }
       });
   });
-};
+});

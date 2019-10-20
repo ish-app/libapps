@@ -16,7 +16,7 @@ lib.array = {};
  *
  * @template TYPED_ARRAY
  * @param {...!TYPED_ARRAY} arrays
- * @returns {!TYPED_ARRAY}
+ * @return {!TYPED_ARRAY}
  */
 lib.array.concatTyped = function(...arrays) {
   let resultLength = 0;
@@ -36,9 +36,9 @@ lib.array.concatTyped = function(...arrays) {
  * Compare two array-like objects entrywise.
  *
  * @template ARRAY_LIKE
- * @param {?ARRAY_LIKE} a
- * @param {?ARRAY_LIKE} b
- * @returns {!boolean} true if both arrays are null or they agree entrywise;
+ * @param {?ARRAY_LIKE} a The first array to compare.
+ * @param {?ARRAY_LIKE} b The second array to compare.
+ * @return {boolean} true if both arrays are null or they agree entrywise;
  *     false otherwise.
  */
 lib.array.compare = function(a, b) {

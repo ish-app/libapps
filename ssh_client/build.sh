@@ -5,6 +5,9 @@
 
 set -xe
 
+# Default version must come first.
+SSH_VERSIONS=( 8.1 8.0 )
+
 ncpus=$(getconf _NPROCESSORS_ONLN || echo 2)
 
 DEBUG=0
@@ -25,15 +28,47 @@ done
 cd "$(dirname "$0")"
 mkdir -p output
 
-./third_party/naclsdk/build
+# Build the toolchain packages.
+pkgs=(
+  # Build tools.
+  gnuconfig
+  mandoc
 
-./third_party/glibc-compat/build
-./third_party/zlib/build
-./third_party/openssl/build
-./third_party/ldns/build
+  # NaCl toolchain.
+  naclsdk
+  glibc-compat
 
-./third_party/mandoc/build
-./third_party/openssh-8.0/build
+  # WASM toolchain.
+  binaryen
+  wabt
+  wasi-sdk
+  wasmtime
+)
+for pkg in "${pkgs[@]}"; do
+  ./third_party/${pkg}/build
+done
+
+# The plugin packages.
+pkgs=(
+  zlib
+  openssl
+  ldns
+  $(printf 'openssh-%s ' "${SSH_VERSIONS[@]}")
+)
+
+# Build the NaCl packages.
+for pkg in "${pkgs[@]}"; do
+  ./third_party/${pkg}/build --toolchain pnacl
+done
+
+# TODO(vapier): Add more here as they work.
+pkgs=(
+  zlib
+)
+# Build the WASM packages.
+for pkg in "${pkgs[@]}"; do
+  ./third_party/${pkg}/build --toolchain wasm
+done
 
 BUILD_ARGS=()
 if [[ $DEBUG == 1 ]]; then
@@ -43,9 +78,15 @@ else
   tarname="release.tar"
 fi
 
-make -C src clean && make -C src -j${ncpus} "${BUILD_ARGS[@]}"
+first="true"
+for version in "${SSH_VERSIONS[@]}"; do
+  make -C src -j${ncpus} "${BUILD_ARGS[@]}" \
+    SSH_VERSION="${version}" DEFAULT_VERSION="${first}"
+  first=
+done
 
 cd output
-tar cf "${tarname}" \
-	`find plugin/ -type f | LC_ALL=C sort` \
-	`find build/pnacl* -name '*.pexe' -o -name '*.dbg.nexe' | LC_ALL=C sort`
+tar cf - \
+  `find plugin/ -type f | LC_ALL=C sort` \
+  `find build/pnacl* -name '*.pexe' -o -name '*.dbg.nexe' | LC_ALL=C sort` \
+  | xz -T0 -9 >"${tarname}.xz"

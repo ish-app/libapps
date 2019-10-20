@@ -15,7 +15,8 @@
  *
  * Control sequences are documented in hterm/doc/ControlSequences.md.
  *
- * @param {hterm.Terminal} terminal Terminal to use with the interpreter.
+ * @param {!hterm.Terminal} terminal Terminal to use with the interpreter.
+ * @constructor
  */
 hterm.VT = function(terminal) {
   /**
@@ -190,8 +191,10 @@ hterm.VT.prototype.MOUSE_COORDINATES_SGR = 2;
  * This object tracks the current state of the parse.  It has fields for the
  * current buffer, position in the buffer, and the parse function.
  *
- * @param {function} defaultFunc The default parser function.
- * @param {string} opt_buf Optional string to use as the current buffer.
+ * @param {function(!hterm.VT.ParseState)=} defaultFunction The default parser
+ *     function.
+ * @param {string=} opt_buf Optional string to use as the current buffer.
+ * @constructor
  */
 hterm.VT.ParseState = function(defaultFunction, opt_buf) {
   this.defaultFunction = defaultFunction;
@@ -207,6 +210,8 @@ hterm.VT.ParseState = function(defaultFunction, opt_buf) {
 
 /**
  * Reset the parser function, buffer, and position.
+ *
+ * @param {string=} opt_buf Optional string to use as the current buffer.
  */
 hterm.VT.ParseState.prototype.reset = function(opt_buf) {
   this.resetParseFunction();
@@ -224,7 +229,7 @@ hterm.VT.ParseState.prototype.resetParseFunction = function() {
 /**
  * Reset the buffer and position only.
  *
- * @param {string} buf Optional new value for buf, defaults to null.
+ * @param {string=} opt_buf Optional new value for buf, defaults to null.
  */
 hterm.VT.ParseState.prototype.resetBuf = function(opt_buf) {
   this.buf = (typeof opt_buf == 'string') ? opt_buf : null;
@@ -239,7 +244,7 @@ hterm.VT.ParseState.prototype.resetBuf = function(opt_buf) {
  * confusion during debugging where args from a previous sequence appear to be
  * "sticking around" in other sequences (which in reality don't use args).
  *
- * @param {string} opt_arg_zero Optional initial value for args[0].
+ * @param {string=} opt_arg_zero Optional initial value for args[0].
  */
 hterm.VT.ParseState.prototype.resetArguments = function(opt_arg_zero) {
   this.args.length = 0;
@@ -307,7 +312,7 @@ hterm.VT.ParseState.prototype.argSetSubargs = function(argnum) {
 /**
  * Advance the parse position.
  *
- * @param {integer} count The number of bytes to advance.
+ * @param {number} count The number of bytes to advance.
  */
 hterm.VT.ParseState.prototype.advance = function(count) {
   this.pos += count;
@@ -345,6 +350,9 @@ hterm.VT.ParseState.prototype.consumeChar = function() {
 
 /**
  * Return true if the buffer is empty, or the position is past the end.
+ *
+ * @return {boolean} Whether the buffer is empty, or the position is past the
+ *     end.
  */
 hterm.VT.ParseState.prototype.isComplete = function() {
   return this.buf == null || this.buf.length <= this.pos;
@@ -369,6 +377,8 @@ hterm.VT.prototype.reset = function() {
  * Handle terminal mouse events.
  *
  * See the "Mouse Tracking" section of [xterm].
+ *
+ * @param {!MouseEvent} e
  */
 hterm.VT.prototype.onTerminalMouse_ = function(e) {
   // Short circuit a few events to avoid unnecessary processing.
@@ -414,6 +424,7 @@ hterm.VT.prototype.onTerminalMouse_ = function(e) {
       break;
   }
 
+  let b;
   switch (e.type) {
     case 'wheel':
       // Mouse wheel is treated as button 1 or 2 plus an additional 64.
@@ -432,7 +443,7 @@ hterm.VT.prototype.onTerminalMouse_ = function(e) {
 
     case 'mousedown':
       // Buttons are encoded as button number.
-      var b = Math.min(e.button, 2);
+      b = Math.min(e.button, 2);
       // X10 based modes (including UTF8) add 32 for legacy encoding reasons.
       if (this.mouseCoordinates != this.MOUSE_COORDINATES_SGR)
         b += 32;
@@ -522,14 +533,16 @@ hterm.VT.prototype.onTerminalMouse_ = function(e) {
  * terminal object.
  *
  * The buffer will be decoded according to the 'receive-encoding' preference.
+ *
+ * @param {string} buf The buffer to interpret.
  */
 hterm.VT.prototype.interpret = function(buf) {
   this.parseState_.resetBuf(buf);
 
   while (!this.parseState_.isComplete()) {
-    var func = this.parseState_.func;
-    var pos = this.parseState_.pos;
-    var buf = this.parseState_.buf;
+    const func = this.parseState_.func;
+    const pos = this.parseState_.pos;
+    const buf = this.parseState_.buf;
 
     this.parseState_.func.call(this, this.parseState_);
 
@@ -586,6 +599,8 @@ hterm.VT.prototype.updateEncodingState_ = function() {
  * This will scan the string for the first 1-byte control character (C0/C1
  * characters from [CTRL]).  Any plain text coming before the code will be
  * printed to the terminal, then the control character will be dispatched.
+ *
+ * @param {!hterm.VT.ParseState} parseState The current parse state.
  */
 hterm.VT.prototype.parseUnknown_ = function(parseState) {
   var self = this;
@@ -624,6 +639,8 @@ hterm.VT.prototype.parseUnknown_ = function(parseState) {
  * Parse a Control Sequence Introducer code and dispatch it.
  *
  * See [CSI] for some useful information about these codes.
+ *
+ * @param {!hterm.VT.ParseState} parseState The current parse state.
  */
 hterm.VT.prototype.parseCSI_ = function(parseState) {
   var ch = parseState.peekChar();
@@ -708,6 +725,7 @@ hterm.VT.prototype.parseCSI_ = function(parseState) {
  * You can detect that parsing in complete by checking that the parse
  * function has changed back to the default parse function.
  *
+ * @param {!hterm.VT.ParseState} parseState The current parse state.
  * @return {boolean} If true, parsing is ongoing or complete.  If false, we've
  *     exceeded the max string sequence.
  */
@@ -782,24 +800,31 @@ hterm.VT.prototype.parseUntilStringTerminator_ = function(parseState) {
 
 /**
  * Dispatch to the function that handles a given CC1, ESC, or CSI or VT52 code.
+ *
+ * @param {string} type
+ * @param {string} code
+ * @param {!hterm.VT.ParseState} parseState The current parse state.
  */
 hterm.VT.prototype.dispatch = function(type, code, parseState) {
   var handler = hterm.VT[type][code];
   if (!handler) {
-    if (this.warnUnimplemented)
-      console.warn('Unknown ' + type + ' code: ' + JSON.stringify(code));
+    if (this.warnUnimplemented) {
+      console.warn(`Unknown ${type} code: ${JSON.stringify(code)}`);
+    }
     return;
   }
 
   if (handler == hterm.VT.ignore) {
-    if (this.warnUnimplemented)
-      console.warn('Ignored ' + type + ' code: ' + JSON.stringify(code));
+    if (this.warnUnimplemented) {
+      console.warn(`Ignored ${type} code: ${JSON.stringify(code)}`);
+    }
     return;
   }
 
   if (parseState.subargs && !handler.supportsSubargs) {
-    if (this.warnUnimplemented)
-      console.warn('Ignored ' + type + ' code w/subargs: ' + JSON.stringify(code));
+    if (this.warnUnimplemented) {
+      console.warn(`Ignored ${type} code w/subargs: ${JSON.stringify(code)}`);
+    }
     return;
   }
 
@@ -826,6 +851,9 @@ hterm.VT.prototype.dispatch = function(type, code, parseState) {
  * Invoked in response to SM/RM.
  *
  * Unexpected and unimplemented values are silently ignored.
+ *
+ * @param {string} code
+ * @param {boolean} state
  */
 hterm.VT.prototype.setANSIMode = function(code, state) {
   if (code == 4) {  // Insert Mode (IRM)
@@ -841,6 +869,9 @@ hterm.VT.prototype.setANSIMode = function(code, state) {
  * Set or reset one of the DEC Private modes.
  *
  * Invoked in response to DECSET/DECRST.
+ *
+ * @param {string} code
+ * @param {boolean} state
  */
 hterm.VT.prototype.setDECMode = function(code, state) {
   switch (parseInt(code, 10)) {
@@ -1056,6 +1087,8 @@ hterm.VT.CC1['\x05'] = hterm.VT.ignore;
 
 /**
  * Ring Bell (BEL).
+ *
+ * @this {!hterm.VT}
  */
 hterm.VT.CC1['\x07'] = function() {
   this.terminal.ringBell();
@@ -1066,6 +1099,8 @@ hterm.VT.CC1['\x07'] = function() {
  *
  * Move the cursor to the left one character position, unless it is at the
  * left margin, in which case no action occurs.
+ *
+ * @this {!hterm.VT}
  */
 hterm.VT.CC1['\x08'] = function() {
   this.terminal.cursorLeft(1);
@@ -1076,6 +1111,8 @@ hterm.VT.CC1['\x08'] = function() {
  *
  * Move the cursor to the next tab stop, or to the right margin if no further
  * tab stops are present on the line.
+ *
+ * @this {!hterm.VT}
  */
 hterm.VT.CC1['\x09'] = function() {
   this.terminal.forwardTabStop();
@@ -1086,6 +1123,8 @@ hterm.VT.CC1['\x09'] = function() {
  *
  * This code causes a line feed or a new line operation.  See Automatic
  * Newline (LNM).
+ *
+ * @this {!hterm.VT}
  */
 hterm.VT.CC1['\x0a'] = function() {
   this.terminal.formFeed();
@@ -1109,6 +1148,8 @@ hterm.VT.CC1['\x0c'] = hterm.VT.CC1['\x0a'];
  * Carriage Return (CR).
  *
  * Move cursor to the left margin on the current line.
+ *
+ * @this {!hterm.VT}
  */
 hterm.VT.CC1['\x0d'] = function() {
   this.terminal.setCursorColumn(0);
@@ -1117,6 +1158,7 @@ hterm.VT.CC1['\x0d'] = function() {
 /**
  * Shift Out (SO), aka Lock Shift 0 (LS1).
  *
+ * @this {!hterm.VT}
  * Invoke G1 character set in GL.
  */
 hterm.VT.CC1['\x0e'] = function() {
@@ -1127,6 +1169,8 @@ hterm.VT.CC1['\x0e'] = function() {
  * Shift In (SI), aka Lock Shift 0 (LS0).
  *
  * Invoke G0 character set in GL.
+ *
+ * @this {!hterm.VT}
  */
 hterm.VT.CC1['\x0f'] = function() {
   this.GL = 'G0';
@@ -1157,6 +1201,9 @@ hterm.VT.CC1['\x13'] = hterm.VT.ignore;
  * and not executed.
  *
  * It also causes the error character to be displayed.
+ *
+ * @this {!hterm.VT}
+ * @param {!hterm.VT.ParseState} parseState The current parse state.
  */
 hterm.VT.CC1['\x18'] = function(parseState) {
   // If we've shifted in the G1 character set, shift it back out to
@@ -1177,6 +1224,9 @@ hterm.VT.CC1['\x1a'] = hterm.VT.CC1['\x18'];
 
 /**
  * Escape (ESC).
+ *
+ * @this {!hterm.VT}
+ * @param {!hterm.VT.ParseState} parseState The current parse state.
  */
 hterm.VT.CC1['\x1b'] = function(parseState) {
   function parseESC(parseState) {
@@ -1205,6 +1255,8 @@ hterm.VT.CC1['\x7f'] = hterm.VT.ignore;
  * Index (IND).
  *
  * Like newline, only keep the X position
+ *
+ * @this {!hterm.VT}
  */
 hterm.VT.CC1['\x84'] =
 hterm.VT.ESC['D'] = function() {
@@ -1215,6 +1267,8 @@ hterm.VT.ESC['D'] = function() {
  * Next Line (NEL).
  *
  * Like newline, but doesn't add lines.
+ *
+ * @this {!hterm.VT}
  */
 hterm.VT.CC1['\x85'] =
 hterm.VT.ESC['E'] = function() {
@@ -1224,6 +1278,8 @@ hterm.VT.ESC['E'] = function() {
 
 /**
  * Horizontal Tabulation Set (HTS).
+ *
+ * @this {!hterm.VT}
  */
 hterm.VT.CC1['\x88'] =
 hterm.VT.ESC['H'] = function() {
@@ -1234,6 +1290,8 @@ hterm.VT.ESC['H'] = function() {
  * Reverse Index (RI).
  *
  * Move up one line.
+ *
+ * @this {!hterm.VT}
  */
 hterm.VT.CC1['\x8d'] =
 hterm.VT.ESC['M'] = function() {
@@ -1267,6 +1325,9 @@ hterm.VT.ESC['O'] = hterm.VT.ignore;
  * Not currently implemented.
  *
  * TODO(rginda): Consider implementing DECRQSS, the rest don't seem applicable.
+ *
+ * @this {!hterm.VT}
+ * @param {!hterm.VT.ParseState} parseState The current parse state.
  */
 hterm.VT.CC1['\x90'] =
 hterm.VT.ESC['P'] = function(parseState) {
@@ -1302,6 +1363,8 @@ hterm.VT.ESC['X'] = hterm.VT.ignore;
  * Single Character Introducer (SCI, also DECID).
  *
  * Return Terminal ID.  Obsolete form of 'ESC [ c' (DA).
+ *
+ * @this {!hterm.VT}
  */
 hterm.VT.CC1['\x9a'] =
 hterm.VT.ESC['Z'] = function() {
@@ -1312,6 +1375,9 @@ hterm.VT.ESC['Z'] = function() {
  * Control Sequence Introducer (CSI).
  *
  * The lead into most escape sequences.  See [CSI].
+ *
+ * @this {!hterm.VT}
+ * @param {!hterm.VT.ParseState} parseState The current parse state.
  */
 hterm.VT.CC1['\x9b'] =
 hterm.VT.ESC['['] = function(parseState) {
@@ -1336,11 +1402,17 @@ hterm.VT.ESC['\\'] = hterm.VT.ignore;
  * Operating System Command (OSC).
  *
  * Commands relating to the operating system.
+ *
+ * @this {!hterm.VT}
+ * @param {!hterm.VT.ParseState} parseState The current parse state.
  */
 hterm.VT.CC1['\x9d'] =
 hterm.VT.ESC[']'] = function(parseState) {
   parseState.resetArguments();
 
+  /**
+   * @param {!hterm.VT.ParseState} parseState The current parse state.
+   */
   function parseOSC(parseState) {
     if (!this.parseUntilStringTerminator_(parseState)) {
       // The string sequence was too long.
@@ -1374,6 +1446,9 @@ hterm.VT.ESC[']'] = function(parseState) {
  * Privacy Message (PM).
  *
  * Will not implement.
+ *
+ * @this {!hterm.VT}
+ * @param {!hterm.VT.ParseState} parseState The current parse state.
  */
 hterm.VT.CC1['\x9e'] =
 hterm.VT.ESC['^'] = function(parseState) {
@@ -1385,6 +1460,9 @@ hterm.VT.ESC['^'] = function(parseState) {
  * Application Program Control (APC).
  *
  * Will not implement.
+ *
+ * @this {!hterm.VT}
+ * @param {!hterm.VT.ParseState} parseState The current parse state.
  */
 hterm.VT.CC1['\x9f'] =
 hterm.VT.ESC['_'] = function(parseState) {
@@ -1404,6 +1482,9 @@ hterm.VT.ESC['_'] = function(parseState) {
  *   ESC \x20 L - Set ANSI conformance level 1.
  *   ESC \x20 M - Set ANSI conformance level 2.
  *   ESC \x20 N - Set ANSI conformance level 3.
+ *
+ * @this {!hterm.VT}
+ * @param {!hterm.VT.ParseState} parseState The current parse state.
  */
 hterm.VT.ESC['\x20'] = function(parseState) {
   parseState.func = function(parseState) {
@@ -1416,6 +1497,9 @@ hterm.VT.ESC['\x20'] = function(parseState) {
 
 /**
  * DEC 'ESC #' sequences.
+ *
+ * @this {!hterm.VT}
+ * @param {!hterm.VT.ParseState} parseState The current parse state.
  */
 hterm.VT.ESC['#'] = function(parseState) {
   parseState.func = function(parseState) {
@@ -1432,6 +1516,9 @@ hterm.VT.ESC['#'] = function(parseState) {
 
 /**
  * Designate Other Coding System (DOCS).
+ *
+ * @this {!hterm.VT}
+ * @param {!hterm.VT.ParseState} parseState The current parse state.
  */
 hterm.VT.ESC['%'] = function(parseState) {
   parseState.func = function(parseState) {
@@ -1497,6 +1584,10 @@ hterm.VT.ESC['%'] = function(parseState) {
  *   ESC / Ps - Set G3 character set (VT300).
  *
  * All other sequences are echoed to the terminal.
+ *
+ * @this {!hterm.VT}
+ * @param {!hterm.VT.ParseState} parseState The current parse state.
+ * @param {string} code
  */
 hterm.VT.ESC['('] =
 hterm.VT.ESC[')'] =
@@ -1541,6 +1632,8 @@ hterm.VT.ESC['6'] = hterm.VT.ignore;
 
 /**
  * Save Cursor (DECSC).
+ *
+ * @this {!hterm.VT}
  */
 hterm.VT.ESC['7'] = function() {
   this.terminal.saveCursorAndState();
@@ -1548,6 +1641,8 @@ hterm.VT.ESC['7'] = function() {
 
 /**
  * Restore Cursor (DECRC).
+ *
+ * @this {!hterm.VT}
  */
 hterm.VT.ESC['8'] = function() {
   this.terminal.restoreCursorAndState();
@@ -1562,6 +1657,8 @@ hterm.VT.ESC['9'] = hterm.VT.ignore;
 
 /**
  * Application keypad (DECKPAM).
+ *
+ * @this {!hterm.VT}
  */
 hterm.VT.ESC['='] = function() {
   this.terminal.keyboard.applicationKeypad = true;
@@ -1569,6 +1666,8 @@ hterm.VT.ESC['='] = function() {
 
 /**
  * Normal keypad (DECKPNM).
+ *
+ * @this {!hterm.VT}
  */
 hterm.VT.ESC['>'] = function() {
   this.terminal.keyboard.applicationKeypad = false;
@@ -1586,6 +1685,8 @@ hterm.VT.ESC['F'] = hterm.VT.ignore;
 
 /**
  * Full Reset (RIS).
+ *
+ * @this {!hterm.VT}
  */
 hterm.VT.ESC['c'] = function() {
   this.terminal.reset();
@@ -1603,6 +1704,8 @@ hterm.VT.ESC['m'] = hterm.VT.ignore;
  * Lock Shift 2 (LS2)
  *
  * Invoke the G2 Character Set as GL.
+ *
+ * @this {!hterm.VT}
  */
 hterm.VT.ESC['n'] = function() {
   this.GL = 'G2';
@@ -1612,6 +1715,8 @@ hterm.VT.ESC['n'] = function() {
  * Lock Shift 3 (LS3)
  *
  * Invoke the G3 Character Set as GL.
+ *
+ * @this {!hterm.VT}
  */
 hterm.VT.ESC['o'] = function() {
   this.GL = 'G3';
@@ -1621,6 +1726,8 @@ hterm.VT.ESC['o'] = function() {
  * Lock Shift 2, Right (LS3R)
  *
  * Invoke the G3 Character Set as GR.
+ *
+ * @this {!hterm.VT}
  */
 hterm.VT.ESC['|'] = function() {
   this.GR = 'G3';
@@ -1630,6 +1737,8 @@ hterm.VT.ESC['|'] = function() {
  * Lock Shift 2, Right (LS2R)
  *
  * Invoke the G2 Character Set as GR.
+ *
+ * @this {!hterm.VT}
  */
 hterm.VT.ESC['}'] = function() {
   this.GR = 'G2';
@@ -1639,6 +1748,8 @@ hterm.VT.ESC['}'] = function() {
  * Lock Shift 1, Right (LS1R)
  *
  * Invoke the G1 Character Set as GR.
+ *
+ * @this {!hterm.VT}
  */
 hterm.VT.ESC['~'] = function() {
   this.GR = 'G1';
@@ -1648,6 +1759,9 @@ hterm.VT.ESC['~'] = function() {
  * Change icon name and window title.
  *
  * We only change the window title.
+ *
+ * @this {!hterm.VT}
+ * @param {!hterm.VT.ParseState} parseState The current parse state.
  */
 hterm.VT.OSC['0'] = function(parseState) {
   this.terminal.setWindowTitle(parseState.args[0]);
@@ -1660,18 +1774,21 @@ hterm.VT.OSC['2'] = hterm.VT.OSC['0'];
 
 /**
  * Set/read color palette.
+ *
+ * @this {!hterm.VT}
+ * @param {!hterm.VT.ParseState} parseState The current parse state.
  */
 hterm.VT.OSC['4'] = function(parseState) {
   // Args come in as a single 'index1;rgb1 ... ;indexN;rgbN' string.
   // We split on the semicolon and iterate through the pairs.
   var args = parseState.args[0].split(';');
 
-  var pairCount = parseInt(args.length / 2);
+  var pairCount = Math.floor(args.length / 2);
   var colorPalette = this.terminal.getTextAttributes().colorPalette;
   var responseArray = [];
 
   for (var pairNumber = 0; pairNumber < pairCount; ++pairNumber) {
-    var colorIndex = parseInt(args[pairNumber * 2]);
+    var colorIndex = parseInt(args[pairNumber * 2], 10);
     var colorValue = args[pairNumber * 2 + 1];
 
     if (colorIndex >= colorPalette.length)
@@ -1705,6 +1822,9 @@ hterm.VT.OSC['4'] = function(parseState) {
  * Calling with a non-blank URI starts it.  A blank URI stops it.
  *
  * https://gist.github.com/egmontkob/eb114294efbcd5adb1944c9f3cb5feda
+ *
+ * @this {!hterm.VT}
+ * @param {!hterm.VT.ParseState} parseState The current parse state.
  */
 hterm.VT.OSC['8'] = function(parseState) {
   const args = parseState.args[0].split(';');
@@ -1745,6 +1865,8 @@ hterm.VT.OSC['8'] = function(parseState) {
 
 /**
  * iTerm2 growl notifications.
+ *
+ * @param {!hterm.VT.ParseState} parseState The current parse state.
  */
 hterm.VT.OSC['9'] = function(parseState) {
   // This just dumps the entire string as the message.
@@ -1753,6 +1875,9 @@ hterm.VT.OSC['9'] = function(parseState) {
 
 /**
  * Change VT100 text foreground color.
+ *
+ * @this {!hterm.VT}
+ * @param {!hterm.VT.ParseState} parseState The current parse state.
  */
 hterm.VT.OSC['10'] = function(parseState) {
   // Args come in as a single string, but extra args will chain to the following
@@ -1761,7 +1886,6 @@ hterm.VT.OSC['10'] = function(parseState) {
   if (!args)
     return;
 
-  var colorArg;
   var colorX11 = lib.colors.x11ToCSS(args.shift());
   if (colorX11)
     this.terminal.setForegroundColor(colorX11);
@@ -1774,6 +1898,9 @@ hterm.VT.OSC['10'] = function(parseState) {
 
 /**
  * Change VT100 text background color.
+ *
+ * @this {!hterm.VT}
+ * @param {!hterm.VT.ParseState} parseState The current parse state.
  */
 hterm.VT.OSC['11'] = function(parseState) {
   // Args come in as a single string, but extra args will chain to the following
@@ -1782,7 +1909,6 @@ hterm.VT.OSC['11'] = function(parseState) {
   if (!args)
     return;
 
-  var colorArg;
   var colorX11 = lib.colors.x11ToCSS(args.shift());
   if (colorX11)
     this.terminal.setBackgroundColor(colorX11);
@@ -1795,6 +1921,9 @@ hterm.VT.OSC['11'] = function(parseState) {
 
 /**
  * Change text cursor color.
+ *
+ * @this {!hterm.VT}
+ * @param {!hterm.VT.ParseState} parseState The current parse state.
  */
 hterm.VT.OSC['12'] = function(parseState) {
   // Args come in as a single string, but extra args will chain to the following
@@ -1803,7 +1932,6 @@ hterm.VT.OSC['12'] = function(parseState) {
   if (!args)
     return;
 
-  var colorArg;
   var colorX11 = lib.colors.x11ToCSS(args.shift());
   if (colorX11)
     this.terminal.setCursorColor(colorX11);
@@ -1830,6 +1958,9 @@ hterm.VT.OSC['12'] = function(parseState) {
  * also: DECSCUSR.
  *
  * Invalid numbers will restore the cursor to the block shape.
+ *
+ * @this {!hterm.VT}
+ * @param {!hterm.VT.ParseState} parseState The current parse state.
  */
 hterm.VT.OSC['50'] = function(parseState) {
   var args = parseState.args[0].match(/CursorShape=(.)/i);
@@ -1861,6 +1992,9 @@ hterm.VT.OSC['50'] = function(parseState) {
  *
  * The clipboard data will be decoded according to the 'receive-encoding'
  * preference.
+ *
+ * @this {!hterm.VT}
+ * @param {!hterm.VT.ParseState} parseState The current parse state.
  */
 hterm.VT.OSC['52'] = function(parseState) {
   if (!this.enableClipboardWrite)
@@ -1882,7 +2016,7 @@ hterm.VT.OSC['52'] = function(parseState) {
   }
   if (this.characterEncoding == 'utf-8') {
     const decoder = new TextDecoder();
-    const bytes = lib.codec.stringToCodeUnitArray(data, Uint8Array);
+    const bytes = lib.codec.stringToCodeUnitArray(data);
     data = decoder.decode(bytes);
   }
   if (data)
@@ -1891,6 +2025,9 @@ hterm.VT.OSC['52'] = function(parseState) {
 
 /**
  * Reset color palette.
+ *
+ * @this {!hterm.VT}
+ * @param {!hterm.VT.ParseState} parseState The current parse state.
  */
 hterm.VT.OSC['104'] = function(parseState) {
   const attrs = this.terminal.getTextAttributes();
@@ -1909,6 +2046,9 @@ hterm.VT.OSC['104'] = function(parseState) {
 
 /**
  * Reset foreground color.
+ *
+ * @this {!hterm.VT}
+ * @param {!hterm.VT.ParseState} parseState The current parse state.
  */
 hterm.VT.OSC['110'] = function(parseState) {
   this.terminal.setForegroundColor();
@@ -1916,6 +2056,9 @@ hterm.VT.OSC['110'] = function(parseState) {
 
 /**
  * Reset background color.
+ *
+ * @this {!hterm.VT}
+ * @param {!hterm.VT.ParseState} parseState The current parse state.
  */
 hterm.VT.OSC['111'] = function(parseState) {
   this.terminal.setBackgroundColor();
@@ -1923,6 +2066,9 @@ hterm.VT.OSC['111'] = function(parseState) {
 
 /**
  * Reset text cursor color.
+ *
+ * @this {!hterm.VT}
+ * @param {!hterm.VT.ParseState} parseState The current parse state.
  */
 hterm.VT.OSC['112'] = function(parseState) {
   this.terminal.setCursorColor();
@@ -1932,6 +2078,9 @@ hterm.VT.OSC['112'] = function(parseState) {
  * iTerm2 extended sequences.
  *
  * We only support image display atm.
+ *
+ * @this {!hterm.VT}
+ * @param {!hterm.VT.ParseState} parseState The current parse state.
  */
 hterm.VT.OSC['1337'] = function(parseState) {
   // Args come in as a set of key value pairs followed by data.
@@ -1952,7 +2101,7 @@ hterm.VT.OSC['1337'] = function(parseState) {
     height: 'auto',
     align: 'left',
     type: '',
-    buffer: lib.codec.stringToCodeUnitArray(atob(args[2]), Uint8Array).buffer,
+    buffer: lib.codec.stringToCodeUnitArray(atob(args[2])).buffer,
   };
   // Walk the "key=value;" sets.
   args[1].split(';').forEach((ele) => {
@@ -1969,7 +2118,7 @@ hterm.VT.OSC['1337'] = function(parseState) {
         break;
       case 'size':
         try {
-          options.size = parseInt(kv[2]);
+          options.size = parseInt(kv[2], 10);
         } catch (e) {}
         break;
       case 'width':
@@ -2020,6 +2169,8 @@ hterm.VT.OSC['1337'] = function(parseState) {
  *
  * Technically there is no format here, but most modules obey:
  * <module name>;<module args, usually ; delimited>
+ *
+ * @param {!hterm.VT.ParseState} parseState The current parse state.
  */
 hterm.VT.OSC['777'] = function(parseState) {
   var ary;
@@ -2046,6 +2197,9 @@ hterm.VT.OSC['777'] = function(parseState) {
 
 /**
  * Insert (blank) characters (ICH).
+ *
+ * @this {!hterm.VT}
+ * @param {!hterm.VT.ParseState} parseState The current parse state.
  */
 hterm.VT.CSI['@'] = function(parseState) {
   this.terminal.insertSpace(parseState.iarg(0, 1));
@@ -2053,6 +2207,9 @@ hterm.VT.CSI['@'] = function(parseState) {
 
 /**
  * Cursor Up (CUU).
+ *
+ * @this {!hterm.VT}
+ * @param {!hterm.VT.ParseState} parseState The current parse state.
  */
 hterm.VT.CSI['A'] = function(parseState) {
   this.terminal.cursorUp(parseState.iarg(0, 1));
@@ -2060,6 +2217,9 @@ hterm.VT.CSI['A'] = function(parseState) {
 
 /**
  * Cursor Down (CUD).
+ *
+ * @this {!hterm.VT}
+ * @param {!hterm.VT.ParseState} parseState The current parse state.
  */
 hterm.VT.CSI['B'] = function(parseState) {
   this.terminal.cursorDown(parseState.iarg(0, 1));
@@ -2067,6 +2227,9 @@ hterm.VT.CSI['B'] = function(parseState) {
 
 /**
  * Cursor Forward (CUF).
+ *
+ * @this {!hterm.VT}
+ * @param {!hterm.VT.ParseState} parseState The current parse state.
  */
 hterm.VT.CSI['C'] = function(parseState) {
   this.terminal.cursorRight(parseState.iarg(0, 1));
@@ -2074,6 +2237,9 @@ hterm.VT.CSI['C'] = function(parseState) {
 
 /**
  * Cursor Backward (CUB).
+ *
+ * @this {!hterm.VT}
+ * @param {!hterm.VT.ParseState} parseState The current parse state.
  */
 hterm.VT.CSI['D'] = function(parseState) {
   this.terminal.cursorLeft(parseState.iarg(0, 1));
@@ -2084,6 +2250,9 @@ hterm.VT.CSI['D'] = function(parseState) {
  *
  * This is like Cursor Down, except the cursor moves to the beginning of the
  * line as well.
+ *
+ * @this {!hterm.VT}
+ * @param {!hterm.VT.ParseState} parseState The current parse state.
  */
 hterm.VT.CSI['E'] = function(parseState) {
   this.terminal.cursorDown(parseState.iarg(0, 1));
@@ -2095,6 +2264,9 @@ hterm.VT.CSI['E'] = function(parseState) {
  *
  * This is like Cursor Up, except the cursor moves to the beginning of the
  * line as well.
+ *
+ * @this {!hterm.VT}
+ * @param {!hterm.VT.ParseState} parseState The current parse state.
  */
 hterm.VT.CSI['F'] = function(parseState) {
   this.terminal.cursorUp(parseState.iarg(0, 1));
@@ -2105,6 +2277,9 @@ hterm.VT.CSI['F'] = function(parseState) {
  * Cursor Horizontal Absolute (CHA).
  *
  * Xterm calls this Cursor Character Absolute.
+ *
+ * @this {!hterm.VT}
+ * @param {!hterm.VT.ParseState} parseState The current parse state.
  */
 hterm.VT.CSI['G'] = function(parseState) {
   this.terminal.setCursorColumn(parseState.iarg(0, 1) - 1);
@@ -2112,6 +2287,9 @@ hterm.VT.CSI['G'] = function(parseState) {
 
 /**
  * Cursor Position (CUP).
+ *
+ * @this {!hterm.VT}
+ * @param {!hterm.VT.ParseState} parseState The current parse state.
  */
 hterm.VT.CSI['H'] = function(parseState) {
   this.terminal.setCursorPosition(parseState.iarg(0, 1) - 1,
@@ -2120,6 +2298,9 @@ hterm.VT.CSI['H'] = function(parseState) {
 
 /**
  * Cursor Forward Tabulation (CHT).
+ *
+ * @this {!hterm.VT}
+ * @param {!hterm.VT.ParseState} parseState The current parse state.
  */
 hterm.VT.CSI['I'] = function(parseState) {
   var count = parseState.iarg(0, 1);
@@ -2131,9 +2312,12 @@ hterm.VT.CSI['I'] = function(parseState) {
 
 /**
  * Erase in Display (ED, DECSED).
+ *
+ * @this {!hterm.VT}
+ * @param {!hterm.VT.ParseState} parseState The current parse state.
  */
 hterm.VT.CSI['J'] =
-hterm.VT.CSI['?J'] = function(parseState, code) {
+hterm.VT.CSI['?J'] = function(parseState) {
   var arg = parseState.args[0];
 
   if (!arg || arg == 0) {
@@ -2151,9 +2335,12 @@ hterm.VT.CSI['?J'] = function(parseState, code) {
 
 /**
  * Erase in line (EL, DECSEL).
+ *
+ * @this {!hterm.VT}
+ * @param {!hterm.VT.ParseState} parseState The current parse state.
  */
 hterm.VT.CSI['K'] =
-hterm.VT.CSI['?K'] = function(parseState, code) {
+hterm.VT.CSI['?K'] = function(parseState) {
   var arg = parseState.args[0];
 
   if (!arg || arg == 0) {
@@ -2167,6 +2354,9 @@ hterm.VT.CSI['?K'] = function(parseState, code) {
 
 /**
  * Insert Lines (IL).
+ *
+ * @this {!hterm.VT}
+ * @param {!hterm.VT.ParseState} parseState The current parse state.
  */
 hterm.VT.CSI['L'] = function(parseState) {
   this.terminal.insertLines(parseState.iarg(0, 1));
@@ -2174,6 +2364,9 @@ hterm.VT.CSI['L'] = function(parseState) {
 
 /**
  * Delete Lines (DL).
+ *
+ * @this {!hterm.VT}
+ * @param {!hterm.VT.ParseState} parseState The current parse state.
  */
 hterm.VT.CSI['M'] = function(parseState) {
   this.terminal.deleteLines(parseState.iarg(0, 1));
@@ -2183,6 +2376,9 @@ hterm.VT.CSI['M'] = function(parseState) {
  * Delete Characters (DCH).
  *
  * This command shifts the line contents left, starting at the cursor position.
+ *
+ * @this {!hterm.VT}
+ * @param {!hterm.VT.ParseState} parseState The current parse state.
  */
 hterm.VT.CSI['P'] = function(parseState) {
   this.terminal.deleteChars(parseState.iarg(0, 1));
@@ -2190,6 +2386,9 @@ hterm.VT.CSI['P'] = function(parseState) {
 
 /**
  * Scroll Up (SU).
+ *
+ * @this {!hterm.VT}
+ * @param {!hterm.VT.ParseState} parseState The current parse state.
  */
 hterm.VT.CSI['S'] = function(parseState) {
   this.terminal.vtScrollUp(parseState.iarg(0, 1));
@@ -2198,6 +2397,9 @@ hterm.VT.CSI['S'] = function(parseState) {
 /**
  * Scroll Down (SD).
  * Also 'Initiate highlight mouse tracking'.  Will not implement this part.
+ *
+ * @this {!hterm.VT}
+ * @param {!hterm.VT.ParseState} parseState The current parse state.
  */
 hterm.VT.CSI['T'] = function(parseState) {
   if (parseState.args.length <= 1)
@@ -2225,6 +2427,9 @@ hterm.VT.CSI['>T'] = hterm.VT.ignore;
 
 /**
  * Erase Characters (ECH).
+ *
+ * @this {!hterm.VT}
+ * @param {!hterm.VT.ParseState} parseState The current parse state.
  */
 hterm.VT.CSI['X'] = function(parseState) {
   this.terminal.eraseToRight(parseState.iarg(0, 1));
@@ -2232,6 +2437,9 @@ hterm.VT.CSI['X'] = function(parseState) {
 
 /**
  * Cursor Backward Tabulation (CBT).
+ *
+ * @this {!hterm.VT}
+ * @param {!hterm.VT.ParseState} parseState The current parse state.
  */
 hterm.VT.CSI['Z'] = function(parseState) {
   var count = parseState.iarg(0, 1);
@@ -2250,6 +2458,9 @@ hterm.VT.CSI['`'] = hterm.VT.CSI['G'];
 
 /**
  * Character Position Relative (HPR).
+ *
+ * @this {!hterm.VT}
+ * @param {!hterm.VT.ParseState} parseState The current parse state.
  */
 hterm.VT.CSI['a'] = function(parseState) {
   this.terminal.setCursorColumn(this.terminal.getCursorColumn() +
@@ -2269,6 +2480,9 @@ hterm.VT.CSI['b'] = hterm.VT.ignore;
  * TODO(rginda): This is hardcoded to send back 'VT100 with Advanced Video
  * Option', but it may be more correct to send a VT220 response once
  * we fill out the 'Not currently implemented' parts.
+ *
+ * @this {!hterm.VT}
+ * @param {!hterm.VT.ParseState} parseState The current parse state.
  */
 hterm.VT.CSI['c'] = function(parseState) {
   if (!parseState.args[0] || parseState.args[0] == 0) {
@@ -2282,6 +2496,9 @@ hterm.VT.CSI['c'] = function(parseState) {
  * TODO(rginda): This is hardcoded to send back 'VT100' but it may be more
  * correct to send a VT220 response once we fill out more 'Not currently
  * implemented' parts.
+ *
+ * @this {!hterm.VT}
+ * @param {!hterm.VT.ParseState} parseState The current parse state.
  */
 hterm.VT.CSI['>c'] = function(parseState) {
   this.terminal.io.sendString('\x1b[>0;256;0c');
@@ -2289,6 +2506,9 @@ hterm.VT.CSI['>c'] = function(parseState) {
 
 /**
  * Line Position Absolute (VPA).
+ *
+ * @this {!hterm.VT}
+ * @param {!hterm.VT.ParseState} parseState The current parse state.
  */
 hterm.VT.CSI['d'] = function(parseState) {
   this.terminal.setAbsoluteCursorRow(parseState.iarg(0, 1) - 1);
@@ -2303,11 +2523,14 @@ hterm.VT.CSI['f'] = hterm.VT.CSI['H'];
 
 /**
  * Tab Clear (TBC).
+ *
+ * @this {!hterm.VT}
+ * @param {!hterm.VT.ParseState} parseState The current parse state.
  */
 hterm.VT.CSI['g'] = function(parseState) {
   if (!parseState.args[0] || parseState.args[0] == 0) {
     // Clear tab stop at cursor.
-    this.terminal.clearTabStopAtCursor(false);
+    this.terminal.clearTabStopAtCursor();
   } else if (parseState.args[0] == 3) {
     // Clear all tab stops.
     this.terminal.clearAllTabStops();
@@ -2316,6 +2539,9 @@ hterm.VT.CSI['g'] = function(parseState) {
 
 /**
  * Set Mode (SM).
+ *
+ * @this {!hterm.VT}
+ * @param {!hterm.VT.ParseState} parseState The current parse state.
  */
 hterm.VT.CSI['h'] = function(parseState) {
   for (var i = 0; i < parseState.args.length; i++) {
@@ -2325,6 +2551,9 @@ hterm.VT.CSI['h'] = function(parseState) {
 
 /**
  * DEC Private Mode Set (DECSET).
+ *
+ * @this {!hterm.VT}
+ * @param {!hterm.VT.ParseState} parseState The current parse state.
  */
 hterm.VT.CSI['?h'] = function(parseState) {
   for (var i = 0; i < parseState.args.length; i++) {
@@ -2343,6 +2572,9 @@ hterm.VT.CSI['?i'] = hterm.VT.ignore;
 
 /**
  * Reset Mode (RM).
+ *
+ * @this {!hterm.VT}
+ * @param {!hterm.VT.ParseState} parseState The current parse state.
  */
 hterm.VT.CSI['l'] = function(parseState) {
   for (var i = 0; i < parseState.args.length; i++) {
@@ -2352,6 +2584,9 @@ hterm.VT.CSI['l'] = function(parseState) {
 
 /**
  * DEC Private Mode Reset (DECRST).
+ *
+ * @this {!hterm.VT}
+ * @param {!hterm.VT.ParseState} parseState The current parse state.
  */
 hterm.VT.CSI['?l'] = function(parseState) {
   for (var i = 0; i < parseState.args.length; i++) {
@@ -2365,10 +2600,11 @@ hterm.VT.CSI['?l'] = function(parseState) {
  * This deals with the various ISO 8613-6 forms, and with legacy xterm forms
  * that are common in the wider application world.
  *
- * @param {hterm.VT.ParseState} parseState The current input state.
+ * @this {!hterm.VT}
+ * @param {!hterm.VT.ParseState} parseState The current input state.
  * @param {number} i The argument in parseState to start processing.
- * @param {hterm.TextAttributes} attrs The current text attributes.
- * @return {Object} The skipCount member defines how many arguments to skip
+ * @param {!hterm.TextAttributes} attrs The current text attributes.
+ * @return {!Object} The skipCount member defines how many arguments to skip
  *     (i.e. how many were processed), and the color member is the color that
  *     was successfully processed, or undefined if not.
  */
@@ -2399,7 +2635,7 @@ hterm.VT.prototype.parseSgrExtendedColors = function(parseState, i, attrs) {
   }
 
   // Figure out which form to parse.
-  switch (parseInt(ary[0])) {
+  switch (parseInt(ary[0], 10)) {
     default:  // Unknown.
     case 0:  // Implementation defined.  We ignore it.
       return {skipCount: 0};
@@ -2462,9 +2698,9 @@ hterm.VT.prototype.parseSgrExtendedColors = function(parseState, i, attrs) {
         return {skipCount: 0};
 
       // TODO: See CMYK below.
-      const c = parseState.parseInt(ary[1]);
-      const m = parseState.parseInt(ary[2]);
-      const y = parseState.parseInt(ary[3]);
+      // const c = parseState.parseInt(ary[1]);
+      // const m = parseState.parseInt(ary[2]);
+      // const y = parseState.parseInt(ary[3]);
       return {skipCount: 0};
     }
 
@@ -2484,10 +2720,10 @@ hterm.VT.prototype.parseSgrExtendedColors = function(parseState, i, attrs) {
       // https://www.w3.org/TR/css-color-4/#cmyk-colors
       // Or normalize it to RGB ourselves:
       // https://www.w3.org/TR/css-color-4/#cmyk-rgb
-      const c = parseState.parseInt(ary[1]);
-      const m = parseState.parseInt(ary[2]);
-      const y = parseState.parseInt(ary[3]);
-      const k = parseState.parseInt(ary[4]);
+      // const c = parseState.parseInt(ary[1]);
+      // const m = parseState.parseInt(ary[2]);
+      // const y = parseState.parseInt(ary[3]);
+      // const k = parseState.parseInt(ary[4]);
       return {skipCount: 0};
     }
 
@@ -2515,6 +2751,9 @@ hterm.VT.prototype.parseSgrExtendedColors = function(parseState, i, attrs) {
  *
  * Iterate through the list of arguments, applying the attribute changes based
  * on the argument value...
+ *
+ * @this {!hterm.VT}
+ * @param {!hterm.VT.ParseState} parseState
  */
 hterm.VT.CSI['m'] = function(parseState) {
   var attrs = this.terminal.getTextAttributes();
@@ -2648,6 +2887,9 @@ hterm.VT.CSI['>m'] = hterm.VT.ignore;
  *
  * 5 - Status Report. Result (OK) is CSI 0 n
  * 6 - Report Cursor Position (CPR) [row;column]. Result is CSI r ; c R
+ *
+ * @this {!hterm.VT}
+ * @param {!hterm.VT.ParseState} parseState
  */
 hterm.VT.CSI['n'] = function(parseState) {
   if (parseState.args[0] == 5) {
@@ -2678,6 +2920,9 @@ hterm.VT.CSI['>n'] = hterm.VT.ignore;
  *      and LK01 respectively.
  * 53 - Report Locator status as CSI ? 5 3 n Locator available, if compiled-in,
  *      or CSI ? 5 0 n No Locator, if not.
+ *
+ * @this {!hterm.VT}
+ * @param {!hterm.VT.ParseState} parseState
  */
 hterm.VT.CSI['?n'] = function(parseState) {
   if (parseState.args[0] == 6) {
@@ -2712,6 +2957,8 @@ hterm.VT.CSI['>p'] = hterm.VT.ignore;
 
 /**
  * Soft terminal reset (DECSTR).
+ *
+ * @this {!hterm.VT}
  */
 hterm.VT.CSI['!p'] = function() {
   this.terminal.softReset();
@@ -2742,6 +2989,9 @@ hterm.VT.CSI['q'] = hterm.VT.ignore;
 
 /**
  * Set cursor style (DECSCUSR, VT520).
+ *
+ * @this {!hterm.VT}
+ * @param {!hterm.VT.ParseState} parseState
  */
 hterm.VT.CSI[' q'] = function(parseState) {
   var arg = parseState.args[0];
@@ -2778,6 +3028,9 @@ hterm.VT.CSI['"q'] = hterm.VT.ignore;
 
 /**
  * Set Scrolling Region (DECSTBM).
+ *
+ * @this {!hterm.VT}
+ * @param {!hterm.VT.ParseState} parseState
  */
 hterm.VT.CSI['r'] = function(parseState) {
   var args = parseState.args;
@@ -2803,6 +3056,8 @@ hterm.VT.CSI['$r'] = hterm.VT.ignore;
 
 /**
  * Save cursor (ANSI.SYS)
+ *
+ * @this {!hterm.VT}
  */
 hterm.VT.CSI['s'] = function() {
   this.terminal.saveCursorAndState();
@@ -2845,6 +3100,8 @@ hterm.VT.CSI[' t'] = hterm.VT.ignore;
 
 /**
  * Restore cursor (ANSI.SYS).
+ *
+ * @this {!hterm.VT}
  */
 hterm.VT.CSI['u'] = function() {
   this.terminal.restoreCursorAndState();
@@ -2897,6 +3154,9 @@ hterm.VT.CSI['$x'] = hterm.VT.ignore;
  * (see https://nethackwiki.com/wiki/Vt_tiledata for more info)
  *
  * Implemented as far as we care (start a glyph and end a glyph).
+ *
+ * @this {!hterm.VT}
+ * @param {!hterm.VT.ParseState} parseState
  */
 hterm.VT.CSI['z'] = function(parseState) {
   if (parseState.args.length < 1)

@@ -21,6 +21,10 @@ lib.f = {};
  *                       name: "Google+" });
  *
  * Will result in "Hello, Google%2B".
+ *
+ * @param {string} str String containing variable references.
+ * @param {!Object<string, string>} vars Variables to substitute in.
+ * @return {string} String with references substituted.
  */
 lib.f.replaceVars = function(str, vars) {
   return str.replace(/%([a-z]*)\(([^\)]+)\)/gi, function(match, fn, varname) {
@@ -60,6 +64,12 @@ lib.f.replaceVars.functions = {
   }
 };
 
+/**
+ * Convert a relative path to a fully qulified URI.
+ *
+ * @param {string} path Relative path
+ * @return {string} Fully qualified URI.
+ */
 lib.f.getURL = function(path) {
   if (lib.f.getURL.chromeSupported())
     return chrome.runtime.getURL(path);
@@ -67,6 +77,11 @@ lib.f.getURL = function(path) {
   return path;
 };
 
+/**
+ * Determine whether the runtime is Chrome (or equiv).
+ *
+ * @return {boolean} True if chrome.runtime.getURL is supported.
+ */
 lib.f.getURL.chromeSupported = function() {
   return window.chrome && chrome.runtime && chrome.runtime.getURL;
 };
@@ -74,9 +89,10 @@ lib.f.getURL.chromeSupported = function() {
 /**
  * Clamp a given integer to a specified range.
  *
- * @param {integer} v The value to be clamped.
- * @param {integer} min The minimum acceptable value.
- * @param {integer} max The maximum acceptable value.
+ * @param {number} v The value to be clamped.
+ * @param {number} min The minimum acceptable value.
+ * @param {number} max The maximum acceptable value.
+ * @return {number} The clamped value.
  */
 lib.f.clamp = function(v, min, max) {
   if (v < min)
@@ -89,8 +105,8 @@ lib.f.clamp = function(v, min, max) {
 /**
  * Left pad a number to a given length with leading zeros.
  *
- * @param {string|integer} number The number to pad.
- * @param {integer} length The desired length.
+ * @param {string|number} number The number to pad.
+ * @param {number} length The desired length.
  * @return {string} The padded number as a string.
  */
 lib.f.zpad = function(number, length) {
@@ -115,6 +131,7 @@ lib.f.zpad = function(number, length) {
  * @param {number=} ignoreFrames How many inner stack frames to ignore.  The
  *     innermost 'getStack' call is always ignored.
  * @param {number=} count How many frames to return.
+ * @return {!Array<string>} The stack frames.
  */
 lib.f.getStack = function(ignoreFrames = 0, count = undefined) {
   const stackArray = (new Error()).stack.split('\n');
@@ -174,7 +191,7 @@ lib.f.randomInt = function(min, max) {
 /**
  * Get the current OS.
  *
- * @return {Promise<string>} A promise that resolves to a constant in
+ * @return {!Promise<string>} A promise that resolves to a constant in
  *     runtime.PlatformOs.
  */
 lib.f.getOs = function() {
@@ -222,7 +239,7 @@ lib.f.getChromeMilestone = function() {
   if (window.navigator && navigator.userAgent) {
     const ary = navigator.userAgent.match(/\sChrome\/(\d+)/);
     if (ary)
-      return parseInt(ary[1]);
+      return parseInt(ary[1], 10);
   }
 
   // Returning NaN will make all number comparisons fail.
@@ -235,8 +252,8 @@ lib.f.getChromeMilestone = function() {
  * This object might live in different locations, and it isn't always defined
  * (if there hasn't been a "last error").  Wrap all that ugliness here.
  *
- * @param {string=} defaultMsg The default message if no error is found.
- * @return {string} The last error message from the browser.
+ * @param {?string=} defaultMsg The default message if no error is found.
+ * @return {?string} The last error message from the browser.
  */
 lib.f.lastError = function(defaultMsg = null) {
   let lastError;
@@ -261,7 +278,7 @@ lib.f.lastError = function(defaultMsg = null) {
  * @param {string=} url The URL to point the new window to.
  * @param {string=} name The name of the new window.
  * @param {string=} features The window features to enable.
- * @return {Window} The newly opened window.
+ * @return {?Window} The newly opened window.
  */
 lib.f.openWindow = function(url, name=undefined, features=undefined) {
   // We create the window first without the URL loaded.

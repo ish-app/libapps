@@ -9,7 +9,7 @@ var nassh = {};
 /**
  * True if nassh is running as a v2 app.
  */
-nassh.v2 = (window.chrome && chrome.app && chrome.app.window);
+nassh.v2 = !!(window.chrome && chrome.app && chrome.app.window);
 
 /**
  * Non-null if nassh is running as an extension.
@@ -19,27 +19,31 @@ nassh.browserAction =
     window.chrome && chrome.browserAction ? chrome.browserAction :
     null;
 
-/**
- * Register a static initializer for nassh.*.
- *
- * @param {function} onInit The function lib.init() wants us to invoke when
- *     initialization is complete.
- */
-lib.registerInit('nassh', function(onInit) {
-  if (!nassh.defaultStorage)
-    nassh.defaultStorage = new lib.Storage.Chrome(chrome.storage.sync);
+lib.registerInit(
+    'nassh',
+    /**
+     * Register a static initializer for nassh.*.
+     *
+     * @param {function()} onInit The function lib.init() wants us to invoke
+     *     when initialization is complete.
+     */
+    function(onInit) {
+      if (!nassh.defaultStorage) {
+        nassh.defaultStorage = new lib.Storage.Chrome(chrome.storage.sync);
+      }
 
-  onInit();
-});
+      onInit();
+    });
 
 /**
  * Return a formatted message in the current locale.
  *
  * @param {string} name The name of the message to return.
- * @param {Array} opt_args The message arguments, if required.
+ * @param {!Array=} args The message arguments, if required.
+ * @return {string} The localized & formatted message.
  */
-nassh.msg = function(name, opt_args) {
-  const rv = lib.i18n.getMessage(name, opt_args, name);
+nassh.msg = function(name, args) {
+  const rv = lib.i18n.getMessage(name, args, name);
 
   // Since our translation process only preserves \n (and discards \r), we have
   // to manually insert them here ourselves.  Any place we display translations
@@ -54,8 +58,7 @@ nassh.msg = function(name, opt_args) {
  *
  * This will also create the /.ssh/ directory if it does not exits.
  *
- * @return {!Promise(FileSystem, DirectoryEntry)} The root filesystem handle and
- *     a handle to the /.ssh/ directory.
+ * @return {!Promise<!FileSystem>} The root filesystem handle.
  */
 nassh.getFileSystem = function() {
   const requestFS = window.requestFileSystem || window.webkitRequestFileSystem;
@@ -65,10 +68,9 @@ nassh.getFileSystem = function() {
       // We create /.ssh/identity/ subdir for storing keys.  We need a dedicated
       // subdir for users to import files to avoid collisions with standard ssh
       // config files.
-      lib.fs.getOrCreateDirectory(
-          fileSystem.root, '/.ssh/identity',
-          (directoryEntry) => resolve(fileSystem, directoryEntry),
-          lib.fs.err('Error creating /.ssh/identity', reject));
+      lib.fs.getOrCreateDirectory(fileSystem.root, '/.ssh/identity')
+        .then(() => resolve(fileSystem))
+        .catch(reject);
     }
 
     requestFS(window.PERSISTENT,
@@ -85,8 +87,9 @@ nassh.getFileSystem = function() {
  * This is method must be given a completion callback because the hterm
  * profiles need to be loaded asynchronously.
  *
- * @param {function(Object)} Callback to be invoked when export is complete.
- *   The callback will receive a plan js object representing the state of
+ * @param {function(!Object)} onComplete Callback to be invoked when export is
+ *     complete.
+ *   The callback will receive a plain JS object representing the state of
  *   nassh preferences.  The object can be passed back to
  *   nassh.importPreferences.
  */
@@ -129,18 +132,19 @@ nassh.exportPreferences = function(onComplete) {
  *
  * This will not overwrite any existing preferences.
  *
- * @param {Object} prefsObject A preferences object created with
- *   nassh.exportPreferences.
- * @param {function()} opt_onComplete An optional callback to be invoked when
- *   the import is complete.
+ * @param {!Object} prefsObject A preferences object created with
+ *     nassh.exportPreferences.
+ * @param {function()=} onComplete A callback to be invoked when the import is
+ *     complete.
  */
-nassh.importPreferences = function(prefsObject, opt_onComplete) {
+nassh.importPreferences = function(prefsObject, onComplete) {
   var pendingReads = 0;
 
   var onReadStorage = function(terminalProfile, prefs) {
     prefs.importFromJson(prefsObject.hterm[terminalProfile]);
-    if (--pendingReads < 1 && opt_onComplete)
-      opt_onComplete();
+    if (--pendingReads < 1 && onComplete) {
+      onComplete();
+    }
   };
 
   if (prefsObject.magic != 'nassh-prefs')
@@ -181,16 +185,39 @@ nassh.openOptionsPage = function() {
     fallback();
 };
 
+/** Reload window. */
 nassh.reloadWindow = function() {
   if (!nassh.v2) {
     document.location.hash = '';
     document.location.reload();
   } else {
-    var appWindow = chrome.app.window.current();
-    var bounds = appWindow.getBounds();
-    var url = appWindow.contentWindow.location.pathname;
-    chrome.app.window.create(url, { 'bounds': bounds });
-    appWindow.close();
+    // Sometimes current() can't return the window.  Not clear why.  Fallback
+    // to the defaults so we at least get a new window.
+    const win = chrome.app.window.current();
+    let opts = {
+      innerBounds: {
+        width: 900,
+        height: 600,
+      },
+    };
+    if (win) {
+      // We have to make sure to not re-use the id field as Chrome won't open a
+      // new window if it already exists with the same id.
+      opts = {
+        alwaysOnTop: win.isAlwaysOnTop(),
+        focused: true,
+        innerBounds: win.innerBounds,
+        state: win.isFullscreen() ? 'fullscreen' :
+                 win.isMaximized() ? 'maximized' :
+                 win.isMinimized() ? 'minimized' :
+                 'normal',
+      };
+    }
+    // We have to wait to close this window in the callback as Chrome is unable
+    // to fully initialize the new window if we close ourselves too fast.
+    chrome.app.window.create(
+        window.document.location.pathname, opts,
+        () => window.close());
   }
 };
 
@@ -208,7 +235,7 @@ nassh.registerProtocolHandler = function(proto) {
   try {
     navigator.registerProtocolHandler(
         proto,
-        chrome.runtime.getURL('html/nassh.html#uri:%s'),
+        chrome.runtime.getURL('/html/nassh.html#uri:%s'),
         chrome.runtime.getManifest().name);
   } catch (e) {
     console.error(`Unable to register '${proto}' handler:`, e);
@@ -233,9 +260,11 @@ nassh.registerProtocolHandler = function(proto) {
  * fine for our usage as we don't generally create windows/tabs on the fly.
  */
 nassh.disableTabDiscarding = function() {
-  chrome.tabs.getCurrent((tab) => {
-    chrome.tabs.update(tab.id, {autoDiscardable: false});
-  });
+  if (window.chrome && chrome.tabs) {
+    chrome.tabs.getCurrent((tab) => {
+      chrome.tabs.update(tab.id, {autoDiscardable: false});
+    });
+  }
 };
 
 /**
@@ -254,7 +283,7 @@ nassh.disableTabDiscarding = function() {
  * We re-add any trailing = padding characters.
  *
  * @param {string} data The base64url encoded data.
- * @returns {string} The data in base64 encoding.
+ * @return {string} The data in base64 encoding.
  */
 nassh.base64UrlToBase64 = function(data) {
   const replacements = {'-': '+', '_': '/'};
@@ -284,7 +313,7 @@ nassh.base64UrlToBase64 = function(data) {
  * We strip off any = padding characters too.
  *
  * @param {string} data The base64 encoded data.
- * @returns {string} The data in base64url encoding.
+ * @return {string} The data in base64url encoding.
  */
 nassh.base64ToBase64Url = function(data) {
   const replacements = {'+': '-', '/': '_', '=': ''};
@@ -299,6 +328,9 @@ nassh.base64ToBase64Url = function(data) {
  * While this is fixed in R72+, we unfortunately have EOL Chromebooks that will
  * never be able to upgrade to that version, so we have to keep this around for
  * a long time -- once we update minimum_chrome_version in the manifest to 72+.
+ *
+ * @return {boolean} True if bug was detected and the caller should halt all
+ *     processing.
  */
 nassh.workaroundMissingChromeRuntime = function() {
   // Chrome has a bug where it sometimes doesn't initialize chrome.runtime.
@@ -322,8 +354,8 @@ nassh.workaroundMissingChromeRuntime = function() {
  * then try to call funcs in it directly before it's finished initializing which
  * will cause random failures as it hits race conditions.
  *
- * @return {Promise<Window>} A promise resolving to the background page once it
- *    is fully initialized.
+ * @return {!Promise<!Window>} A promise resolving to the background page once
+ *     it is fully initialized.
  */
 nassh.getBackgroundPage = function() {
   if (!window.chrome || !chrome.runtime || !chrome.runtime.getBackgroundPage) {

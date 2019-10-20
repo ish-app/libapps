@@ -6,11 +6,6 @@
 
 const lib = {};
 
-// Export for node environments.
-if (typeof exports !== 'undefined') {
-  module.exports = lib;
-}
-
 /**
  * List of functions that need to be invoked during library initialization.
  *
@@ -29,8 +24,9 @@ lib.initCallbacks_ = [];
  *
  * @param {string} name A short descriptive name of the init routine useful for
  *     debugging.
- * @param {function(function)} callback The initialization function to register.
- * @return {function} The callback parameter.
+ * @param {function(function())} callback The initialization function to
+ *     register.
+ * @return {function(function())} The callback parameter.
  */
 lib.registerInit = function(name, callback) {
   lib.initCallbacks_.push([name, callback]);
@@ -48,17 +44,18 @@ lib.registerInit = function(name, callback) {
  *
  * @param {function()} onInit The function to invoke when initialization is
  *     complete.
- * @param {function(*)} opt_logFunction An optional function to send
- *     initialization related log messages to.
+ * @param {function(*)=} logFunction An optional function to send initialization
+ *     related log messages to.
  */
-lib.init = function(onInit, opt_logFunction) {
+lib.init = function(onInit, logFunction) {
   var ary = lib.initCallbacks_;
 
   var initNext = function() {
     if (ary.length) {
       var rec = ary.shift();
-      if (opt_logFunction)
-        opt_logFunction('init: ' + rec[0]);
+      if (logFunction) {
+        logFunction(`init: ${rec[0]}`);
+      }
       rec[1](initNext);
     } else {
       onInit();
@@ -69,4 +66,53 @@ lib.init = function(onInit, opt_logFunction) {
     throw new Error('Missing or invalid argument: onInit');
 
   setTimeout(initNext, 0);
+};
+
+/**
+ * Verify |condition| is truthy else throw Error.
+ *
+ * This function is primarily for satisfying the JS compiler and should be
+ * used only when you are certain that your condition is true.  The function is
+ * designed to have a version that throws Errors in tests if condition fails,
+ * and a nop version for production code.  It configures itself the first time
+ * it runs.
+ *
+ * @param {boolean} condition A condition to check.
+ * @closurePrimitive {asserts.truthy}
+ */
+lib.assert = function(condition) {
+  if (window.chai) {
+    lib.assert = window.chai.assert;
+  } else {
+    lib.assert = function(condition) {};
+  }
+  lib.assert(condition);
+};
+
+/**
+ * Verify |value| is not null and return |value| if so, else throw Error.
+ * See lib.assert.
+ *
+ * @template T
+ * @param {T} value A value to check for null.
+ * @return {T} A non-null |value|.
+ * @closurePrimitive {asserts.truthy}
+ */
+lib.notNull = function(value) {
+  lib.assert(value !== null);
+  return value;
+};
+
+/**
+ * Verify |value| is not undefined and return |value| if so, else throw Error.
+ * See lib.assert.
+ *
+ * @template T
+ * @param {T} value A value to check for null.
+ * @return {T} A non-undefined |value|.
+ * @closurePrimitive {asserts.truthy}
+ */
+lib.notUndefined = function(value) {
+  lib.assert(value !== undefined);
+  return value;
 };

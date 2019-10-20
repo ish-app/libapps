@@ -4,32 +4,336 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-"""Lint our source files."""
+"""Lint our source files.
+
+We'll run through eslint & closure-compiler.
+"""
 
 from __future__ import print_function
 
 import glob
+import json
+import logging
 import os
 import sys
 
 import libdot
 
 
-def main(argv):
-    """The main func!"""
-    if not argv:
-        os.chdir(libdot.DIR)
-        argv = glob.glob(os.path.join('js', '*.js'))
+# All checks except strictMissingRequire.
+DEFAULT_CLOSURE_ARGS = (
+    '--jscomp_error=*', '--jscomp_off=strictMissingRequire')
 
-    libdot.setup_logging()
-    libdot.node_and_npm_setup()
+
+def kokoro_comments_path(path, tool):
+    """Expand % markers that might exist in |path|."""
+    if not path:
+        return None
+    else:
+        return path.replace('%(tool)', tool)
+
+
+def convert_eslint_to_kokoro(data):
+    """Take eslint JSON output and convert it to kokoro comment format.
+
+    The |data| input will look like:
+    [
+        {
+            "errorCount": <total number of errors>,
+            "filePath": ".../libapps/libdot/js/lib_f.js",
+            "fixableErrorCount": 1,
+            "fixableWarningCount": 0,
+            "messages": [  // This contains errors & warnings.
+                {
+                    "column": 2,
+                    "endColumn": 57,
+                    "endLine": 1,
+                    "line": 1,
+                    "message": "Missing semicolon.",
+                    "nodeType": "ExpressionStatement",
+                    "ruleId": "semi",
+                    "severity": <1=warning 2=error>
+                }
+            ],
+            "source": "...the entire source file...",
+            "warningCount": <total number of warnings>
+        },
+        {
+            "errorCount": <total number of errors>,
+            "filePath": ".../libapps/libdot/js/lib_fs.js",
+            "fixableErrorCount": 2,
+            "fixableWarningCount": 0,
+            "messages": [  // This contains errors & warnings.
+                {
+                    "column": 2,
+                    "fix": {
+                        "range": [8180, 8180],
+                        "text": ";"
+                    },
+                    "line": 262,
+                    "message": "Missing semicolon.",
+                    "nodeType": "ExpressionStatement",
+                    "ruleId": "semi",
+                    "severity": <1=warning 2=error>
+                },
+                {
+                    "column": 10,
+                    "fix": {
+                        "range": [8436, 8436],
+                        "text": ";"
+                    },
+                    "line": 271,
+                    "message": "Missing semicolon.",
+                    "nodeType": "VariableDeclaration",
+                    "ruleId": "semi",
+                    "severity": <1=warning 2=error>
+                }
+            ],
+            "source": "...the entire source file...",
+            "warningCount":  <total number of warnings>
+        }
+    ]
+
+    We want to return a list of results like:
+    [
+        {
+           path: "relative/path/to/source/file",
+           message: "Content of the inline comment."
+           startLine: <integer line number>,
+           startCharacter: <integer column number>,
+           endLine: <integer line number>,
+           endCharacter: <integer column number>
+        },
+        { ... more results above ... }
+    ]
+    """
+    RULES_URI_BASE = 'https://eslint.org/docs/rules/'
+    SEVERITY_TO_HEADER = {1: 'Warning', 2: 'Error'}
+
+    for file_results in data:
+        for message in file_results['messages']:
+            msg = '[eslint] %s: %s' % (
+                SEVERITY_TO_HEADER[message['severity']],
+                message['message'],
+            )
+
+            # For syntax errors, this will be omitted.
+            ruleId = message.get('ruleId')
+            if ruleId:
+                msg += '\n%s%s' % (RULES_URI_BASE, ruleId)
+
+            # Gerrit comments appear to count columns from 0 while eslint counts
+            # from 1.  Adjust them down by one to handle.
+            yield {
+                'path': os.path.relpath(file_results['filePath'],
+                                        libdot.LIBAPPS_DIR),
+                'message': msg,
+                'startLine': message['line'],
+                'endLine': message.get('endLine', message['line']),
+                'startCharacter': message['column'] - 1,
+                'endCharacter': message.get('endColumn', message['column']),
+            }
+
+
+def run_eslint(opts, extra_args=()):
+    """Run the eslint tool."""
+    ret = True
+
+    comments_path = kokoro_comments_path(opts.gerrit_comments_file, 'eslint')
+
+    cmd = ['eslint'] + list(extra_args)
+    if comments_path:
+        cmd += ['--max-warnings=0']
+    if opts.fix:
+        cmd += ['--fix']
 
     # We know our tools are first in $PATH now.
-    libdot.run(['eslint'] + argv)
-    libdot.run([
-        'closure-compiler', '--checks-only', '--jscomp_warning=lintChecks',
-        '--language_in=ECMASCRIPT6_STRICT'] + argv)
+    result = libdot.run(cmd + opts.paths, check=False)
+    if result.returncode:
+        ret = False
+
+        # Rerun for Gerrit.
+        if comments_path:
+            # Handle relative paths like "foo.json".
+            dirname = os.path.dirname(comments_path)
+            if dirname:
+                os.makedirs(dirname, exist_ok=True)
+
+            cmd += ['--format=json']
+            result = libdot.run(cmd + opts.paths, check=False,
+                                capture_output=True)
+
+            # Save a copy for debugging later.
+            with open(comments_path + '.in', 'wb') as fp:
+                fp.write(result.stdout)
+
+            data = json.loads(result.stdout.decode('utf-8'))
+            comments = list(convert_eslint_to_kokoro(data))
+            with open(comments_path, 'w', encoding='utf-8') as fp:
+                json.dump(comments, fp)
+    elif comments_path:
+        # If there were no failures, clear the files to avoid leaving previous
+        # results laying around & confuse devs.
+        libdot.unlink(comments_path)
+        libdot.unlink(comments_path + '.in')
+
+    return ret
+
+
+def convert_closure_to_kokoro(data):
+    """Take closure JSON output and convert it to kokoro comment format.
+
+    The |data| input will look like:
+    [
+      {
+        "column": 21,
+        "context": " * @return {!Promise<FileSystemFileEntry>}\n...",
+        "description": "FileSystemFileEntry is a reference type with ...",
+        "key": "JSC_MISSING_NULLABILITY_MODIFIER_JSDOC",
+        "level": "error",
+        "line": 174,
+        "source": "js/lib_fs.js"
+      },
+      {
+        "description": "1 error(s), 0 warning(s)",
+        "level": "info"
+      }
+    ]
+
+    See convert_eslint_to_kokoro for example return value.
+    """
+    for result in data:
+        # Ignore info lines.
+        if result['level'] == 'info':
+            continue
+
+        # Add leading space prefix to results to get code text.
+        msg = '[closure] %s: %s\n%s\n\n %s' % (
+            result['level'], result['key'], result['description'],
+            '\n '.join(result['context'].splitlines()),
+        )
+
+        yield {
+            'path': os.path.relpath(result['source'], libdot.LIBAPPS_DIR),
+            'message': msg,
+            'startLine': result['line'],
+            'endLine': result.get('endline', result['line']),
+            'startCharacter': result['column'],
+            'endCharacter': result['column'],
+        }
+
+
+def run_closure(opts, extra_args=()):
+    """Run the closure-compiler tool."""
+    ret = True
+
+    comments_path = kokoro_comments_path(opts.gerrit_comments_file, 'closure')
+
+    externs = []
+    for extern in glob.glob(os.path.join(libdot.DIR, 'externs', '*.js')):
+        externs += ['--externs', os.path.relpath(extern, os.getcwd())]
+
+    cmd = [
+        os.path.join(libdot.BIN_DIR, 'closure-compiler'),
+        '--checks-only',
+        '--language_in=ECMASCRIPT_2018',
+    ] + externs + list(extra_args)
+    result = libdot.run(cmd + opts.paths, check=False)
+    if result.returncode:
+        ret = False
+
+        # Rerun for Gerrit.
+        if comments_path:
+            # Handle relative paths like "foo.json".
+            dirname = os.path.dirname(comments_path)
+            if dirname:
+                os.makedirs(dirname, exist_ok=True)
+
+            cmd += ['--error_format=JSON']
+            result = libdot.run(cmd + opts.paths, check=False,
+                                capture_output=True)
+
+            # Save a copy for debugging later.
+            with open(comments_path + '.in', 'wb') as fp:
+                fp.write(result.stderr)
+
+            data = json.loads(result.stderr.decode('utf-8'))
+            comments = list(convert_closure_to_kokoro(data))
+            with open(comments_path, 'w', encoding='utf-8') as fp:
+                json.dump(comments, fp)
+    elif comments_path:
+        # If there were no failures, clear the files to avoid leaving previous
+        # results laying around & confuse devs.
+        libdot.unlink(comments_path)
+        libdot.unlink(comments_path + '.in')
+
+    return ret
+
+
+def _get_default_paths():
+    """Get list of paths to lint by default."""
+    # All files in js/*.js excluding generated files.
+    # Use relpath for nicer default output.
+    # Sort to ensure lib.js comes before lib_array.js, etc.
+    # Filter out the generated libdot.js/libdot.min.js/etc...
+    all_paths = (
+        glob.glob(os.path.join(libdot.DIR, 'js', '*.js')) +
+        glob.glob(os.path.join(libdot.DIR, 'third_party', '*', '*.js')))
+    return sorted(
+        os.path.relpath(x, os.getcwd())
+        for x in all_paths
+        if not os.path.basename(x).startswith('libdot.'))
+
+
+def get_parser():
+    """Get a command line parser."""
+    parser = libdot.ArgumentParser(description=__doc__)
+    parser.add_argument('--fix', action='store_true',
+                        help='Run just eslint with --fix setting.')
+    parser.add_argument('--gerrit-comments-file',
+                        help='Save errors for posting files to Gerrit.')
+    parser.add_argument('paths', nargs='*',
+                        help='Paths to lint.')
+    parser.add_argument('--skip-mkdeps', dest='run_mkdeps',
+                        action='store_false', default=True,
+                        help='Skip (re)building of dependencies.')
+    return parser
+
+
+def main(argv, paths=(), mkdeps=None, eslint_args=(),
+         closure_args=DEFAULT_CLOSURE_ARGS):
+    """The common main func for all linters.
+
+    Args:
+      argv: The command line to process.
+      paths: The default set of files to lint.  If the user doesn't specify
+          any, we'll use these instead.
+      mkdeps: Callback to build dependencies after we've initialized.
+      eslint_args: Extra arguments to pass to eslint.
+      closure_args: Extra arguments to pass to closure-compiler.
+    """
+    parser = get_parser()
+    opts = parser.parse_args(argv)
+    libdot.node_and_npm_setup()
+
+    if not opts.paths:
+        if paths:
+            opts.paths = paths
+        else:
+            print('No files to lint.')
+            return 0
+
+    if mkdeps:
+        if opts.run_mkdeps:
+            mkdeps(opts)
+        else:
+            logging.info('Skipping building dependencies due to --skip-mkdeps')
+
+    checks = [run_eslint(opts, eslint_args)]
+    if not opts.fix:
+        checks += [run_closure(opts, closure_args)]
+    return 0 if all(checks) else 1
 
 
 if __name__ == '__main__':
-    sys.exit(main(sys.argv[1:]))
+    sys.exit(main(sys.argv[1:], paths=_get_default_paths()))

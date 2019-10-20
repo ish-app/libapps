@@ -15,14 +15,15 @@
  * may be a chrome api to store sync-able name/value pairs, and we'd want
  * that.
  *
- * @param {lib.Storage.*} storage The storage object to use as a backing
+ * @param {!lib.Storage} storage The storage object to use as a backing
  *     store.
- * @param {string} opt_prefix The optional prefix to be used for all preference
+ * @param {string=} prefix The optional prefix to be used for all preference
  *     names.  The '/' character should be used to separate levels of hierarchy,
  *     if you're going to have that kind of thing.  If provided, the prefix
  *     should start with a '/'.  If not provided, it defaults to '/'.
+ * @constructor
  */
-lib.PreferenceManager = function(storage, opt_prefix) {
+lib.PreferenceManager = function(storage, prefix = '/') {
   this.storage = storage;
   this.storageObserver_ = this.onStorageChange_.bind(this);
 
@@ -31,7 +32,6 @@ lib.PreferenceManager = function(storage, opt_prefix) {
 
   this.trace = false;
 
-  var prefix = opt_prefix || '/';
   if (!prefix.endsWith('/'))
     prefix += '/';
 
@@ -41,6 +41,7 @@ lib.PreferenceManager = function(storage, opt_prefix) {
   // to elide redundant storage writes (for quota reasons).
   this.isImportingJson_ = false;
 
+  /** @type {!Object<string, !lib.PreferenceManager.Record>} */
   this.prefRecords_ = {};
   this.globalObservers_ = [];
 
@@ -68,6 +69,8 @@ lib.PreferenceManager = function(storage, opt_prefix) {
  * be taken from the default value defined with the preference.
  *
  * Equality tests against this value MUST use '===' or '!==' to be accurate.
+ *
+ * @type {symbol}
  */
 lib.PreferenceManager.prototype.DEFAULT_VALUE = Symbol('DEFAULT_VALUE');
 
@@ -76,6 +79,10 @@ lib.PreferenceManager.prototype.DEFAULT_VALUE = Symbol('DEFAULT_VALUE');
  *
  * These objects are managed by the PreferenceManager, you shouldn't need to
  * handle them directly.
+ *
+ * @param {string} name The name of the new preference (used for indexing).
+ * @param {*} defaultValue The default value for this preference.
+ * @constructor
  */
 lib.PreferenceManager.Record = function(name, defaultValue) {
   this.name = name;
@@ -86,6 +93,8 @@ lib.PreferenceManager.Record = function(name, defaultValue) {
 
 /**
  * A local copy of the DEFAULT_VALUE constant to make it less verbose.
+ *
+ * @type {symbol}
  */
 lib.PreferenceManager.Record.prototype.DEFAULT_VALUE =
     lib.PreferenceManager.prototype.DEFAULT_VALUE;
@@ -93,9 +102,9 @@ lib.PreferenceManager.Record.prototype.DEFAULT_VALUE =
 /**
  * Register a callback to be invoked when this preference changes.
  *
- * @param {function(value, string, lib.PreferenceManager} observer The function
- *     to invoke.  It will receive the new value, the name of the preference,
- *     and a reference to the PreferenceManager as parameters.
+ * @param {function(string, string, !lib.PreferenceManager)} observer The
+ *     function to invoke.  It will receive the new value, the name of the
+ *     preference, and a reference to the PreferenceManager as parameters.
  */
 lib.PreferenceManager.Record.prototype.addObserver = function(observer) {
   this.observers.push(observer);
@@ -104,7 +113,7 @@ lib.PreferenceManager.Record.prototype.addObserver = function(observer) {
 /**
  * Unregister an observer callback.
  *
- * @param {function} observer A previously registered callback.
+ * @param {function()} observer A previously registered callback.
  */
 lib.PreferenceManager.Record.prototype.removeObserver = function(observer) {
   var i = this.observers.indexOf(observer);
@@ -114,6 +123,8 @@ lib.PreferenceManager.Record.prototype.removeObserver = function(observer) {
 
 /**
  * Fetch the value of this preference.
+ *
+ * @return {*} The value for this preference.
  */
 lib.PreferenceManager.Record.prototype.get = function() {
   if (this.currentValue === this.DEFAULT_VALUE) {
@@ -174,7 +185,7 @@ lib.PreferenceManager.prototype.activate = function() {
  * This function is asynchronous, if you need to read preference values, you
  * *must* wait for the callback.
  *
- * @param {function()} opt_callback Optional function to invoke when the read
+ * @param {function()=} opt_callback Optional function to invoke when the read
  *     has completed.
  */
 lib.PreferenceManager.prototype.readStorage = function(opt_callback) {
@@ -220,10 +231,10 @@ lib.PreferenceManager.prototype.readStorage = function(opt_callback) {
  *
  * @param {string} name The name of the preference.  This will be prefixed by
  *     the prefix of this PreferenceManager before written to local storage.
- * @param {string|number|boolean|Object|Array|null} value The default value of
+ * @param {string|number|boolean|!Object|!Array|null} value The default value of
  *     this preference.  Anything that can be represented in JSON is a valid
  *     default value.
- * @param {function(value, string, lib.PreferenceManager} opt_observer A
+ * @param {function(*, string, !lib.PreferenceManager)=} opt_onChange A
  *     function to invoke when the preference changes.  It will receive the new
  *     value, the name of the preference, and a reference to the
  *     PreferenceManager as parameters.
@@ -246,7 +257,7 @@ lib.PreferenceManager.prototype.definePreference = function(
 /**
  * Define multiple preferences with a single function call.
  *
- * @param {Array} defaults An array of 3-element arrays.  Each three element
+ * @param {!Array<*>} defaults An array of 3-element arrays.  Each three element
  *     array should contain the [key, value, onChange] parameters for a
  *     preference.
  */
@@ -269,10 +280,10 @@ lib.PreferenceManager.prototype.definePreferences = function(defaults) {
  *     preference on this PreferenceManager used to store the ordered list of
  *     child ids.  It is also used in get/add/remove operations to identify the
  *     list of children to operate on.
- * @param {function} childFactory A function that will be used to generate
- *     instances of these children.  The factory function will receive the
- *     parent lib.PreferenceManager object and a unique id for the new child
- *     preferences.
+ * @param {function(!lib.PreferenceManager, string)} childFactory A function
+ *     that will be used to generate instances of these children.  The factory
+ *     function will receive the parent lib.PreferenceManager object and a
+ *     unique id for the new child preferences.
  */
 lib.PreferenceManager.prototype.defineChildren = function(
     listName, childFactory) {
@@ -287,9 +298,23 @@ lib.PreferenceManager.prototype.defineChildren = function(
 /**
  * Register to observe preference changes.
  *
- * @param {Function} global A callback that will happen for every preference.
+ * @param {string} name The name of preference you wish to observe..
+ * @param {function()} observer The callback.
+ */
+lib.PreferenceManager.prototype.addObserver = function(name, observer) {
+  if (!(name in this.prefRecords_)) {
+    throw new Error(`Unknown preference: ${name}`);
+  }
+
+  this.prefRecords_[name].addObserver(observer);
+};
+
+/**
+ * Register to observe preference changes.
+ *
+ * @param {?function()} global A callback that will happen for every preference.
  *     Pass null if you don't need one.
- * @param {Object} map A map of preference specific callbacks.  Pass null if
+ * @param {!Object} map A map of preference specific callbacks.  Pass null if
  *     you don't need any.
  */
 lib.PreferenceManager.prototype.addObservers = function(global, map) {
@@ -303,11 +328,22 @@ lib.PreferenceManager.prototype.addObservers = function(global, map) {
     return;
 
   for (var name in map) {
-    if (!(name in this.prefRecords_))
-      throw new Error('Unknown preference: ' + name);
-
-    this.prefRecords_[name].addObserver(map[name]);
+    this.addObserver(name, map[name]);
   }
+};
+
+/**
+ * Remove preference observer.
+ *
+ * @param {string} name The name of preference you wish to stop observing.
+ * @param {function()} observer The observer to remove.
+ */
+lib.PreferenceManager.prototype.removeObserver = function(name, observer) {
+  if (!(name in this.prefRecords_)) {
+    throw new Error(`Unknown preference: ${name}`);
+  }
+
+  this.prefRecords_[name].removeObserver(observer);
 };
 
 /**
@@ -353,8 +389,9 @@ lib.PreferenceManager.prototype.notifyChange_ = function(name) {
  * and use it.
  *
  * @param {string} listName The child list to create the new instance from.
- * @param {string} opt_hint Optional hint to include in the child id.
- * @param {string} opt_id Optional id to override the generated id.
+ * @param {?string=} opt_hint Optional hint to include in the child id.
+ * @param {string=} opt_id Optional id to override the generated id.
+ * @return {!lib.PreferenceManager} The new child preference manager.
  */
 lib.PreferenceManager.prototype.createChild = function(listName, opt_hint,
                                                        opt_id) {
@@ -419,8 +456,9 @@ lib.PreferenceManager.prototype.removeChild = function(listName, id) {
  *
  * @param {string} listName The child list to look in.
  * @param {string} id The child ID.
- * @param {*} opt_default The optional default value to return if the child
+ * @param {!lib.PreferenceManager=} opt_default The value to return if the child
  *     is not found.
+ * @return {!lib.PreferenceManager} The specified child PreferenceManager.
  */
 lib.PreferenceManager.prototype.getChild = function(listName, id, opt_default) {
   if (!(listName in this.childLists_))
@@ -438,50 +476,6 @@ lib.PreferenceManager.prototype.getChild = function(listName, id, opt_default) {
 };
 
 /**
- * Calculate the difference between two lists of child ids.
- *
- * Given two arrays of child ids, this function will return an object
- * with "added", "removed", and "common" properties.  Each property is
- * a map of child-id to `true`.  For example, given...
- *
- *    a = ['child-x', 'child-y']
- *    b = ['child-y']
- *
- *    diffChildLists(a, b) =>
- *      { added: { 'child-x': true }, removed: {}, common: { 'child-y': true } }
- *
- * The added/removed properties assume that `a` is the current list.
- *
- * @param {Array[string]} a The most recent list of child ids.
- * @param {Array[string]} b An older list of child ids.
- * @return {Object} An object with added/removed/common properties.
- */
-lib.PreferenceManager.diffChildLists = function(a, b) {
-  var rv = {
-    added: {},
-    removed: {},
-    common: {},
-  };
-
-  for (var i = 0; i < a.length; i++) {
-    if (b.indexOf(a[i]) != -1) {
-      rv.common[a[i]] = true;
-    } else {
-      rv.added[a[i]] = true;
-    }
-  }
-
-  for (var i = 0; i < b.length; i++) {
-    if ((b[i] in rv.added) || (b[i] in rv.common))
-      continue;
-
-    rv.removed[b[i]] = true;
-  }
-
-  return rv;
-};
-
-/**
  * Synchronize a list of child PreferenceManagers instances with the current
  * list stored in prefs.
  *
@@ -490,8 +484,7 @@ lib.PreferenceManager.diffChildLists = function(a, b) {
  * be deleted.
  *
  * @param {string} listName The child list to synchronize.
- * @param {function()} opt_callback Optional function to invoke when the sync
- *     is complete.
+ * @param {function()=} opt_callback Function to invoke when the sync finishes.
  */
 lib.PreferenceManager.prototype.syncChildList = function(
     listName, opt_callback) {
@@ -508,8 +501,6 @@ lib.PreferenceManager.prototype.syncChildList = function(
   // The known managers at the start of the sync.  Any manager still in this
   // list at the end should be discarded.
   var oldIds = Object.keys(this.childLists_[listName]);
-
-  var rv = lib.PreferenceManager.diffChildLists(currentIds, oldIds);
 
   for (var i = 0; i < currentIds.length; i++) {
     var id = currentIds[i];
@@ -602,6 +593,7 @@ lib.PreferenceManager.prototype.resetAll = function() {
  *
  * @param {*} a A value to compare.
  * @param {*} b A value to compare.
+ * @return {boolean} Whether the two are not equal.
  */
 lib.PreferenceManager.prototype.diff = function(a, b) {
   // If the types are different.
@@ -659,7 +651,7 @@ lib.PreferenceManager.prototype.changeDefault = function(name, newValue) {
 /**
  * Change the default value of multiple preferences.
  *
- * @param {Object} map A map of name -> value pairs specifying the new default
+ * @param {!Object} map A map of name -> value pairs specifying the new default
  *     values.
  */
 lib.PreferenceManager.prototype.changeDefaults = function(map) {
@@ -680,6 +672,8 @@ lib.PreferenceManager.prototype.changeDefaults = function(map) {
  * @param {function()=} onComplete Callback when the set call completes.
  * @param {boolean=} saveToStorage Whether to commit the change to the backing
  *     storage or only the in-memory record copy.
+ * @return {!Promise<void>} Promise which resolves once all observers are
+ *     notified.
  */
 lib.PreferenceManager.prototype.set = function(
     name, newValue, onComplete=undefined, saveToStorage=true) {
@@ -690,7 +684,7 @@ lib.PreferenceManager.prototype.set = function(
   var oldValue = record.get();
 
   if (!this.diff(oldValue, newValue))
-    return;
+    return Promise.resolve();
 
   if (this.diff(record.defaultValue, newValue)) {
     record.currentValue = newValue;
@@ -708,15 +702,18 @@ lib.PreferenceManager.prototype.set = function(
   // currentValue until the storage event, a pref read immediately after a write
   // would return the previous value.
   //
-  // The notification is in a timeout so clients don't accidentally depend on
+  // The notification is async so clients don't accidentally depend on
   // a synchronous notification.
-  setTimeout(this.notifyChange_.bind(this, name), 0);
+  return Promise.resolve().then(() => {
+    this.notifyChange_(name);
+  });
 };
 
 /**
  * Get the value of a preference.
  *
- * @param {string} key The preference to get.
+ * @param {string} name The preference to get.
+ * @return {*} The preference's value.
  */
 lib.PreferenceManager.prototype.get = function(name) {
   var record = this.prefRecords_[name];
@@ -727,9 +724,47 @@ lib.PreferenceManager.prototype.get = function(name) {
 };
 
 /**
+ * Get the boolean value of a preference.
+ *
+ * @param {string} name The preference to get.
+ * @return {boolean}
+ */
+lib.PreferenceManager.prototype.getBoolean = function(name) {
+  const result = this.get(name);
+  lib.assert(typeof result == 'boolean');
+  return result;
+};
+
+/**
+ * Get the number value of a preference.
+ *
+ * @param {string} name The preference to get.
+ * @return {number}
+ */
+lib.PreferenceManager.prototype.getNumber = function(name) {
+  const result = this.get(name);
+  lib.assert(typeof result == 'number');
+  return result;
+};
+
+/**
+ * Get the string value of a preference.
+ *
+ * @param {string} name The preference to get.
+ * @return {string}
+ */
+lib.PreferenceManager.prototype.getString = function(name) {
+  const result = this.get(name);
+  lib.assert(typeof result == 'string');
+  return result;
+};
+
+/**
  * Return all non-default preferences as a JSON object.
  *
  * This includes any nested preference managers as well.
+ *
+ * @return {!Object} The JSON preferences.
  */
 lib.PreferenceManager.prototype.exportAsJson = function() {
   var rv = {};
@@ -757,15 +792,19 @@ lib.PreferenceManager.prototype.exportAsJson = function() {
  * Import a JSON blob of preferences previously generated with exportAsJson.
  *
  * This will create nested preference managers as well.
+ *
+ * @param {!Object} json The JSON settings to import.
+ * @param {function()=} onComplete Callback when all imports have finished.
  */
-lib.PreferenceManager.prototype.importFromJson = function(json, opt_onComplete) {
+lib.PreferenceManager.prototype.importFromJson = function(json, onComplete) {
   this.isImportingJson_ = true;
 
   let pendingWrites = 0;
   const onWriteStorage = () => {
     if (--pendingWrites < 1) {
-      if (opt_onComplete)
-        opt_onComplete();
+      if (onComplete) {
+        onComplete();
+      }
 
       // We've delayed updates to the child arrays, so flush them now.
       for (let name in json)
@@ -798,12 +837,15 @@ lib.PreferenceManager.prototype.importFromJson = function(json, opt_onComplete) 
 
   // If we didn't update any children, no async work has been queued, so make
   // the completion callback directly.
-  if (pendingWrites == 0 && opt_onComplete)
-    opt_onComplete();
+  if (pendingWrites == 0 && onComplete) {
+    onComplete();
+  }
 };
 
 /**
  * Called when one of the child list preferences changes.
+ *
+ * @param {string} listName The child list to synchronize.
  */
 lib.PreferenceManager.prototype.onChildListChange_ = function(listName) {
   this.syncChildList(listName);
@@ -811,6 +853,8 @@ lib.PreferenceManager.prototype.onChildListChange_ = function(listName) {
 
 /**
  * Called when a key in the storage changes.
+ *
+ * @param {!Object} map Dictionary of changed settings.
  */
 lib.PreferenceManager.prototype.onStorageChange_ = function(map) {
   for (var key in map) {
@@ -831,7 +875,7 @@ lib.PreferenceManager.prototype.onStorageChange_ = function(map) {
     var newValue = map[key].newValue;
     var currentValue = record.currentValue;
     if (currentValue === record.DEFAULT_VALUE)
-      currentValue = (void 0);
+      currentValue = undefined;
 
     if (this.diff(currentValue, newValue)) {
       if (typeof newValue == 'undefined' || newValue === null) {

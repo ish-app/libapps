@@ -10,8 +10,9 @@
  * There should only be one of these, and it assumes the connect dialog is
  * the only thing in the current window.
  *
- * @param {MessagePort} messagePort The HTML5 message port we should use to
+ * @param {!MessagePort} messagePort The HTML5 message port we should use to
  *     communicate with the nassh instance.
+ * @constructor
  */
 nassh.ConnectDialog = function(messagePort) {
 
@@ -50,17 +51,19 @@ nassh.ConnectDialog = function(messagePort) {
   this.profileList_ = [];
 
   // Cached DOM nodes.
-  this.form_ = document.querySelector('form');
-  this.mountButton_ = document.querySelector('#mount');
-  this.unmountButton_ = document.querySelector('#unmount');
-  this.sftpClientButton_ = document.querySelector('#sftp-client');
-  this.connectButton_ = document.querySelector('#connect');
-  this.deleteButton_ = document.querySelector('#delete');
-  this.optionsButton_ = document.querySelector('#options');
+  this.form_ = lib.notNull(document.querySelector('form'));
+  this.mountButton_ = lib.notNull(document.querySelector('#mount'));
+  this.unmountButton_ = lib.notNull(document.querySelector('#unmount'));
+  this.sftpClientButton_ = lib.notNull(document.querySelector('#sftp-client'));
+  this.connectButton_ = lib.notNull(document.querySelector('#connect'));
+  this.deleteButton_ = lib.notNull(document.querySelector('#delete'));
+  this.optionsButton_ = lib.notNull(document.querySelector('#options'));
 };
 
 /**
  * Global window message handler, uninstalled after proper handshake.
+ *
+ * @param {!Event} e
  */
 nassh.ConnectDialog.onWindowMessage = function(e) {
   if (e.data.name != 'ipc-init') {
@@ -85,7 +88,8 @@ window.addEventListener('message', nassh.ConnectDialog.onWindowMessage);
 nassh.ConnectDialog.prototype.onPreferencesReady_ = function() {
   // Create and draw the shortcut list.
   this.shortcutList_ = new nassh.ColumnList(
-      document.querySelector('#shortcut-list'), this.profileList_);
+      lib.notNull(document.querySelector('#shortcut-list')),
+      this.profileList_);
 
   // Install various (DOM and non-DOM) event handlers.
   this.installHandlers_();
@@ -112,11 +116,17 @@ nassh.ConnectDialog.prototype.onPreferencesReady_ = function() {
 
 /**
  * Simple struct to collect data about a profile.
+ *
+ * @this {nassh.ConnectDialog}
+ * @param {string} id
+ * @param {?lib.PreferenceManager} prefs
+ * @param {string=} textContent
+ * @constructor
  */
-nassh.ConnectDialog.ProfileRecord = function(id, prefs, opt_textContent) {
+nassh.ConnectDialog.ProfileRecord = function(id, prefs, textContent) {
   this.id = id;
   this.prefs = prefs;
-  this.textContent = opt_textContent || prefs.get('description');
+  this.textContent = textContent || prefs.get('description');
 };
 
 /**
@@ -124,12 +134,17 @@ nassh.ConnectDialog.ProfileRecord = function(id, prefs, opt_textContent) {
  *
  * This converts all message name to UPPER_AND_UNDER format, since that's
  * pretty handy in the connect dialog.
+ *
+ * @this {nassh.ConnectDialog}
+ * @param {string} name
+ * @param {!Object=} args
+ * @return {string}
  */
-nassh.ConnectDialog.prototype.msg = function(name, opt_args) {
+nassh.ConnectDialog.prototype.msg = function(name, args) {
   if (!this.mm_)
     return 'loading...';
 
-  return this.mm_.get(name.toUpperCase().replace(/-/g, '_'), opt_args);
+  return this.mm_.get(name.toUpperCase().replace(/-/g, '_'), args);
 };
 
 /**
@@ -150,12 +165,17 @@ nassh.ConnectDialog.prototype.alignLabels_ = function() {
  * Install various event handlers.
  */
 nassh.ConnectDialog.prototype.installHandlers_ = function() {
-  // Small utility to connect DOM events.
-  function addListeners(node, events, handler, var_args) {
-    for (var i = 2; i < arguments.length; i++) {
-      handler = arguments[i];
-      for (var j = 0; j < events.length; j++) {
-        node.addEventListener(events[j], handler);
+  /**
+   * Small utility to connect DOM events.
+   *
+   * @param {!Element} node
+   * @param {!Array<string>} events
+   * @param {...function(!Event)} handlers
+   */
+  function addListeners(node, events, ...handlers) {
+    for (let handler of handlers) {
+      for (let e of events) {
+        node.addEventListener(e, handler);
       }
     }
   }
@@ -176,7 +196,8 @@ nassh.ConnectDialog.prototype.installHandlers_ = function() {
   }
 
   // Watch for keypresses sent anywhere in this frame.
-  document.addEventListener('keydown', this.onDocumentKeyDown_.bind(this));
+  document.addEventListener('keydown',
+      /** @type {!EventListener} */ (this.onDocumentKeyDown_.bind(this)));
 
   // Watch for selection changes on the ColumnList so we can keep the
   // 'billboard' updated.
@@ -213,7 +234,7 @@ nassh.ConnectDialog.prototype.installHandlers_ = function() {
   // These fields interact with each-other's placeholder text.
   ['description', 'username', 'hostname', 'port'
   ].forEach((name) => {
-      var field = this.$f(name);
+      var field = /** @type {!Element} */ (this.$f(name));
 
       // Alter description or detail placeholders, and commit the pref.
       addListeners(field, ['change', 'keypress', 'keyup'],
@@ -230,8 +251,7 @@ nassh.ConnectDialog.prototype.installHandlers_ = function() {
   // These fields are plain text with no fancy properties.
   ['argstr', 'terminal-profile', 'mount-path',
   ].forEach((name) => {
-      var field = this.$f(name);
-      addListeners(field,
+      addListeners(/** @type {!Element} */ (this.$f(name)),
                    ['change', 'keypress', 'keyup'],
                    this.maybeDirty_.bind(this, name));
     });
@@ -239,8 +259,8 @@ nassh.ConnectDialog.prototype.installHandlers_ = function() {
   ['description', 'username', 'hostname', 'port', 'nassh-options',
    'identity', 'argstr', 'terminal-profile', 'mount-path',
   ].forEach((name) => {
-      addListeners(this.$f(name), ['focus', 'blur'],
-                   this.onFormFocusChange_.bind(this, name));
+      addListeners(/** @type {!Element} */ (this.$f(name)), ['focus', 'blur'],
+                   this.onFormFocusChange_.bind(this));
     });
 
   // Listen for DEL on the identity select box.
@@ -263,24 +283,30 @@ nassh.ConnectDialog.prototype.installHandlers_ = function() {
 
 /**
  * Quick way to ask for a '#field-' element from the dom.
+ *
+ * @param {string} name
+ * @param {string=} attrName
+ * @param {string=} attrValue
+ * @return {!Element|string|undefined}
  */
-nassh.ConnectDialog.prototype.$f = function(
-    name, opt_attrName, opt_attrValue) {
+nassh.ConnectDialog.prototype.$f = function(name, attrName, attrValue) {
   var node = document.querySelector('#field-' + name);
   if (!node)
     throw new Error('Can\'t find: #field-' + name);
 
-  if (!opt_attrName)
+  if (!attrName)
     return node;
 
-  if (typeof opt_attrValue == 'undefined')
-    return node.getAttribute(opt_attrName);
+  if (typeof attrValue == 'undefined')
+    return node.getAttribute(attrName);
 
-  node.setAttribute(opt_attrName, opt_attrValue);
+  node.setAttribute(attrName, attrValue);
 };
 
 /**
  * Change the active profile.
+ *
+ * @param {?nassh.ConnectDialog.ProfileRecord} profileRecord
  */
 nassh.ConnectDialog.prototype.setCurrentProfileRecord = function(
     profileRecord) {
@@ -299,6 +325,9 @@ nassh.ConnectDialog.prototype.setCurrentProfileRecord = function(
  *
  * Since they're not real <button> tags the don't react properly to the
  * disabled property.
+ *
+ * @param {!Element} button
+ * @param {boolean} state
  */
 nassh.ConnectDialog.prototype.enableButton_ = function(button, state) {
   if (state) {
@@ -312,6 +341,10 @@ nassh.ConnectDialog.prototype.enableButton_ = function(button, state) {
 
 /**
  * Change the display state of one of our <div role='button'> elements.
+ *
+ * @param {!Element} button
+ * @param {boolean} state
+ * @param {string=} style
  */
 nassh.ConnectDialog.prototype.displayButton_ = function(
     button, state, style='inline') {
@@ -326,9 +359,14 @@ nassh.ConnectDialog.prototype.displayButton_ = function(
 
 /**
  * Change the mounted state of the mount button.
+ *
+ * @param {boolean} state
  */
 nassh.ConnectDialog.prototype.displayMountButton_ = function(state) {
-  this.displayButton_(document.querySelector('#mount-path'), state, 'flex');
+  this.displayButton_(
+      lib.notNull(document.querySelector('#mount-path')),
+      state,
+      'flex');
   if (!state) {
     this.displayButton_(this.mountButton_, false);
     this.displayButton_(this.unmountButton_, false);
@@ -336,8 +374,8 @@ nassh.ConnectDialog.prototype.displayMountButton_ = function(state) {
   }
 
   chrome.fileSystemProvider.getAll((fileSystems) => {
-    for (var i in fileSystems) {
-      if (fileSystems[i].fileSystemId == this.currentProfileRecord_.id) {
+    for (let fs of fileSystems) {
+      if (fs.fileSystemId == this.currentProfileRecord_.id) {
         this.displayButton_(this.mountButton_, false);
         this.displayButton_(this.unmountButton_, true);
         return;
@@ -375,7 +413,7 @@ nassh.ConnectDialog.prototype.save = function() {
        }
 
        if (name == 'port') {
-         value = parseInt(value);
+         value = parseInt(value, 10);
          if (!value) {
            // If parsing failed for any reason, reset it to the default.
            value = null;
@@ -391,7 +429,7 @@ nassh.ConnectDialog.prototype.save = function() {
 
   if (dirtyForm) {
     if (!prefs) {
-      var prefs = this.prefs_.createProfile();
+      prefs = this.prefs_.createProfile();
       var rec = new nassh.ConnectDialog.ProfileRecord(
           prefs.id, prefs, changedFields['description']);
       this.currentProfileRecord_ = rec;
@@ -415,7 +453,7 @@ nassh.ConnectDialog.prototype.save = function() {
  * Helper for starting a connection.
  *
  * @param {string} message The message to send to the main window to startup.
- * @param {string} protocol The URI schema to try and register.
+ * @param {string} proto The URI schema to try and register.
  */
 nassh.ConnectDialog.prototype.startup_ = function(message, proto) {
   this.maybeCopyPlaceholders_();
@@ -472,14 +510,19 @@ nassh.ConnectDialog.prototype.connect = function() {
 
 /**
  * Send a message back to the terminal.
+ *
+ * @param {string} name
+ * @param {?Object=} argv
  */
-nassh.ConnectDialog.prototype.postMessage = function(name, argv) {
-  this.messagePort_.postMessage({name: name, argv: argv || null});
+nassh.ConnectDialog.prototype.postMessage = function(name, argv = null) {
+  this.messagePort_.postMessage({name: name, argv: argv});
 };
 
 /**
  * Set the profile's dirty bit if the given field has changed from it's current
  * pref value.
+ *
+ * @param {string} fieldName
  */
 nassh.ConnectDialog.prototype.maybeDirty_ = function(fieldName) {
   if (this.currentProfileRecord_.prefs) {
@@ -506,6 +549,8 @@ nassh.ConnectDialog.prototype.maybeCopyPlaceholders_ = function() {
 /**
  * If the field is empty and the current placeholder isn't the default,
  * then initialize the field to the placeholder.
+ *
+ * @param {string} fieldName
  */
 nassh.ConnectDialog.prototype.maybeCopyPlaceholder_ = function(fieldName) {
   var field = this.$f(fieldName);
@@ -518,6 +563,8 @@ nassh.ConnectDialog.prototype.maybeCopyPlaceholder_ = function(fieldName) {
 
 /**
  * Compute the placeholder text for a given field.
+ *
+ * @param {string} fieldName
  */
 nassh.ConnectDialog.prototype.updatePlaceholders_ = function(fieldName) {
   if (fieldName == 'description') {
@@ -576,11 +623,11 @@ nassh.ConnectDialog.prototype.updateNasshOptionsPlaceholder_ = function() {
       hostname = this.$f('hostname').placeholder;
 
     const googleHostRegexp = new RegExp(
-        '\.(' +
-        'corp\.google\.com|' +
-        'c\.googlers\.com|' +
-        'cloud\.googlecorp\.com|' +
-        '(internal|proxy)\.gcpnode\.com' +
+        '\\.(' +
+        'corp\\.google\\.com|' +
+        'c\\.googlers\\.com|' +
+        'cloud\\.googlecorp\\.com|' +
+        '(internal|proxy)\\.gcpnode\\.com' +
         ')$');
     if (hostname.match(googleHostRegexp)) {
       value = '--config=google';
@@ -640,6 +687,8 @@ nassh.ConnectDialog.prototype.syncForm_ = function() {
 /**
  * Checks whether the current machine can use the File System Provider API, and
  * thus be able to be mounted.
+ *
+ * @return {boolean}
  */
 nassh.ConnectDialog.prototype.checkMountable_ = function() {
   return chrome.fileSystemProvider !== undefined;
@@ -661,8 +710,11 @@ nassh.ConnectDialog.prototype.syncButtons_ = function() {
 
 /**
  * Sync the identity dropdown box with the filesystem.
+ *
+ * @param {function()=} onSuccess
+ * @return {!Promise}
  */
-nassh.ConnectDialog.prototype.syncIdentityDropdown_ = function(opt_onSuccess) {
+nassh.ConnectDialog.prototype.syncIdentityDropdown_ = function(onSuccess) {
   const keyfileNames = new Set();
   var identitySelect = this.$f('identity');
 
@@ -717,8 +769,9 @@ nassh.ConnectDialog.prototype.syncIdentityDropdown_ = function(opt_onSuccess) {
 
     this.syncForm_();
 
-    if (opt_onSuccess)
-      opt_onSuccess();
+    if (onSuccess) {
+      onSuccess();
+    }
   };
 
   return Promise.all([
@@ -726,7 +779,7 @@ nassh.ConnectDialog.prototype.syncIdentityDropdown_ = function(opt_onSuccess) {
     // TODO: Delete this at some point after Aug 2019.  Jan 2021 should be long
     // enough for users to migrate.
     lib.fs.readDirectory(this.fileSystem_.root, '/.ssh/')
-      .then(onReadSuccess),
+      .then(onReadSuccess).catch(onReadError),
 
     // Load new keys from /.ssh/identity/.
     lib.fs.readDirectory(this.fileSystem_.root, '/.ssh/identity/')
@@ -740,13 +793,16 @@ nassh.ConnectDialog.prototype.syncIdentityDropdown_ = function(opt_onSuccess) {
 
 /**
  * Delete one a pair of identity files from the html5 filesystem.
+ *
+ * @param {string} identityName
+ * @return {!Promise}
  */
 nassh.ConnectDialog.prototype.deleteIdentity_ = function(identityName) {
-  const removeFile = (file) => new Promise((resolve) => {
-    // We resolve in the error path because we try to delete paths that are
+  const removeFile = (file) => {
+    // We swallow the rejection because we try to delete paths that are
     // often not there (e.g. missing .pub file).
-    lib.fs.removeFile(this.fileSystem_.root, file, resolve, resolve);
-  });
+    return lib.fs.removeFile(this.fileSystem_.root, file).catch(() => {});
+  };
 
   const files = [
     // Delete the private & public key halves for this identity from the .ssh/
@@ -764,6 +820,11 @@ nassh.ConnectDialog.prototype.deleteIdentity_ = function(identityName) {
     .finally(() => this.syncIdentityDropdown_());
 };
 
+/**
+ * Delete a profile.
+ *
+ * @param {string} deadID ID of profile to delete.
+ */
 nassh.ConnectDialog.prototype.deleteProfile_ = function(deadID) {
   if (this.currentProfileRecord_.id == deadID) {
     // The actual profile removal and list-updating will happen async.
@@ -785,7 +846,8 @@ nassh.ConnectDialog.prototype.deleteProfile_ = function(deadID) {
 /**
  * Return the index into this.profileList_ for a given profile id.
  *
- * Returns -1 if the id is not found.
+ * @param {string} id
+ * @return {number} -1 if the id is not found.
  */
 nassh.ConnectDialog.prototype.getProfileIndex_ = function(id) {
   for (var i = 0; i < this.profileList_.length; i++) {
@@ -798,8 +860,10 @@ nassh.ConnectDialog.prototype.getProfileIndex_ = function(id) {
 
 /**
  * Sync the ColumnList with the known profiles.
+ *
+ * @param {function()=} callback
  */
-nassh.ConnectDialog.prototype.syncProfiles_ = function(opt_callback) {
+nassh.ConnectDialog.prototype.syncProfiles_ = function(callback) {
   var ids = this.prefs_.get('profile-ids');
 
   this.profileList_.length = 0;
@@ -848,8 +912,9 @@ nassh.ConnectDialog.prototype.syncProfiles_ = function(opt_callback) {
   }
 
   if (this.profileList_.length == 1) {
-    if (opt_callback)
-      opt_callback();
+    if (callback) {
+      callback();
+    }
   }
 
   // Start at 1 for the "[New Connection]" profile.
@@ -858,8 +923,9 @@ nassh.ConnectDialog.prototype.syncProfiles_ = function(opt_callback) {
   var onRead = function(profile) {
     profile.textContent = profile.prefs.get('description');
 
-    if ((++initialized == this.profileList_.length) && opt_callback)
-        opt_callback();
+    if ((++initialized == this.profileList_.length) && callback) {
+      callback();
+    }
   };
 
   this.profileList_.forEach((profile) => {
@@ -872,11 +938,11 @@ nassh.ConnectDialog.prototype.syncProfiles_ = function(opt_callback) {
  * Success callback for lib.fs.getFileSystem().
  *
  * Kick off the "Identity" dropdown now that we have access to the filesystem.
+ *
+ * @param {!FileSystem} fileSystem
  */
-nassh.ConnectDialog.prototype.onFileSystemFound_ = function(
-    fileSystem, sshDirectoryEntry) {
+nassh.ConnectDialog.prototype.onFileSystemFound_ = function(fileSystem) {
   this.fileSystem_ = fileSystem;
-  this.sshDirectoryEntry_ = sshDirectoryEntry;
   this.syncIdentityDropdown_();
 
   // Tell the parent we're ready to roll.
@@ -888,6 +954,9 @@ nassh.ConnectDialog.prototype.onFileSystemFound_ = function(
  *
  * This is the onChange handler for the `input type="file"`
  * (aka this.importFileInput_) control.
+ *
+ * @param {!Event} e
+ * @return {boolean}
  */
 nassh.ConnectDialog.prototype.onImportFiles_ = function(e) {
   const promises = [];
@@ -905,10 +974,7 @@ nassh.ConnectDialog.prototype.onImportFiles_ = function(e) {
       }
 
       const targetPath = `/.ssh/identity/${file.name}`;
-      lib.fs.overwriteFile(
-          this.fileSystem_.root, targetPath, file,
-          lib.fs.log(`Imported: ${targetPath}`, resolve),
-          lib.fs.err(`Error importing: ${targetPath}`, reject));
+      return lib.fs.overwriteFile(this.fileSystem_.root, targetPath, file);
     }));
   }
 
@@ -943,8 +1009,8 @@ nassh.ConnectDialog.prototype.onImportFiles_ = function(e) {
 /**
  * Keydown event anywhere in this frame.
  *
- * @param {KeyboardEvent} e The user keydown event to process.
- * @return {bool} Whether to keep processing the event.
+ * @param {!KeyboardEvent} e The user keydown event to process.
+ * @return {boolean} Whether to keep processing the event.
  */
 nassh.ConnectDialog.prototype.onDocumentKeyDown_ = function(e) {
   const key = String.fromCharCode(e.keyCode);
@@ -983,6 +1049,8 @@ nassh.ConnectDialog.prototype.onDocumentKeyDown_ = function(e) {
 
 /**
  * Keydown event on the shortcut list.
+ *
+ * @param {!Event} e
  */
 nassh.ConnectDialog.prototype.onShortcutListKeyDown_ = function(e) {
   var isNewConnection = this.currentProfileRecord_ == this.emptyProfileRecord_;
@@ -1006,12 +1074,15 @@ nassh.ConnectDialog.prototype.onShortcutListKeyDown_ = function(e) {
   }
 };
 
+/** @param {!Event} e */
 nassh.ConnectDialog.prototype.onShortcutListDblClick_ = function(e) {
   this.onConnectClick_();
 };
 
 /**
  * Called when the ColumnList says the active profile changed.
+ *
+ * @param {!nassh.ColumnList.ActiveIndexChangedEvent} e
  */
 nassh.ConnectDialog.prototype.onProfileIndexChanged = function(e) {
   this.setCurrentProfileRecord(this.profileList_[e.now]);
@@ -1020,6 +1091,8 @@ nassh.ConnectDialog.prototype.onProfileIndexChanged = function(e) {
 
 /**
  * Key press while a button has focus.
+ *
+ * @param {!Event} e
  */
 nassh.ConnectDialog.prototype.onButtonKeypress_ = function(e) {
   if (e.charCode == 13 || e.charCode == 32)
@@ -1029,21 +1102,21 @@ nassh.ConnectDialog.prototype.onButtonKeypress_ = function(e) {
 /**
  * Someone clicked on the mount button.
  */
-nassh.ConnectDialog.prototype.onMountClick_ = function(e) {
+nassh.ConnectDialog.prototype.onMountClick_ = function() {
   this.mount();
 };
 
 /**
  * Someone clicked on the unmount button.
  */
-nassh.ConnectDialog.prototype.onUnmountClick_ = function(e) {
+nassh.ConnectDialog.prototype.onUnmountClick_ = function() {
   this.unmount();
 };
 
 /**
  * Someone clicked on the connect button.
  */
-nassh.ConnectDialog.prototype.onConnectClick_ = function(e) {
+nassh.ConnectDialog.prototype.onConnectClick_ = function() {
   if (this.connectButton_.getAttribute('disabled'))
     return;
 
@@ -1052,6 +1125,8 @@ nassh.ConnectDialog.prototype.onConnectClick_ = function(e) {
 
 /**
  * Someone clicked on the sftp client button.
+ *
+ * @param {!Event} e
  */
 nassh.ConnectDialog.prototype.onSftpClientClick_ = function(e) {
   if (this.sftpClientButton_.getAttribute('disabled'))
@@ -1062,6 +1137,8 @@ nassh.ConnectDialog.prototype.onSftpClientClick_ = function(e) {
 
 /**
  * Someone clicked on the delete button.
+ *
+ * @param {!Event} e
  */
 nassh.ConnectDialog.prototype.onDeleteClick_ = function(e) {
   if (this.deleteButton_.getAttribute('disabled'))
@@ -1082,6 +1159,8 @@ nassh.ConnectDialog.prototype.onOptionsClick_ = nassh.openOptionsPage;
 
 /**
  * KeyUp on the form element.
+ *
+ * @param {!Event} e
  */
 nassh.ConnectDialog.prototype.onFormKeyUp_ = function(e) {
   if (e.keyCode == 13) {  // ENTER
@@ -1098,6 +1177,8 @@ nassh.ConnectDialog.prototype.onFormKeyUp_ = function(e) {
  * This handler is registered to every form element's focus and blur events.
  * Keep in mind that for change in focus from one input to another will invoke
  * this twice.
+ *
+ * @param {!Event} e
  */
 nassh.ConnectDialog.prototype.onFormFocusChange_ = function(e) {
   this.syncButtons_();
@@ -1113,6 +1194,10 @@ nassh.ConnectDialog.prototype.onProfileListChanged_ = function() {
 
 /**
  * Pref callback invoked when a profile's description has changed.
+ *
+ * @param {*} value
+ * @param {string} name
+ * @param {!Object} prefs
  */
 nassh.ConnectDialog.prototype.onDescriptionChanged_ = function(
     value, name, prefs) {
@@ -1124,6 +1209,8 @@ nassh.ConnectDialog.prototype.onDescriptionChanged_ = function(
 
 /**
  * Handle a message from the terminal.
+ *
+ * @param {!Event} e
  */
 nassh.ConnectDialog.prototype.onMessage_ = function(e) {
   if (e.data.name in this.onMessageName_) {
@@ -1135,11 +1222,16 @@ nassh.ConnectDialog.prototype.onMessage_ = function(e) {
 
 /**
  * Terminal message handlers.
+ *
+ * @suppress {lintChecks}
  */
 nassh.ConnectDialog.prototype.onMessageName_ = {};
 
 /**
  * terminal-info: The terminal introduces itself.
+ *
+ * @this {nassh.ConnectDialog}
+ * @param {!Object} info
  */
 nassh.ConnectDialog.prototype.onMessageName_['terminal-info'] = function(info) {
   this.mm_ = new lib.MessageManager(info.acceptLanguages);
@@ -1150,9 +1242,9 @@ nassh.ConnectDialog.prototype.onMessageName_['terminal-info'] = function(info) {
   document.body.style.fontFamily = info.fontFamily;
   document.body.style.fontSize = info.fontSize + 'px';
 
-  var fg = lib.colors.normalizeCSS(info.foregroundColor);
-  var bg = lib.colors.normalizeCSS(info.backgroundColor);
-  var cursor = lib.colors.normalizeCSS(info.cursorColor);
+  var fg = lib.notNull(lib.colors.normalizeCSS(info.foregroundColor));
+  var bg = lib.notNull(lib.colors.normalizeCSS(info.backgroundColor));
+  var cursor = lib.notNull(lib.colors.normalizeCSS(info.cursorColor));
 
   var vars = {
     '--nassh-bg-color': bg,
@@ -1176,6 +1268,8 @@ nassh.ConnectDialog.prototype.onMessageName_['terminal-info'] = function(info) {
 
 /**
  * We're now visible, so do all the things that require visibility.
+ *
+ * @this {nassh.ConnectDialog}
  */
 nassh.ConnectDialog.prototype.onMessageName_['visible'] = function() {
   // Focus the connection dialog.

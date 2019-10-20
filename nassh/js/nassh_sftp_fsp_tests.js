@@ -10,6 +10,8 @@
 
 /**
  * A mock SFTP client.
+ *
+ * @constructor
  */
 const MockSftpClient = function() {
   this.protocolClientVersion = 3;
@@ -30,6 +32,10 @@ const MockSftpClient = function() {
 
 /**
  * Mock helper for stubbing out calls.
+ *
+ * @param {string} method
+ * @param {!Array} args
+ * @return {!Promise}
  */
 MockSftpClient.prototype.automock_ = function(method, ...args) {
   return new Promise((resolve) => {
@@ -118,15 +124,6 @@ it('fsp-instance-check', function() {
   let called;
   let ret;
 
-  // Undefined ids should error.
-  called = false;
-  ret = nassh.sftp.fsp.checkInstanceExists(undefined, (error) => {
-    assert.equal('FAILED', error);
-    called = true;
-  });
-  assert.isTrue(called);
-  assert.isFalse(ret);
-
   // Unknown ids should error.
   called = false;
   ret = nassh.sftp.fsp.checkInstanceExists('1234', (error) => {
@@ -150,12 +147,12 @@ it('fsp-sanitize-metadata', function() {
   const fileStat = {
     size: 1024,
     isDirectory: false,
-    last_modified: 100,
+    lastModified: 100,
   };
   const dirStat = {
     size: 0,
     isDirectory: true,
-    last_modified: 200,
+    lastModified: 200,
   };
   // Mock for directory entry like readDirectory returns.
   const fileEntry = Object.assign({filename: 'foo.txt'}, fileStat);
@@ -164,8 +161,6 @@ it('fsp-sanitize-metadata', function() {
   let ret;
 
   // Nothing is requested so nothing is returned or even checked.
-  ret = nassh.sftp.fsp.sanitizeMetadata(undefined, {});
-  assert.deepStrictEqual([], Object.keys(ret));
   ret = nassh.sftp.fsp.sanitizeMetadata({}, {});
   assert.deepStrictEqual([], Object.keys(ret));
 
@@ -221,7 +216,7 @@ it('fsp-onGetMetadata-missing', function(done) {
 
   nassh.sftp.fsp.onGetMetadataRequested(
       options,
-      assert.fail,
+      (metadata) => assert.fail(),
       (error) => {
         assert.equal('NOT_FOUND', error);
         done();
@@ -264,7 +259,7 @@ it('fsp-onReadDirectory-missing', function(done) {
 
   nassh.sftp.fsp.onReadDirectoryRequested(
       options,
-      assert.fail,
+      (entries, hasMore) => assert.fail(),
       (error) => {
         assert.equal('FAILED', error);
         done();
@@ -811,7 +806,7 @@ it('fsp-onReadFile-missing', function(done) {
 
   nassh.sftp.fsp.onReadFileRequested(
       options,
-      assert.fail,
+      (chunk, hasMore) => assert.fail(),
       (error) => {
         assert.equal('INVALID_OPERATION', error);
         done();

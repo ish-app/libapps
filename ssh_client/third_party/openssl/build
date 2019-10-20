@@ -8,7 +8,6 @@
 
 from __future__ import print_function
 
-import glob
 import logging
 import os
 import sys
@@ -32,17 +31,23 @@ PATCHES = (
 
 def src_configure(metadata):
     """Configure the source."""
+    tc = metadata['toolchain']
+    if tc.chost == 'nacl':
+        machine = 'le32newlib'
+    else:
+        machine = tc.chost.split('-')[0]
+
     # See if configure passed.
     with open('Makefile') as fp:
-        if 'nacl-le32newlib' in fp.read():
+        if machine in fp.read():
             logging.info('Makefile exists; skipping ./configure step')
             return
 
-    env = ssh_client.pnacl_env()
+    env = os.environ.copy()
     env.update({
-        'SYSTEM': 'nacl',
+        'SYSTEM': tc.chost,
+        'MACHINE': machine,
         'RELEASE': '0',
-        'MACHINE': 'le32newlib',
     })
 
     cmd = [
@@ -70,8 +75,8 @@ def src_configure(metadata):
         '-fgnu-inline-asm',
         '-D_GNU_SOURCE',
         '-DNO_SYSLOG',
-        '-I%s' % (os.path.join(env['SYSROOT_INCDIR'], 'glibc-compat'),),
-    ]
+    ] + env['CPPFLAGS'].split()
+
     ssh_client.run(cmd, env=env)
     ssh_client.emake('depend', 'DIRS=crypto ssl', env=env)
 
@@ -81,11 +86,11 @@ def src_compile(_metadata):
     ssh_client.emake('build_libs', 'DIRS=crypto ssl')
 
 
-def src_install(_metadata):
+def src_install(metadata):
     """Install the package."""
-    env = ssh_client.pnacl_env()
-    ssh_client.emake('install_sw', 'INSTALL_PREFIX=%s' % (env['SYSROOT'],),
-                     'DIRS=crypto ssl', 'LIBS=libcrypto.a libssl.a', env=env)
+    tc = metadata['toolchain']
+    ssh_client.emake('install_sw', 'INSTALL_PREFIX=%s' % (tc.sysroot,),
+                     'DIRS=crypto ssl', 'LIBS=libcrypto.a libssl.a')
 
 
-ssh_client.build_package(sys.modules[__name__])
+ssh_client.build_package(sys.modules[__name__], 'pnacl')

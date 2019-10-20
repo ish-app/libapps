@@ -23,7 +23,8 @@
  * - In The Future commands may run in web workers where they would only be able
  *   to talk to a Terminal instance through an IPC mechanism.
  *
- * @param {hterm.Terminal}
+ * @param {!hterm.Terminal} terminal
+ * @constructor
  */
 hterm.Terminal.IO = function(terminal) {
   this.terminal_ = terminal;
@@ -46,8 +47,9 @@ hterm.Terminal.IO = function(terminal) {
  * since it's in a large font and you probably aren't going to check the size
  * of the terminal first.
  *
- * @param {string} msg The text (not HTML) message to display in the overlay.
- * @param {number} opt_timeout The amount of time to wait before fading out
+ * @param {string} message The text (not HTML) message to display in the
+ *     overlay.
+ * @param {number=} opt_timeout The amount of time to wait before fading out
  *     the overlay.  Defaults to 1.5 seconds.  Pass null to have the overlay
  *     stay up forever (or until the next overlay).
  */
@@ -72,7 +74,8 @@ hterm.Terminal.IO.prototype.hideOverlay = function() {
  * The user should also be able to move/resize the frame.
  *
  * @param {string} url The URL to load in the frame.
- * @param {Object} opt_options Optional frame options.  Not implemented.
+ * @param {!Object=} opt_options Optional frame options.  Not implemented.
+ * @return {!hterm.Frame}
  */
 hterm.Terminal.IO.prototype.createFrame = function(url, opt_options) {
   return new hterm.Frame(this.terminal_, url, opt_options);
@@ -81,7 +84,7 @@ hterm.Terminal.IO.prototype.createFrame = function(url, opt_options) {
 /**
  * Change the preference profile for the terminal.
  *
- * @param profileName {string} The name of the preference profile to activate.
+ * @param {string} profileName The name of the preference profile to activate.
  */
 hterm.Terminal.IO.prototype.setTerminalProfile = function(profileName) {
   this.terminal_.setProfile(profileName);
@@ -93,6 +96,8 @@ hterm.Terminal.IO.prototype.setTerminalProfile = function(profileName) {
  *
  * This is used to pass control of the terminal IO off to a subcommand.  The
  * IO.pop() method can be used to restore control when the subcommand completes.
+ *
+ * @return {!hterm.Terminal.IO} The new foreground IO instance.
  */
 hterm.Terminal.IO.prototype.push = function() {
   var io = new hterm.Terminal.IO(this.terminal_);
@@ -154,6 +159,12 @@ hterm.Terminal.IO.prototype.onVTKeystroke = function(string) {
   console.log('Unobserverd VT keystroke: ' + JSON.stringify(string));
 };
 
+/**
+ * Receives notification when the terminal is resized.
+ *
+ * @param {number} width The new terminal width.
+ * @param {number} height The new terminal height.
+ */
 hterm.Terminal.IO.prototype.onTerminalResize_ = function(width, height) {
   var obj = this;
   while (obj) {
@@ -170,8 +181,8 @@ hterm.Terminal.IO.prototype.onTerminalResize_ = function(width, height) {
  *
  * Clients should override this to receive notification of resize.
  *
- * @param {string|integer} terminal width.
- * @param {string|integer} terminal height.
+ * @param {string|number} width The new terminal width.
+ * @param {string|number} height The new terminal height.
  */
 hterm.Terminal.IO.prototype.onTerminalResize = function(width, height) {
   // Override this.
@@ -180,21 +191,21 @@ hterm.Terminal.IO.prototype.onTerminalResize = function(width, height) {
 /**
  * Write a UTF-8 encoded byte string to the terminal.
  *
- * @param {string} string The UTF-8 encoded string to print.
+ * @param {string|!ArrayBuffer} string The UTF-8 encoded string to print.
  */
 hterm.Terminal.IO.prototype.writeUTF8 = function(string) {
   // We can't use instanceof here on string to see if it's an ArrayBuffer as it
   // might be constructed in a different runtime context whose ArrayBuffer was
   // not the same.  See https://crbug.com/930171#5 for more details.
   if (typeof string == 'string') {
-    if (this.terminal_.characterEncoding != 'raw') {
-      const bytes = lib.codec.stringToCodeUnitArray(string, Uint8Array);
+    if (this.terminal_.vt.characterEncoding != 'raw') {
+      const bytes = lib.codec.stringToCodeUnitArray(string);
       string = this.textDecoder_.decode(bytes, {stream: true});
     }
   } else {
     // Handle array buffers & typed arrays by normalizing into a typed array.
     const u8 = new Uint8Array(string);
-    if (this.terminal_.characterEncoding == 'raw') {
+    if (this.terminal_.vt.characterEncoding == 'raw') {
       string = lib.codec.codeUnitArrayToString(u8);
     } else {
       string = this.textDecoder_.decode(u8, {stream: true});

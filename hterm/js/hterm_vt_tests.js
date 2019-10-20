@@ -23,8 +23,8 @@
  *     m = new MouseEvent(...); Object.assign(this, m); -> attrs omitted
  *
  * @param {string} type The name of the new DOM event type (e.g. 'mouseup').
- * @param {object=} options Fields to set in the new event.
- * @return {MouseEvent|WheelEvent} The new fully initialized event.
+ * @param {!Object=} options Fields to set in the new event.
+ * @return {!MouseEvent|!WheelEvent} The new fully initialized event.
  */
 const MockTerminalMouseEvent = function(type, options = {}) {
   let ret;
@@ -311,7 +311,7 @@ it('embedded-escape-sequence', function() {
     // We know we're going to cause chokes, so silence the warnings.
     this.terminal.vt.warnUnimplemented = false;
 
-    ['\a', '\x1b\\'].forEach((seq) => {
+    ['\x07', '\x1b\\'].forEach((seq) => {
       // We get all the data at once with a terminated sequence.
       this.terminal.reset();
       this.terminal.interpret('\x1b]0;asdf\x1b x ' + seq);
@@ -813,14 +813,14 @@ it('device-attributes', function() {
  * TODO(rginda): Test the clear tabstops on this line command.
  */
 it.skip('clear-line-tabstops', function() {
-    '[0g';
+    // '[0g';
   });
 
 /**
  * TODO(rginda): Test the clear all tabstops command.
  */
 it.skip('clear-all-tabstops', function() {
-    '[3g';
+    // '[3g';
   });
 
 /**
@@ -1770,7 +1770,7 @@ it('OSC-8', function() {
   assert.isNull(tattrs.uri);
 
   // Check the link.
-  // XXX: Can't check the URI target due to binding via event listener.
+  // Note: Can't check the URI target due to binding via event listener.
   const row = this.terminal.getRowNode(0);
   const span = row.childNodes[0];
   assert.equal('foo', span.uriId);
@@ -1790,7 +1790,7 @@ it('OSC-8-blank-id', function() {
   assert.isNull(tattrs.uri);
 
   // Check the link.
-  // XXX: Can't check the URI target due to binding via event listener.
+  // Note: Can't check the URI target due to binding via event listener.
   const row = this.terminal.getRowNode(0);
   const span = row.childNodes[0];
   assert.equal('', span.uriId);
@@ -1811,7 +1811,7 @@ it('OSC-8-switch-uri', function() {
   assert.isNull(tattrs.uri);
 
   // Check the links.
-  // XXX: Can't check the URI target due to binding via event listener.
+  // Note: Can't check the URI target due to binding via event listener.
   const row = this.terminal.getRowNode(0);
   let span = row.childNodes[0];
   assert.equal('foo', span.uriId);
@@ -1836,12 +1836,12 @@ it('OSC-9', function() {
     // An empty notification.
     this.terminal.interpret('\x1b]9;\x07');
     assert.equal(1, Notification.count);
-    assert.equal('', Notification.call.body);
+    assert.equal('', Notification.lastCall.body);
 
     // A random notification.
     this.terminal.interpret('\x1b]9;this is a title\x07');
     assert.equal(2, Notification.count);
-    assert.equal('this is a title', Notification.call.body);
+    assert.equal('this is a title', Notification.lastCall.body);
   });
 
 /**
@@ -1929,6 +1929,7 @@ it('OSC-52', function(done) {
       hterm.copySelectionToClipboard = old_cCSTC;
       assert.equal(str, 'copypasta!');
       done();
+      return Promise.resolve();
     };
 
     this.terminal.interpret('\x1b]52;c;Y29weXBhc3RhIQ==\x07');
@@ -1944,6 +1945,7 @@ it('OSC-52-invalid', function() {
   hterm.copySelectionToClipboard = function(document, str) {
     hterm.copySelectionToClipboard = old_cCSTC;
     assert.fail();
+    return Promise.resolve();
   };
 
   this.terminal.interpret('\x1b]52;c;!@#$%^&*\x07hello');
@@ -1963,6 +1965,7 @@ it('OSC-52-big', function(done) {
       hterm.copySelectionToClipboard = old_cCSTC;
       assert.equal(str, expect);
       done();
+      return Promise.resolve();
     };
 
     var expect = '';
@@ -2120,32 +2123,32 @@ it('OSC-777-notify', function() {
     // An empty notification.  We don't test the title as it's generated.
     this.terminal.interpret('\x1b]777;notify\x07');
     assert.equal(1, Notification.count);
-    assert.notEqual(Notification.call.title, '');
-    assert.isUndefined(Notification.call.body);
+    assert.notEqual(Notification.lastCall.title, '');
+    assert.isUndefined(Notification.lastCall.body);
 
     // Same as above, but covers slightly different parsing.
     this.terminal.interpret('\x1b]777;notify;\x07');
     assert.equal(2, Notification.count);
-    assert.notEqual(Notification.call.title, '');
-    assert.isUndefined(Notification.call.body);
+    assert.notEqual(Notification.lastCall.title, '');
+    assert.isUndefined(Notification.lastCall.body);
 
     // A notification with a title.
     this.terminal.interpret('\x1b]777;notify;my title\x07');
     assert.equal(3, Notification.count);
-    assert.include(Notification.call.title, 'my title');
-    assert.isUndefined(Notification.call.body);
+    assert.include(Notification.lastCall.title, 'my title');
+    assert.isUndefined(Notification.lastCall.body);
 
     // A notification with a title & body.
     this.terminal.interpret('\x1b]777;notify;my title;my body\x07');
     assert.equal(4, Notification.count);
-    assert.include(Notification.call.title, 'my title');
-    assert.include(Notification.call.body, 'my body');
+    assert.include(Notification.lastCall.title, 'my title');
+    assert.include(Notification.lastCall.body, 'my body');
 
     // A notification with a title & body, covering more parsing.
     this.terminal.interpret('\x1b]777;notify;my title;my body;and a semi\x07');
     assert.equal(5, Notification.count);
-    assert.include(Notification.call.title, 'my title');
-    assert.include(Notification.call.body, 'my body;and a semi');
+    assert.include(Notification.lastCall.title, 'my title');
+    assert.include(Notification.lastCall.body, 'my body;and a semi');
   });
 
 /**
@@ -2185,7 +2188,7 @@ it('OSC-1337-file-invalid', function(done) {
   this.terminal.displayImage = (options) => {
     assert.equal('', options.name);
     assert.equal(1, options.size);
-    assert.isUndefined(options.unk);
+    assert.isUndefined(options['unk']);
     done();
   };
 
@@ -2461,7 +2464,6 @@ it('docs-invalid', function() {
     assert.isFalse(this.terminal.vt.codingSystemLocked_);
 
     // Try switching to a random set of invalid escapes.
-    var ch;
     ['a', '9', 'X', '(', '}'].forEach((ch) => {
       // First in ECMA-35 encoding.
       this.terminal.interpret('\x1b%@');
@@ -2698,7 +2700,8 @@ it('mouse-press-x10-coord', function() {
   assert.equal('\x1b[M   ', resultString);
 
   // Check the 7-bit limit.
-  e = MockTerminalMouseEvent('mousedown', {terminalRow: 95, terminalColumn: 94});
+  e = MockTerminalMouseEvent(
+      'mousedown', {terminalRow: 95, terminalColumn: 94});
   terminal.vt.onTerminalMouse_(e);
   assert.equal('\x1b[M \x7e\x7f', resultString);
 
@@ -2706,22 +2709,26 @@ it('mouse-press-x10-coord', function() {
   These are disabled because we currently clamp X10 reporting to 7-bit.
 
   // Check 150,100 cell.
-  e = MockTerminalMouseEvent('mousedown', {terminalRow: 150, terminalColumn: 100});
+  e = MockTerminalMouseEvent(
+      'mousedown', {terminalRow: 150, terminalColumn: 100});
   terminal.vt.onTerminalMouse_(e);
   assert.equal('\x1b[M \x84\xb6', resultString);
 
   // Check 222,222 cell (just below max range).
-  e = MockTerminalMouseEvent('mousedown', {terminalRow: 222, terminalColumn: 222});
+  e = MockTerminalMouseEvent(
+      'mousedown', {terminalRow: 222, terminalColumn: 222});
   terminal.vt.onTerminalMouse_(e);
   assert.equal('\x1b[M \xfe\xfe', resultString);
 
   // Check 223,223 cell (max range).
-  e = MockTerminalMouseEvent('mousedown', {terminalRow: 223, terminalColumn: 223});
+  e = MockTerminalMouseEvent(
+      'mousedown', {terminalRow: 223, terminalColumn: 223});
   terminal.vt.onTerminalMouse_(e);
   assert.equal('\x1b[M \xff\xff', resultString);
 
   // Check 300,300 cell (out of range).
-  e = MockTerminalMouseEvent('mousedown', {terminalRow: 300, terminalColumn: 300});
+  e = MockTerminalMouseEvent(
+      'mousedown', {terminalRow: 300, terminalColumn: 300});
   terminal.vt.onTerminalMouse_(e);
   assert.equal('\x1b[M \xff\xff', resultString);
 */
@@ -2749,7 +2756,8 @@ it('mouse-press-utf8-coord', function() {
   assert.equal('\x1b[M   ', resultString);
 
   // Check 150,100 cell.
-  e = MockTerminalMouseEvent('mousedown', {terminalRow: 150, terminalColumn: 100});
+  e = MockTerminalMouseEvent(
+      'mousedown', {terminalRow: 150, terminalColumn: 100});
   terminal.vt.onTerminalMouse_(e);
   assert.equal('\x1b[M \x84\xb6', resultString);
 
@@ -2800,7 +2808,8 @@ it('mouse-press-sgr-coord', function() {
   assert.equal('\x1b[<0;0;0M', resultString);
 
   // Check 150,100 cell.
-  e = MockTerminalMouseEvent('mousedown', {terminalRow: 150, terminalColumn: 100});
+  e = MockTerminalMouseEvent(
+      'mousedown', {terminalRow: 150, terminalColumn: 100});
   terminal.vt.onTerminalMouse_(e);
   assert.equal('\x1b[<0;100;150M', resultString);
 

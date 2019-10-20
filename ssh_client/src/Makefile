@@ -15,6 +15,13 @@ WORKDIR = $(OUTPUT)/build/$(BUILD_NAME)/$(RELEASE)
 EXEDIR = $(WORKDIR)
 D = $(OUTPUT)/plugin/$(BUILD_NAME)
 
+SSH_VERSION = 8.0
+DEFAULT_VERSION = true
+ifeq ($(DEFAULT_VERSION),)
+D := $(D)-openssh-$(SSH_VERSION)
+EXEDIR := $(EXEDIR)/$(SSH_VERSION)
+endif
+
 $(shell mkdir -p $(WORKDIR) $(EXEDIR) $(D))
 NACL_SDK_ROOT ?= $(OUTPUT)/naclsdk
 
@@ -53,9 +60,9 @@ PNACL_TRANSLATE:=$(PNACL_TC_ROOT)/bin/pnacl-translate
 PNACL_TRANSLATE_FLAGS=-fdata-sections -ffunction-sections --gc-sections \
         --allow-llvm-bitcode-input
 PNACL_LDFLAGS:=-lppapi_cpp -lppapi -lcrypto -lppapi_cpp_private -lnacl_io -lz \
-        -L$(OUTPUT) -L$(NACL_SDK_ROOT)/lib/pnacl/Release --pnacl-disable-abi-check
+        -L$(NACL_SDK_ROOT)/lib/pnacl/Release --pnacl-disable-abi-check
 
-COMPAT_INC:=-I$(PNACL_TC_ROOT)/le32-nacl/usr/include/glibc-compat
+COMPAT_INC:=-I$(PNACL_TC_ROOT)/le32-nacl/include/glibc-compat
 PNACL_CXXFLAGS:=$(CXXFLAGS) $(COMPAT_INC)
 
 # Declare the ALL target first, to make the 'all' target the default build
@@ -85,8 +92,8 @@ $(POBJS): $(WORKDIR)/%_p.o : $(CURDIR)/%.cc
 	$(PNACL_CXX) -o $@ -c $< $(PNACL_CXXFLAGS)
 
 $(EXEDIR)/$(newlib_pexe): $(POBJS)
-	$(PNACL_CXX) -o $@ $^ -lopenssh -lssh \
-		-lopenbsd-compat -lldns \
+	$(PNACL_CXX) -o $@ $^ -lopenssh-$(SSH_VERSION) -lssh-$(SSH_VERSION) \
+		-lopenbsd-compat-$(SSH_VERSION) -lldns \
 		$(PNACL_LDFLAGS) $(PNACL_CXXFLAGS)
 
 $(EXEDIR)/$(PROJECT)_nl_arm.dbg.nexe: $(EXEDIR)/$(newlib_pexe)

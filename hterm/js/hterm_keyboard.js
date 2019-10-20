@@ -12,7 +12,9 @@
  *
  * See also: [XTERM] as referenced in vt.js.
  *
- * @param {hterm.Terminal} The Terminal object associated with this keyboard.
+ * @param {!hterm.Terminal} terminal The Terminal object associated with this
+ *     keyboard.
+ * @constructor
  */
 hterm.Keyboard = function(terminal) {
   // The parent vt interpreter.
@@ -36,7 +38,7 @@ hterm.Keyboard = function(terminal) {
    */
   this.keyMap = new hterm.Keyboard.KeyMap(this);
 
-  this.bindings = new hterm.Keyboard.Bindings(this);
+  this.bindings = new hterm.Keyboard.Bindings();
 
   /**
    * none: Disable any AltGr related munging.
@@ -172,6 +174,9 @@ hterm.Keyboard = function(terminal) {
 
 /**
  * Special handling for keyCodes in a keyboard layout.
+ *
+ * @enum {symbol}
+ * @const
  */
 hterm.Keyboard.KeyActions = {
   /**
@@ -223,6 +228,9 @@ hterm.Keyboard.KeyActions = {
   STRIP: Symbol('STRIP')
 };
 
+/** @typedef {string|!hterm.Keyboard.KeyActions} */
+hterm.Keyboard.KeyAction;
+
 /**
  * Capture keyboard events sent to the associated element.
  *
@@ -231,7 +239,7 @@ hterm.Keyboard.KeyActions = {
  *
  * Passing a null element will uninstall the keyboard handlers.
  *
- * @param {HTMLElement} element The element whose events should be captured, or
+ * @param {?Element} element The element whose events should be captured, or
  *     null to disable the keyboard.
  */
 hterm.Keyboard.prototype.installKeyboard = function(element) {
@@ -263,10 +271,12 @@ hterm.Keyboard.prototype.uninstallKeyboard = function() {
 };
 
 /**
- * Handle onTextInput events.
+ * Handle textInput events.
  *
  * These are generated when using IMEs, Virtual Keyboards (VKs), compose keys,
  * Unicode input, etc...
+ *
+ * @param {!InputEvent} e The event to process.
  */
 hterm.Keyboard.prototype.onTextInput_ = function(e) {
   if (!e.data)
@@ -278,9 +288,11 @@ hterm.Keyboard.prototype.onTextInput_ = function(e) {
 };
 
 /**
- * Handle onKeyPress events.
+ * Handle keypress events.
  *
  * TODO(vapier): Drop this event entirely and only use keydown.
+ *
+ * @param {!KeyboardEvent} e The event to process.
  */
 hterm.Keyboard.prototype.onKeyPress_ = function(e) {
   // FF doesn't set keyCode reliably in keypress events.  Stick to the which
@@ -300,6 +312,8 @@ hterm.Keyboard.prototype.onKeyPress_ = function(e) {
     return;
   }
 
+  /** @type {string} */
+  var ch;
   if (e.altKey && this.altSendsWhat == 'browser-key' && e.charCode == 0) {
     // If we got here because we were expecting the browser to handle an
     // alt sequence but it didn't do it, then we might be on an OS without
@@ -308,16 +322,16 @@ hterm.Keyboard.prototype.onKeyPress_ = function(e) {
     //
     // This happens here only as a fallback.  Typically these platforms should
     // set altSendsWhat to either 'escape' or '8-bit'.
-    var ch = String.fromCharCode(e.keyCode);
+    ch = String.fromCharCode(e.keyCode);
     if (!e.shiftKey)
       ch = ch.toLowerCase();
 
   } else if (e.charCode >= 32) {
-    ch = e.charCode;
+    ch = String.fromCharCode(e.charCode);
   }
 
   if (ch)
-    this.terminal.onVTKeystroke(String.fromCharCode(ch));
+    this.terminal.onVTKeystroke(ch);
 
   e.preventDefault();
   e.stopPropagation();
@@ -329,6 +343,8 @@ hterm.Keyboard.prototype.onKeyPress_ = function(e) {
  * When combined with Chrome permission 'app.window.fullscreen.overrideEsc',
  * and called for both key down and key up events,
  * the ESC key remains usable within fullscreen Chrome app windows.
+ *
+ * @param {!KeyboardEvent} e The event to process.
  */
 hterm.Keyboard.prototype.preventChromeAppNonCtrlShiftDefault_ = function(e) {
   if (!window.chrome || !window.chrome.app || !window.chrome.app.window)
@@ -337,10 +353,20 @@ hterm.Keyboard.prototype.preventChromeAppNonCtrlShiftDefault_ = function(e) {
     e.preventDefault();
 };
 
+/**
+ * Handle focusout events.
+ *
+ * @param {!FocusEvent} e The event to process.
+ */
 hterm.Keyboard.prototype.onFocusOut_ = function(e) {
   this.altKeyPressed = 0;
 };
 
+/**
+ * Handle keyup events.
+ *
+ * @param {!KeyboardEvent} e The event to process.
+ */
 hterm.Keyboard.prototype.onKeyUp_ = function(e) {
   if (e.keyCode == 18)
     this.altKeyPressed = this.altKeyPressed & ~(1 << (e.location - 1));
@@ -350,7 +376,9 @@ hterm.Keyboard.prototype.onKeyUp_ = function(e) {
 };
 
 /**
- * Handle onKeyDown events.
+ * Handle keydown events.
+ *
+ * @param {!KeyboardEvent} e The event to process.
  */
 hterm.Keyboard.prototype.onKeyDown_ = function(e) {
   if (e.keyCode == 18)
@@ -373,6 +401,10 @@ hterm.Keyboard.prototype.onKeyDown_ = function(e) {
   var resolvedActionType = null;
 
   var self = this;
+  /**
+   * @param {string} name
+   * @return {!hterm.Keyboard.KeyDefAction}
+   */
   function getAction(name) {
     // Get the key action for the given action name.  If the action is a
     // function, dispatch it.  If the action defers to the normal action,
@@ -382,7 +414,7 @@ hterm.Keyboard.prototype.onKeyDown_ = function(e) {
 
     var action = keyDef[name];
     if (typeof action == 'function')
-      action = action.apply(self.keyMap, [e, keyDef]);
+      action = action.call(self.keyMap, e, keyDef);
 
     if (action === DEFAULT && name != 'normal')
       action = getAction('normal');
@@ -430,6 +462,7 @@ hterm.Keyboard.prototype.onKeyDown_ = function(e) {
     break;
   }
 
+  /** @type {?hterm.Keyboard.KeyDefAction} */
   var action;
 
   if (control) {
@@ -448,6 +481,7 @@ hterm.Keyboard.prototype.onKeyDown_ = function(e) {
   // "CSI Z", not "CSI 1 ; 2 Z".
   var shift = !e.maskShiftKey && e.shiftKey;
 
+  /** @type {!hterm.Keyboard.KeyDown} */
   var keyDown = {
     keyCode: e.keyCode,
     shift: e.shiftKey, // not `var shift` from above.
@@ -463,10 +497,14 @@ hterm.Keyboard.prototype.onKeyDown_ = function(e) {
     // further.
     shift = control = alt = meta = false;
     resolvedActionType = 'normal';
-    action = binding.action;
 
-    if (typeof action == 'function')
-      action = action.call(this, this.terminal, keyDown);
+    if (typeof binding.action == 'function') {
+      const bindingFn =
+          /** @type {!hterm.Keyboard.KeyBindingFunction} */ (binding.action);
+      action = bindingFn.call(this, this.terminal, keyDown);
+    } else {
+      action = /** @type {!hterm.Keyboard.KeyAction} */ (binding.action);
+    }
   }
 
   if (alt && this.altSendsWhat == 'browser-key' && action == DEFAULT) {
@@ -494,7 +532,7 @@ hterm.Keyboard.prototype.onKeyDown_ = function(e) {
     alt = control = false;
     action = keyDef.normal;
     if (typeof action == 'function')
-      action = action.apply(this.keyMap, [e, keyDef]);
+      action = action.call(this.keyMap, e, keyDef);
 
     if (action == DEFAULT && keyDef.keyCap.length == 2)
       action = keyDef.keyCap.substr((shift ? 1 : 0), 1);
@@ -575,5 +613,5 @@ hterm.Keyboard.prototype.onKeyDown_ = function(e) {
     }
   }
 
-  this.terminal.onVTKeystroke(action);
+  this.terminal.onVTKeystroke(/** @type {string} */ (action));
 };

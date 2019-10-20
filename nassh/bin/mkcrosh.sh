@@ -43,11 +43,21 @@ cat <<EOF >./dist/zip/tmp/crosh.json
   "version": "0"
 }
 EOF
-rm -f ./dist/zip/crosh-0.zip
+
+CROSH_ZIPFILE="${PWD}/dist/zip/crosh-0.zip"
+rm -f "${CROSH_ZIPFILE}"
+
 mkzip.sh \
   --nopromote_channel \
   -s "." -w ./dist/zip/ -m "./dist/zip/tmp/crosh.json"
 rm ./dist/zip/tmp/crosh.json
+
+# Add chrome://terminal html, js, css, and terminal_pwa_manifest.json.
+cd ../terminal
+zip -r "${CROSH_ZIPFILE}" html -x html/*_test*
+zip -r "${CROSH_ZIPFILE}" js -x js/*_test*
+zip -r "${CROSH_ZIPFILE}" css
+zip "${CROSH_ZIPFILE}" terminal_pwa_manifest.json
 
 echo
 echo "HEY!"

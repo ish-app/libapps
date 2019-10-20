@@ -10,6 +10,12 @@
 
 /**
  * Corp Relay implementation.
+ *
+ * @param {!hterm.Terminal.IO} io
+ * @param {!Object} options
+ * @param {!Location} relayLocation
+ * @param {!Storage} relayStorage
+ * @constructor
  */
 nassh.GoogleRelay = function(io, options, relayLocation, relayStorage) {
   this.io = io;
@@ -29,6 +35,8 @@ nassh.GoogleRelay = function(io, options, relayLocation, relayStorage) {
 
 /**
  * Returns the pattern for the cookie server URL.
+ *
+ * @return {string}
  */
 nassh.GoogleRelay.prototype.cookieServerPattern = function() {
   var template = '%(protocol)://%(host):%(port)/cookie' +
@@ -48,9 +56,14 @@ nassh.GoogleRelay.prototype.cookieServerPattern = function() {
 nassh.GoogleRelay.prototype.relayServerPattern =
     '%(protocol)://%(host):%(port)/';
 
-nassh.GoogleRelay.prototype.redirect = function(opt_resumePath) {
-  var resumePath = opt_resumePath ||
-    this.location.href.substr(this.location.origin.length);
+/**
+ * @param {string=} resumePath
+ * @return {boolean}
+ */
+nassh.GoogleRelay.prototype.redirect = function(resumePath) {
+  if (!resumePath) {
+    resumePath = this.location.href.substr(this.location.origin.length);
+  }
 
   // Save off our destination in session storage before we leave for the
   // proxy page.
@@ -85,10 +98,14 @@ nassh.GoogleRelay.prototype.redirect = function(opt_resumePath) {
  * will redirect to the cookie server and return false.
  *
  * If we have just come back from the cookie server, then we'll return true.
+ *
+ * @param {string=} resumePath
+ * @return {boolean}
  */
-nassh.GoogleRelay.prototype.init = function(opt_resumePath) {
-  var resumePath = opt_resumePath ||
-      this.location.href.substr(this.location.origin.length);
+nassh.GoogleRelay.prototype.init = function(resumePath) {
+  if (!resumePath) {
+    resumePath = this.location.href.substr(this.location.origin.length);
+  }
 
   // This session storage item is created by /html/nassh_google_relay.html
   // if we succeed at finding a relay host.
@@ -104,14 +121,12 @@ nassh.GoogleRelay.prototype.init = function(opt_resumePath) {
       var pattern = this.relayServerPattern;
       this.relayServer = lib.f.replaceVars(pattern,
           {host: relayHost, port: relayPort, protocol: protocol});
-      if (!this.useXHR) {
-        protocol = this.useSecure ? 'wss' : 'ws';
-        this.relayServerSocket = lib.f.replaceVars(pattern,
-            {host: relayHost, port: relayPort, protocol: protocol});
-      }
+      protocol = this.useSecure ? 'wss' : 'ws';
+      this.relayServerSocket = lib.f.replaceVars(pattern,
+          {host: relayHost, port: relayPort, protocol: protocol});
 
       // If we made it this far, we're probably not stuck in a redirect loop.
-      sessionStorage.removeItem('googleRelay.redirectCount');
+      window.sessionStorage.removeItem('googleRelay.redirectCount');
     } else {
       // If everything is ok, this should be the second time we've been asked
       // to do the same init.  (The first time would have redirected.)  If this
@@ -138,6 +153,13 @@ nassh.GoogleRelay.prototype.init = function(opt_resumePath) {
 /**
  * Return an nassh.Stream object that will handle the socket stream
  * for this relay.
+ *
+ * @param {number} fd
+ * @param {string} host
+ * @param {number} port
+ * @param {!nassh.StreamSet} streams
+ * @param {function(boolean, ?string=)} onOpen
+ * @return {!nassh.Stream}
  */
 nassh.GoogleRelay.prototype.openSocket = function(fd, host, port, streams,
                                                   onOpen) {
