@@ -12,6 +12,7 @@
 var PropertyDeclaration;
 
 class TemplateResult {}
+class CSSResult {}
 
 /** @extends {HTMLElement} */
 class LitElement$$module$js$lit_element{
@@ -22,7 +23,19 @@ class LitElement$$module$js$lit_element{
   static get properties() {};
 
   /**
-   * @return {?TemplateResult}
+   * @return {!CSSResult|!Array<CSSResult>}
+   * @protected
+   */
+  static get styles() {};
+
+  /**
+   * @return {?Promise}
+   * @protected
+   */
+  performUpdate() {}
+
+  /**
+   * @return {!TemplateResult}
    * @protected
    */
   render() {}
@@ -42,4 +55,17 @@ class LitElement$$module$js$lit_element{
  * @param {ITemplateArray} strings
  * @param {...*} values
  */
+function css$$module$js$lit_element(strings, ...values) {}
+
+/**
+ * @param {ITemplateArray} strings
+ * @param {...*} values
+* @return {!TemplateResult}
+ */
 function html$$module$js$lit_element(strings, ...values) {}
+
+/**
+ * @param {!TemplateResult} template
+ * @param {!Element|!ShadowRoot|!DocumentFragment} element
+ */
+function render$$module$js$lit_element(template, element) {}

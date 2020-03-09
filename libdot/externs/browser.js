@@ -211,7 +211,7 @@ chrome.storage.sync;
 /** @const */
 chrome.tabs = {};
 
-/** @param {{url: string, active: boolean}} opts */
+/** @param {{url: (string|undefined), active: (boolean|undefined)}} opts */
 chrome.tabs.create = function(opts) {};
 
 /** @param {function({id:string})} callback */
@@ -238,8 +238,20 @@ chrome.terminalPrivate = {};
 /** @param {string} id */
 chrome.terminalPrivate.closeTerminalProcess = function(id) {};
 
+/** @param {function(!Object<string, *>)} callback */
+chrome.terminalPrivate.getCroshSettings = function(callback) {};
+
+/** @param {function(!Object<string, *>)} callback */
+chrome.terminalPrivate.getSettings = function(callback) {};
+
+/** @param {!Object<string, *>} callback */
+chrome.terminalPrivate.setSettings = function(prefValue, callback) {};
+
 /** @type {ChromeBaseEvent<function(string, string, string)>} */
 chrome.terminalPrivate.onProcessOutput;
+
+/** @type {ChromeBaseEvent<function(!Object<string, *>)>} */
+chrome.terminalPrivate.onSettingsChanged;
 
 /**
  * @param {string} commandName

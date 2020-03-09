@@ -32,11 +32,11 @@ lib.colors = {};
  * Instead, we stoop to this .replace() trick.
  */
 lib.colors.re_ = {
-  // CSS hex color, #RGB.
-  hex16: /#([a-f0-9])([a-f0-9])([a-f0-9])/i,
+  // CSS hex color, #RGB or RGBA.
+  hex16: /^#([a-f0-9])([a-f0-9])([a-f0-9])([a-f0-9])?$/i,
 
-  // CSS hex color, #RRGGBB.
-  hex24: /#([a-f0-9]{2})([a-f0-9]{2})([a-f0-9]{2})/i,
+  // CSS hex color, #RRGGBB or #RRGGBBAA.
+  hex24: /^#([a-f0-9]{2})([a-f0-9]{2})([a-f0-9]{2})([a-f0-9]{2})?$/i,
 
   // CSS rgb color, rgb(rrr,ggg,bbb).
   rgb: new RegExp(
@@ -44,7 +44,7 @@ lib.colors.re_ = {
        '/s*(/d{1,3})/s*/)/s*$'
        ).replace(/\//g, '\\'), 'i'),
 
-  // CSS rgb color, rgb(rrr,ggg,bbb,aaa).
+  // CSS rgb color, rgba(rrr,ggg,bbb,aaa).
   rgba: new RegExp(
       ('^/s*rgba/s*' +
        '/(/s*(/d{1,3})/s*,/s*(/d{1,3})/s*,/s*(/d{1,3})/s*' +
@@ -55,6 +55,26 @@ lib.colors.re_ = {
   rgbx: new RegExp(
       ('^/s*rgba?/s*' +
        '/(/s*(/d{1,3})/s*,/s*(/d{1,3})/s*,/s*(/d{1,3})/s*' +
+       '(?:,/s*(/d+(?:/./d+)?)/s*)?/)/s*$'
+       ).replace(/\//g, '\\'), 'i'),
+
+  // CSS hsl color, hsl(hhh,sss%,lll%).
+  hsl: new RegExp(
+      ('^/s*hsl/s*' +
+       '/(/s*(/d{1,3})/s*,/s*(/d{1,3})/s*%/s*,/s*(/d{1,3})/s*%/s*/)/s*$'
+       ).replace(/\//g, '\\'), 'i'),
+
+  // CSS hsl color, hsla(hhh,sss%,lll%,aaa).
+  hsla: new RegExp(
+      ('^/s*hsla/s*' +
+       '/(/s*(/d{1,3})/s*,/s*(/d{1,3})/s*%/s*,/s*(/d{1,3})/s*%/s*' +
+       '(?:,/s*(/d+(?:/./d+)?)/s*)/)/s*$'
+       ).replace(/\//g, '\\'), 'i'),
+
+  // Either HSL or HSLA.
+  hslx: new RegExp(
+      ('^/s*hsla?/s*' +
+       '/(/s*(/d{1,3})/s*,/s*(/d{1,3})/s*%/s*,/s*(/d{1,3})/s*%/s*' +
        '(?:,/s*(/d+(?:/./d+)?)/s*)?/)/s*$'
        ).replace(/\//g, '\\'), 'i'),
 
@@ -192,51 +212,225 @@ lib.colors.x11ToCSS = function(v) {
 };
 
 /**
- * Converts one or more CSS '#RRGGBB' color values into their rgb(...)
- * form.
+ * Converts one or more CSS '#RRGGBB' or '#RRGGBBAA' color values into their
+ * rgb(...) or rgba(...) form respectively.
  *
  * Arrays are converted in place. If a value cannot be converted, it is
  * replaced with null.
  *
- * @param {string} hex A single RGB value to convert.
+ * @param {string} hex A single RGB or RGBA value to convert.
  * @return {?string} The converted value.
  */
 lib.colors.hexToRGB = function(hex) {
-  var hex16 = lib.colors.re_.hex16;
-  var hex24 = lib.colors.re_.hex24;
+  const hex16 = lib.colors.re_.hex16;
+  const hex24 = lib.colors.re_.hex24;
 
-  if (hex.length == 4) {
-    hex = hex.replace(hex16, function(h, r, g, b) {
-      return "#" + r + r + g + g + b + b;
-    });
+  if (hex16.test(hex)) {
+    // Convert from RGB to RRGGBB and from RGBA to RRGGBBAA.
+    hex = `#${hex.match(/[a-f0-9]/gi).map(x => `${x}${x}`).join('')}`;
   }
-  var ary = hex.match(hex24);
-  if (!ary)
-    return null;
 
-  return 'rgb(' + parseInt(ary[1], 16) + ', ' +
-      parseInt(ary[2], 16) + ', ' +
-      parseInt(ary[3], 16) + ')';
+  const ary = hex.match(hex24);
+  if (!ary) {
+    return null;
+  }
+
+  const val = (index) => parseInt(ary[index + 1], 16);
+  return ary[4] === undefined || val(3) === 255
+      ? `rgb(${val(0)}, ${val(1)}, ${val(2)})`
+      : `rgba(${val(0)}, ${val(1)}, ${val(2)}, ${val(3) / 255})`;
 };
 
 /**
- * Converts one or more CSS rgb(...) forms into their '#RRGGBB' color values.
- *
- * If given an rgba(...) form, the alpha field is thrown away.
+ * Converts one or more CSS rgb(...) or rgba(...) forms into their '#RRGGBB' or
+ * '#RRGGBBAA' color values respectively.
  *
  * Arrays are converted in place. If a value cannot be converted, it is
  * replaced with null.
  *
- * @param {string} rgb A single rgb(...) value to convert.
+ * @param {string} rgb A single rgb(...) or rgba(...) value to convert.
  * @return {?string} The converted value.
  */
 lib.colors.rgbToHex = function(rgb) {
-  var ary = lib.colors.crackRGB(rgb);
-  if (!ary)
+  const ary = lib.colors.crackRGB(rgb);
+  if (!ary) {
     return null;
-  return '#' + lib.f.zpad(((parseInt(ary[0], 10) << 16) |
-                           (parseInt(ary[1], 10) <<  8) |
-                           (parseInt(ary[2], 10) <<  0)).toString(16), 6);
+  }
+
+  const hex = '#' + lib.f.zpad((
+      (parseInt(ary[0], 10) << 16) |
+      (parseInt(ary[1], 10) <<  8) |
+      (parseInt(ary[2], 10) <<  0)).toString(16), 6);
+  return ary[3] === undefined || ary[3] === '1'
+      ? hex
+      : `${hex}${lib.f.zpad(Math.round(255 * ary[3]).toString(16), 2)}`;
+};
+
+/**
+ * Split an hsl/hsla color into an array of its components.
+ *
+ * On success, a 4 element array will be returned.  For hsl values, the alpha
+ * will be set to 1.
+ *
+ * @param {string} color The HSL/HSLA CSS color spec.
+ * @return {?Array<string>} The HSL/HSLA values split out.
+ */
+lib.colors.crackHSL = function(color) {
+  if (color.startsWith('hsla')) {
+    const ary = color.match(lib.colors.re_.hsla);
+    if (ary) {
+      ary.shift();
+      return Array.from(ary);
+    }
+  } else {
+    const ary = color.match(lib.colors.re_.hsl);
+    if (ary) {
+      ary.shift();
+      ary.push('1');
+      return Array.from(ary);
+    }
+  }
+
+  console.error(`Couldn't crack: ${color}`);
+  return null;
+};
+
+/**
+ * Converts hslx array to rgba array.
+ *
+ * The returned alpha component defaults to 1 if it isn't present in the input.
+ *
+ * The returned values are not rounded to preserve precision for computations,
+ * rounded before they are used in CSS strings.
+ *
+ * @param {?Array<string|number>} hslx The HSL or HSLA elements to convert.
+ * @return {!Array<number>} The RGBA values.
+ */
+lib.colors.hslxArrayToRgbaArray = function(hslx) {
+  const hue = hslx[0] / 60;
+  const sat = hslx[1] / 100;
+  const light = hslx[2] / 100;
+
+  // The following algorithm has been adapted from:
+  //     https://www.w3.org/TR/css-color-4/#hsl-to-rgb
+  const hueToRgb = (t1, t2, hue) => {
+    if (hue < 0) {
+      hue += 6;
+    }
+    if (hue >= 6) {
+      hue -= 6;
+    }
+
+    if (hue < 1) {
+      return (t2 - t1) * hue + t1;
+    } else if (hue < 3) {
+      return t2;
+    } else if (hue < 4) {
+      return (t2 - t1) * (4 - hue) + t1;
+    } else {
+      return t1;
+    }
+  };
+
+  const t2 = light <= 0.5 ?  light * (sat + 1) : light + sat - (light * sat);
+  const t1 = light * 2 - t2;
+
+  return [
+    255 * hueToRgb(t1, t2, hue + 2),
+    255 * hueToRgb(t1, t2, hue),
+    255 * hueToRgb(t1, t2, hue - 2),
+    hslx[3] !== undefined ? +hslx[3] : 1
+  ];
+};
+
+/**
+ * Converts one or more CSS hsl(...) or hsla(...) forms into their rgb(...) or
+ * rgba(...) color values respectively.
+ *
+ * Arrays are converted in place. If a value cannot be converted, it is
+ * replaced with null.
+ *
+ * @param {string} hsl A single hsl(...) or hsla(...) value to convert.
+ * @return {?string} The converted value.
+ */
+lib.colors.hslToRGB = function(hsl) {
+  const ary = lib.colors.crackHSL(hsl);
+  if (!ary) {
+    return null;
+  }
+
+  const [r, g, b, a] = lib.colors.hslxArrayToRgbaArray(ary);
+
+  const rgb = [r, g, b].map(Math.round).join(', ');
+
+  return a === 1 ? `rgb(${rgb})` : `rgba(${rgb}, ${a})`;
+};
+
+/**
+ * Converts rgbx array to hsla array.
+ *
+ * The returned alpha component defaults to 1 if it isn't present in the input.
+ *
+ * The returned values are not rounded to preserve precision for computations,
+ * so should be rounded before they are used in CSS strings.
+ *
+ * @param {?Array<string|number>} rgbx The RGB or RGBA elements to convert.
+ * @return {!Array<number>} The HSLA values.
+ */
+lib.colors.rgbxArrayToHslaArray = function(rgbx) {
+  const r = rgbx[0] / 255;
+  const g = rgbx[1] / 255;
+  const b = rgbx[2] / 255;
+
+  const min = Math.min(r, g, b);
+  const max = Math.max(r, g, b);
+  const spread = max - min;
+
+  const l = (max + min) / 2;
+
+  if (spread == 0) {
+    return [0, 0, 100 * l, rgbx[3] !== undefined ? +rgbx[3] : 1];
+  }
+
+  let h = (() => {
+    switch (max) {
+      case r: return ((g - b) / spread) % 6;
+      case g: return (b - r) / spread + 2;
+      case b: return (r - g) / spread + 4;
+    }
+  })();
+  h *= 60;
+  if (h < 0) {
+    h += 360;
+  }
+
+  const s = spread / (1 - Math.abs(2 * l - 1));
+
+  return [h, 100 * s, 100 * l, rgbx[3] !== undefined ? +rgbx[3] : 1];
+};
+
+/**
+ * Converts one or more CSS rgb(...) or rgba(...) forms into their hsl(...) or
+ * hsla(...) color values respectively.
+ *
+ * Arrays are converted in place. If a value cannot be converted, it is
+ * replaced with null.
+ *
+ * @param {string} rgb A single rgb(...) or rgba(...) value to convert.
+ * @return {?string} The converted value.
+ */
+lib.colors.rgbToHsl = function(rgb) {
+  const ary = lib.colors.crackRGB(rgb);
+  if (!ary) {
+    return null;
+  }
+
+  let [h, s, l, a] = lib.colors.rgbxArrayToHslaArray(ary);
+  h = Math.round(h);
+  s = Math.round(s);
+  l = Math.round(l);
+
+  return a === 1 ? `hsl(${h}, ${s}%, ${l}%)` : `hsla(${h}, ${s}%, ${l}%, ${a})`;
 };
 
 /**
@@ -246,11 +440,17 @@ lib.colors.rgbToHex = function(rgb) {
  * @return {?string} The converted value.
  */
 lib.colors.normalizeCSS = function(def) {
-  if (def.startsWith('#'))
+  if (def.startsWith('#')) {
     return lib.colors.hexToRGB(def);
+  }
 
-  if (lib.colors.re_.rgbx.test(def))
+  if (lib.colors.re_.rgbx.test(def)) {
     return def;
+  }
+
+  if (lib.colors.re_.hslx.test(def)) {
+    return lib.colors.hslToRGB(def);
+  }
 
   return lib.colors.nameToRGB(def);
 };

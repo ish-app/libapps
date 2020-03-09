@@ -17,10 +17,8 @@ export class TerminalSettingsElement extends LitElement {
 
     /** @type {string} */
     this.preference;
-    /** @protected {string|boolean|number} */
-    this.preferenceValue_;
-    /** @protected {string|boolean|number} */
-    this.uiValue_;
+    /** @protected {*} */
+    this.value;
     this.boundPreferenceChanged_ = this.preferenceChanged_.bind(this);
   }
 
@@ -45,19 +43,19 @@ export class TerminalSettingsElement extends LitElement {
   }
 
   /**
-   * @param {string|boolean|number} value
+   * @param {*} value
    * @protected
    */
   uiChanged_(value) {
-    this.uiValue_ = value;
-    window.preferenceManager.set(this.preference, this.uiValue_);
+    this.value = value;
+    window.preferenceManager.set(this.preference, value);
   }
 
   /**
-   * @param {string|boolean|number} value
-   * @private
+   * @param {*} value
+   * @protected
    */
   preferenceChanged_(value) {
-    this.preferenceValue_ = this.uiValue_ = value;
+    this.value = value;
   }
 }

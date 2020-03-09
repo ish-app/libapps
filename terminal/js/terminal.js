@@ -24,7 +24,22 @@ terminal.Command = function(argv) {
   this.argv_ = argv;
   this.io = null;
   this.keyboard_ = null;
-  this.id_ = null;
+  // We pass this ID to chrome to use for startup text which is sent before the
+  // vsh process is created and we receive an ID from openTerminalProcess.
+  this.id_ = Math.random().toString().substring(2);
+  argv.args.push(`--startup_id=${this.id_}`);
+  this.isFirstOutput = false;
+};
+
+/**
+ * Return a formatted message in the current locale.
+ *
+ * @param {string} name The name of the message to return.
+ * @param {!Array=} args The message arguments, if required.
+ * @return {string} The localized & formatted message.
+ */
+terminal.msg = function(name, args) {
+  return hterm.messageManager.get(name, args);
 };
 
 /**
@@ -33,9 +48,10 @@ terminal.Command = function(argv) {
  * This constructs a new hterm.Terminal instance and instructs it to run
  * the Terminal command.
  *
+ * @param {!Element} element The element that is to be decorated.
  * @return {!hterm.Terminal} The new hterm.Terminal instance.
  */
-terminal.init = function() {
+terminal.init = function(element) {
   const params = new URLSearchParams(document.location.search);
   let term = new hterm.Terminal();
 
@@ -43,7 +59,7 @@ terminal.init = function() {
   const commandName = params.get('command') || 'vmshell';
   window.document.title = commandName;
 
-  term.decorate(lib.notNull(document.querySelector('#terminal')));
+  term.decorate(element);
   const runTerminal = function() {
     term.setCursorPosition(0, 0);
     term.setCursorVisible(true);
@@ -66,9 +82,18 @@ terminal.init = function() {
     }
   };
 
-  // TODO(crbug.com/998920): Add terminal.contextMenu.setItems([string,
-  // function]) when translated strings are available via
-  // chrome://terminal/strings.js.
+  term.contextMenu.setItems([
+    {name: terminal.msg('TERMINAL_CLEAR_MENU_LABEL'),
+     action: function() { term.wipeContents(); }},
+    {name: terminal.msg('TERMINAL_RESET_MENU_LABEL'),
+     action: function() { term.reset(); }},
+    {name: terminal.msg('FAQ_MENU_LABEL'),
+     action: function() {
+       lib.f.openWindow('https://goo.gl/muppJj', '_blank');
+     }},
+    {name: terminal.msg('OPTIONS_BUTTON_LABEL'),
+     action: function() { location.hash = '#options'; }},
+  ]);
 
   return term;
 };
@@ -83,15 +108,19 @@ terminal.init = function() {
  * @param {string} text Text that was detected on process output.
  */
 terminal.Command.prototype.onProcessOutput_ = function(id, type, text) {
-  if (this.id_ === null || id !== this.id_) {
+  if (id !== this.id_) {
     return;
   }
 
-  if (type == 'exit') {
+  // When terminal starts, the first message may be type 'exit' if the process
+  // fails to start.  In this case, we don't want to close the tab since we
+  // can display an error message to the user.
+  if (type == 'exit' && !this.isFirstOutput_) {
     this.exit(0);
     return;
   }
   this.io.print(text);
+  this.isFirstOutput_ = false;
 };
 
 /**
@@ -125,6 +154,7 @@ terminal.Command.prototype.run = function() {
     }
 
     this.id_ = id;
+    this.isFirstOutput_ = true;
 
     // Setup initial window size.
     this.onTerminalResize_(
@@ -142,9 +172,6 @@ terminal.Command.prototype.run = function() {
  * @param {string} string The string to send.
  */
 terminal.Command.prototype.sendString_ = function(string) {
-  if (this.id_ === null) {
-    return;
-  }
   chrome.terminalPrivate.sendInput(this.id_, string);
 };
 
@@ -152,9 +179,6 @@ terminal.Command.prototype.sendString_ = function(string) {
  * Closes the terminal and exits the command.
  */
 terminal.Command.prototype.close_ = function() {
-  if (this.id_ === null) {
-    return;
-  }
   chrome.terminalPrivate.closeTerminalProcess(this.id_);
   this.id_ = null;
 };
@@ -166,10 +190,6 @@ terminal.Command.prototype.close_ = function() {
  * @param {string|number} height The new terminal height.
  */
 terminal.Command.prototype.onTerminalResize_ = function(width, height) {
-  if (this.id_ === null) {
-    return;
-  }
-
   chrome.terminalPrivate.onTerminalResize(
       this.id_, Number(width), Number(height), function(success) {
         if (!success)
@@ -191,4 +211,28 @@ terminal.Command.prototype.exit = function(code) {
       this.argv_.onExit(code);
     return;
   }
+};
+
+/**
+ * Migrates settings from crosh.
+ * TODO(crbug.com/1019021): Remove after M83.
+ *
+ * @param {function():void} callback Invoked when complete.
+ */
+terminal.migrateSettings = function(callback) {
+  if (!chrome.terminalPrivate.getCroshSettings) {
+    callback();
+    return;
+  }
+
+  hterm.defaultStorage.getItem('crosh.settings.migrated', (migrated) => {
+    if (migrated) {
+      callback();
+      return;
+    }
+    chrome.terminalPrivate.getCroshSettings(settings => {
+      settings['crosh.settings.migrated'] = true;
+      hterm.defaultStorage.setItems(settings, callback);
+    });
+  });
 };

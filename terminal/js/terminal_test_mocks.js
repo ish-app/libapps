@@ -60,6 +60,10 @@ function MockTerminalPrivate() {
    */
   this.observers_ = {};
   this.onProcessOutput = new MockEvent();
+
+  /** @type {string} */
+  this.openTerminalProcessId = '';
+  this.croshSettings = {};
 }
 
 /**
@@ -75,7 +79,7 @@ MockTerminalPrivate.Controller = function() {
    */
   this.origTerminalPrivate_ = chrome.terminalPrivate;
   /** @suppress {checkTypes} The mock is not an exact match. */
-  chrome.terminalPrivate = this.instance_ = new MockTerminalPrivate();
+  chrome.terminalPrivate = this.instance = new MockTerminalPrivate();
 };
 
 /**
@@ -86,8 +90,38 @@ MockTerminalPrivate.Controller = function() {
  */
 MockTerminalPrivate.Controller.prototype.addObserver = function(
     fnName, callback) {
-  this.instance_.observers_[fnName] = this.instance_.observers_[fnName] || [];
-  this.instance_.observers_[fnName].push(callback);
+  this.instance.observers_[fnName] = this.instance.observers_[fnName] || [];
+  this.instance.observers_[fnName].push(callback);
+};
+
+/**
+ * Remove observer.
+ *
+ * @param {string} fnName Name of the function to remove observer for.
+ * @param {function(...*)} callback Observer to remove.
+ */
+MockTerminalPrivate.Controller.prototype.removeObserver = function(
+    fnName, callback) {
+  if (this.instance.observers_[fnName]) {
+    this.instance.observers_[fnName] =
+        this.instance.observers_[fnName].filter(o => o != callback);
+  }
+};
+
+/**
+ * Returns promise which resolves with args of fnName after it is next invoked.
+ *
+ * @param {string} fnName Name of the function to observe.
+ * @return {!Promise<!Array<*>>} Arguments from function.
+ */
+MockTerminalPrivate.Controller.prototype.on = function(fnName) {
+  return new Promise(resolve => {
+    const observer = (...args) => {
+      this.removeObserver(fnName, observer);
+      resolve(args);
+    };
+    this.addObserver(fnName, observer);
+  });
 };
 
 /**
@@ -131,8 +165,10 @@ MockTerminalPrivate.prototype.notifyObservers_ = function(fnName, args) {
  */
 MockTerminalPrivate.prototype.openTerminalProcess = function(
     processName, args, callback) {
-  this.notifyObservers_('openTerminalProcess', arguments);
-  setTimeout(callback.bind(null, 'test-id'), 0);
+  setTimeout(() => {
+    callback(this.openTerminalProcessId);
+    this.notifyObservers_('openTerminalProcess', arguments);
+  }, 0);
 };
 
 /**
@@ -143,8 +179,10 @@ MockTerminalPrivate.prototype.openTerminalProcess = function(
  *     operation is started for the process. Returns success of the function.
  */
 MockTerminalPrivate.prototype.closeTerminalProcess = function(id, callback) {
-  this.notifyObservers_('closeTerminalProcess', arguments);
-  setTimeout(callback.bind(null, true), 0);
+  setTimeout(() => {
+    callback(true);
+    this.notifyObservers_('closeTerminalProcess', arguments);
+  }, 0);
 };
 
 /**
@@ -157,8 +195,10 @@ MockTerminalPrivate.prototype.closeTerminalProcess = function(id, callback) {
  *     sendInput method ends. Returns success.
  */
 MockTerminalPrivate.prototype.sendInput = function(id, input, callback) {
-  this.notifyObservers_('sendInput', arguments);
-  setTimeout(callback.bind(null, true), 0);
+  setTimeout(() => {
+    callback(true);
+    this.notifyObservers_('sendInput', arguments);
+  }, 0);
 };
 
 /**
@@ -172,8 +212,10 @@ MockTerminalPrivate.prototype.sendInput = function(id, input, callback) {
  */
 MockTerminalPrivate.prototype.onTerminalResize = function(
     id, width, height, callback) {
-  this.notifyObservers_('onTerminalResize', arguments);
-  setTimeout(callback.bind(null, true), 0);
+  setTimeout(() => {
+    callback(true);
+    this.notifyObservers_('onTerminalResize', arguments);
+  }, 0);
 };
 
 /**
@@ -187,6 +229,21 @@ MockTerminalPrivate.prototype.onTerminalResize = function(
  */
 MockTerminalPrivate.prototype.ackOutput = function(tabId, id) {
   this.notifyObservers_('ackOutput', arguments);
+};
+
+/**
+ * Returns settings used by the crosh extension.  This function is called by
+ * the terminal system app the first time it is run to migrate any previously
+ * settings.
+ *
+ * @param {function(!Object<string, *>)} callback Callback that will be called
+ *     with settings.
+ */
+MockTerminalPrivate.prototype.getCroshSettings = function(callback) {
+  setTimeout(() => {
+    callback(this.croshSettings);
+    this.notifyObservers_('getCroshSettings', arguments);
+  }, 0);
 };
 
 /**
@@ -232,4 +289,28 @@ MockWindow.prototype.addEventListener = function(type, listener) {
  */
 MockWindow.prototype.removeEventListener = function(type, listener) {
   this.events[type].removeListener(listener);
+};
+
+/**
+ * Mock Location.
+ *
+ * @extends {Location}
+ */
+class MockLocation {
+  /** @param {!URL} url */
+  constructor(url) { this.url = url; }
+
+  /** @override */
+  get hash() { return this.url.hash; }
+
+  /** @override */
+  set hash(hash) { this.url.hash = hash; }
+
+  /** @override */
+  get href() { return this.url.href; }
+}
+
+/** @override */
+MockLocation.prototype.replace = function(url) {
+  this.url = new URL(`${url}`, this.url);
 };
