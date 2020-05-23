@@ -674,6 +674,7 @@ hterm.Terminal.prototype.setBackgroundColor = function(color) {
   this.alternateScreen_.textAttributes.setDefaults(
       this.foregroundColor_, this.backgroundColor_);
   this.scrollPort_.setBackgroundColor(color);
+  this.restyleCursor_();
 };
 
 /**
@@ -1627,7 +1628,7 @@ border-color: var(--hterm-cursor-color);
   this.setCursorBlink(!!this.prefs_.get('cursor-blink'));
   this.restyleCursor_();
 
-  this.document_.body.appendChild(this.cursorNode_);
+  this.scrollPort_.screen_.appendChild(this.cursorNode_);
 
   // When 'enableMouseDragScroll' is off we reposition this element directly
   // under the mouse cursor after a click.  This makes Chrome associate
@@ -2918,6 +2919,12 @@ hterm.Terminal.prototype.syncCursorPosition_ = function() {
                                 ', ' + this.screen_.cursorPosition.row +
                                 ')');
 
+  var cursorChar = this.screen_.cursorNode_.textContent[this.screen_.cursorOffset_];
+  if (cursorChar === undefined) {
+    cursorChar = '';
+  }
+  this.cursorNode_.innerText = cursorChar;
+
   // Update the caret for a11y purposes.
   var selection = this.document_.getSelection();
   if (selection && (selection.isCollapsed || forceSyncSelection)) {
@@ -2939,6 +2946,12 @@ hterm.Terminal.prototype.restyleCursor_ = function() {
   }
 
   var style = this.cursorNode_.style;
+
+  if (this.cursorNode_.getAttribute('focus') == 'false') {
+    style.color = 'transparent';
+  } else {
+    style.color = this.backgroundColor_;
+  }
 
   switch (shape) {
     case hterm.Terminal.cursorShape.BEAM:
