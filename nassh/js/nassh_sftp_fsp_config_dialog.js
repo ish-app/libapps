@@ -28,7 +28,7 @@ nassh.ConfigDialog = function(client) {
  * Translate the dialog.
  */
 nassh.ConfigDialog.prototype.updateLabels_ = function() {
-  lib.i18n.getAcceptLanguages((languages) => {
+  lib.i18n.getAcceptLanguages().then((languages) => {
     const mm = new lib.MessageManager(languages);
     mm.processI18nAttributes(document.body);
 
@@ -104,7 +104,7 @@ nassh.ConfigDialog.prototype.refresh_ = function() {
  * Get the SFTP client from the background page handle.
  *
  * @param {!Window} bg The extension's background page.
- * @param {?string} fsId The unique filesystem id.
+ * @param {string} fsId The unique filesystem id.
  * @return {?nassh.ConfigDialog} The new runtime dialog.
  */
 nassh.ConfigDialog.fromBackgroundPage = function(bg, fsId) {
@@ -120,9 +120,9 @@ nassh.ConfigDialog.fromBackgroundPage = function(bg, fsId) {
  * Event when the window finishes loading.
  */
 window.addEventListener('DOMContentLoaded', (event) => {
-  lib.init(() => {
+  lib.init().then(() => {
     const params = new URLSearchParams(document.location.search);
-    const profileId = params.get('profile-id');
+    const profileId = lib.notNull(params.get('profile-id'));
     document.title = `SFTP: ${profileId}`;
     nassh.getBackgroundPage()
       .then((bg) => {

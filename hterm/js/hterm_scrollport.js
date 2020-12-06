@@ -93,6 +93,11 @@ hterm.ScrollPort = function(rowProvider) {
   this.lastTouch_ = {};
 
   /**
+   * Size of screen padding in pixels.
+   */
+  this.screenPaddingSize = 0;
+
+  /**
    * True if the last scroll caused the scrollport to show the final row.
    */
   this.isScrolledEnd = true;
@@ -100,7 +105,7 @@ hterm.ScrollPort = function(rowProvider) {
   /**
    * A guess at the current scrollbar width, fixed in resize().
    */
-  this.currentScrollbarWidthPx = 16;
+  this.currentScrollbarWidthPx = hterm.ScrollPort.DEFAULT_SCROLLBAR_WIDTH;
 
   /**
    * Whether the ctrl-v key on the screen should paste.
@@ -128,6 +133,14 @@ hterm.ScrollPort = function(rowProvider) {
 
   this.DEBUG_ = false;
 };
+
+/**
+ * Default width for scrollbar used when the system such as CrOS pretends that
+ * scrollbar is zero width.  CrOS currently uses 11px when expanded.
+ *
+ * @const {number}
+ */
+hterm.ScrollPort.DEFAULT_SCROLLBAR_WIDTH = 12;
 
 /**
  * Proxy for the native selection object which understands how to walk up the
@@ -184,16 +197,18 @@ hterm.ScrollPort.Selection = function(scrollPort) {
  */
 hterm.ScrollPort.Selection.prototype.findFirstChild = function(
     parent, childAry) {
-  var node = parent.firstChild;
+  let node = parent.firstChild;
 
   while (node) {
-    if (childAry.indexOf(node) != -1)
+    if (childAry.indexOf(node) != -1) {
       return node;
+    }
 
     if (node.childNodes.length) {
-      var rv = this.findFirstChild(node, childAry);
-      if (rv)
+      const rv = this.findFirstChild(node, childAry);
+      if (rv) {
         return rv;
+      }
     }
 
     node = node.nextSibling;
@@ -209,32 +224,30 @@ hterm.ScrollPort.Selection.prototype.findFirstChild = function(
  * object, not the other way around.
  */
 hterm.ScrollPort.Selection.prototype.sync = function() {
-  var self = this;
-
   // The dom selection object has no way to tell which nodes come first in
   // the document, so we have to figure that out.
   //
   // This function is used when we detect that the "anchor" node is first.
-  function anchorFirst() {
-    self.startRow = anchorRow;
-    self.startNode = selection.anchorNode;
-    self.startOffset = selection.anchorOffset;
-    self.endRow = focusRow;
-    self.endNode = selection.focusNode;
-    self.endOffset = selection.focusOffset;
-  }
+  const anchorFirst = () => {
+    this.startRow = anchorRow;
+    this.startNode = selection.anchorNode;
+    this.startOffset = selection.anchorOffset;
+    this.endRow = focusRow;
+    this.endNode = selection.focusNode;
+    this.endOffset = selection.focusOffset;
+  };
 
   // This function is used when we detect that the "focus" node is first.
-  function focusFirst() {
-    self.startRow = focusRow;
-    self.startNode = selection.focusNode;
-    self.startOffset = selection.focusOffset;
-    self.endRow = anchorRow;
-    self.endNode = selection.anchorNode;
-    self.endOffset = selection.anchorOffset;
-  }
+  const focusFirst = () => {
+    this.startRow = focusRow;
+    this.startNode = selection.focusNode;
+    this.startOffset = selection.focusOffset;
+    this.endRow = anchorRow;
+    this.endNode = selection.anchorNode;
+    this.endOffset = selection.anchorOffset;
+  };
 
-  var selection = this.scrollPort_.getDocument().getSelection();
+  const selection = this.scrollPort_.getDocument().getSelection();
 
   this.startRow = null;
   this.endRow = null;
@@ -255,7 +268,7 @@ hterm.ScrollPort.Selection.prototype.sync = function() {
     return;
   }
 
-  var anchorRow = selection.anchorNode;
+  let anchorRow = selection.anchorNode;
   while (anchorRow && anchorRow.nodeName != 'X-ROW') {
     anchorRow = anchorRow.parentNode;
   }
@@ -265,7 +278,7 @@ hterm.ScrollPort.Selection.prototype.sync = function() {
     return;
   }
 
-  var focusRow = selection.focusNode;
+  let focusRow = selection.focusNode;
   while (focusRow && focusRow.nodeName != 'X-ROW') {
     focusRow = focusRow.parentNode;
   }
@@ -291,11 +304,12 @@ hterm.ScrollPort.Selection.prototype.sync = function() {
   } else {
     // The selection starts and ends in the same row, but isn't contained all
     // in a single node.
-    var firstNode = this.findFirstChild(
+    const firstNode = this.findFirstChild(
         anchorRow, [selection.anchorNode, selection.focusNode]);
 
-    if (!firstNode)
+    if (!firstNode) {
       throw new Error('Unexpected error syncing selection.');
+    }
 
     if (firstNode == selection.anchorNode) {
       anchorFirst();
@@ -352,7 +366,7 @@ hterm.ScrollPort.prototype.paintIframeContents_ = function() {
   this.iframe_.contentWindow.addEventListener('resize',
                                               this.onResize_.bind(this));
 
-  var doc = this.document_ = this.iframe_.contentDocument;
+  const doc = this.document_ = this.iframe_.contentDocument;
   doc.body.style.cssText = (
       'margin: 0px;' +
       'padding: 0px;' +
@@ -375,7 +389,7 @@ hterm.ScrollPort.prototype.paintIframeContents_ = function() {
         'calc(var(--hterm-charsize-height) * 3)';
   }
 
-  var style = doc.createElement('style');
+  const style = doc.createElement('style');
   style.textContent = (
       'x-row {' +
       '  display: block;' +
@@ -424,19 +438,21 @@ hterm.ScrollPort.prototype.paintIframeContents_ = function() {
   // orthogonal to the DOM's notion of modifiable.
   this.screen_.setAttribute('aria-readonly', 'true');
   this.screen_.setAttribute('tabindex', '-1');
-  this.screen_.style.cssText = (
-      'caret-color: transparent;' +
-      'display: block;' +
-      'font-family: monospace;' +
-      'font-size: 15px;' +
-      'font-variant-ligatures: none;' +
-      'height: 100%;' +
-      'overflow-y: scroll; overflow-x: hidden;' +
-      'white-space: pre;' +
-      'width: 100%;' +
-      'outline: none !important');
+  this.screen_.style.cssText = `
+      background-color: rgb(var(--hterm-background-color));
+      caret-color: transparent;
+      color: rgb(var(--hterm-foreground-color));
+      display: block;
+      font-family: monospace;
+      font-size: 15px;
+      font-variant-ligatures: none;
+      height: 100%;
+      overflow-y: scroll; overflow-x: hidden;
+      white-space: pre;
+      width: 100%;
+      outline: none !important;
+  `;
 
-  doc.body.appendChild(this.screen_);
 
   /**
    * @param {function(...)} f
@@ -458,20 +474,24 @@ hterm.ScrollPort.prototype.paintIframeContents_ = function() {
   // Add buttons to make accessible scrolling through terminal history work
   // well. These are positioned off-screen until they are selected, at which
   // point they are moved on-screen.
-  const scrollButtonHeight = 30;
-  const scrollButtonBorder = 1;
-  const scrollButtonTotalHeight = scrollButtonHeight + 2 * scrollButtonBorder;
-  const scrollButtonStyle = `right: 0px;
-                             position:fixed;
-                             z-index: 1;
-                             text-align: center;
-                             cursor: pointer;
-                             height: ${scrollButtonHeight}px;
-                             width: 110px;
-                             line-height: ${scrollButtonHeight}px;
-                             border-width: ${scrollButtonBorder}px;
-                             border-style: solid;
-                             font-weight: bold;`;
+  const a11yButtonHeight = 30;
+  const a11yButtonBorder = 1;
+  const a11yButtonTotalHeight = a11yButtonHeight + 2 * a11yButtonBorder;
+  const a11yButtonStyle = `
+    border-style: solid;
+    border-width: ${a11yButtonBorder}px;
+    color: rgb(var(--hterm-foreground-color));
+    cursor: pointer;
+    font-family: monospace;
+    font-weight: bold;
+    height: ${a11yButtonHeight}px;
+    line-height: ${a11yButtonHeight}px;
+    padding: 0 8px;
+    position: fixed;
+    right: var(--hterm-screen-padding-size);
+    text-align: center;
+    z-index: 1;
+  `;
   // Note: we use a <div> rather than a <button> because we don't want it to be
   // focusable. If it's focusable this interferes with the contenteditable
   // focus.
@@ -479,8 +499,8 @@ hterm.ScrollPort.prototype.paintIframeContents_ = function() {
   this.scrollUpButton_.id = 'hterm:a11y:page-up';
   this.scrollUpButton_.innerText = hterm.msg('BUTTON_PAGE_UP', [], 'Page up');
   this.scrollUpButton_.setAttribute('role', 'button');
-  this.scrollUpButton_.style.cssText = scrollButtonStyle;
-  this.scrollUpButton_.style.top = -scrollButtonTotalHeight + 'px';
+  this.scrollUpButton_.style.cssText = a11yButtonStyle;
+  this.scrollUpButton_.style.top = `${-a11yButtonTotalHeight}px`;
   this.scrollUpButton_.addEventListener('click', this.scrollPageUp.bind(this));
 
   this.scrollDownButton_ = this.document_.createElement('div');
@@ -488,40 +508,63 @@ hterm.ScrollPort.prototype.paintIframeContents_ = function() {
   this.scrollDownButton_.innerText =
       hterm.msg('BUTTON_PAGE_DOWN', [], 'Page down');
   this.scrollDownButton_.setAttribute('role', 'button');
-  this.scrollDownButton_.style.cssText = scrollButtonStyle;
-  this.scrollDownButton_.style.bottom = -scrollButtonTotalHeight + 'px';
+  this.scrollDownButton_.style.cssText = a11yButtonStyle;
+  this.scrollDownButton_.style.bottom = `${-a11yButtonTotalHeight}px`;
   this.scrollDownButton_.addEventListener(
       'click', this.scrollPageDown.bind(this));
+
+  this.optionsButton_ = this.document_.createElement('div');
+  this.optionsButton_.id = 'hterm:a11y:options';
+  this.optionsButton_.innerText =
+      hterm.msg('OPTIONS_BUTTON_LABEL', [], 'Options');
+  this.optionsButton_.setAttribute('role', 'button');
+  this.optionsButton_.style.cssText = a11yButtonStyle;
+  this.optionsButton_.style.bottom = `${-2 * a11yButtonTotalHeight}px`;
+  this.optionsButton_.addEventListener(
+      'click', this.publish.bind(this, 'options'));
+
+  doc.body.appendChild(this.scrollUpButton_);
+  doc.body.appendChild(this.screen_);
+  doc.body.appendChild(this.scrollDownButton_);
+  doc.body.appendChild(this.optionsButton_);
 
   // We only allow the scroll buttons to display after a delay, otherwise the
   // page up button can flash onto the screen during the intial change in focus.
   // This seems to be because it is the first element inside the <x-screen>
   // element, which will get focussed on page load.
-  this.allowScrollButtonsToDisplay_ = false;
-  setTimeout(() => { this.allowScrollButtonsToDisplay_ = true; }, 500);
+  this.allowA11yButtonsToDisplay_ = false;
+  setTimeout(() => { this.allowA11yButtonsToDisplay_ = true; }, 500);
   this.document_.addEventListener('selectionchange', () => {
     this.selection.sync();
 
-    if (!this.allowScrollButtonsToDisplay_)
+    if (!this.allowA11yButtonsToDisplay_) {
       return;
+    }
 
     const accessibilityEnabled = this.accessibilityReader_ &&
         this.accessibilityReader_.accessibilityEnabled;
 
-    const selectedElement = this.document_.getSelection().anchorNode;
+    const selection = this.document_.getSelection();
+    let selectedElement;
+    if (selection.anchorNode && selection.anchorNode.parentElement) {
+      selectedElement = selection.anchorNode.parentElement;
+    }
     if (accessibilityEnabled && selectedElement == this.scrollUpButton_) {
-      this.scrollUpButton_.style.top = '0px';
+      this.scrollUpButton_.style.top = `${this.screenPaddingSize}px`;
     } else {
-      this.scrollUpButton_.style.top = -scrollButtonTotalHeight + 'px';
+      this.scrollUpButton_.style.top = `${-a11yButtonTotalHeight}px`;
     }
     if (accessibilityEnabled && selectedElement == this.scrollDownButton_) {
-      this.scrollDownButton_.style.bottom = '0px';
+      this.scrollDownButton_.style.bottom = `${this.screenPaddingSize}px`;
     } else {
-      this.scrollDownButton_.style.bottom = -scrollButtonTotalHeight + 'px';
+      this.scrollDownButton_.style.bottom = `${-a11yButtonTotalHeight}px`;
+    }
+    if (accessibilityEnabled && selectedElement == this.optionsButton_) {
+      this.optionsButton_.style.bottom = `${this.screenPaddingSize}px`;
+    } else {
+      this.optionsButton_.style.bottom = `${-2 * a11yButtonTotalHeight}px`;
     }
   });
-
-  this.screen_.appendChild(this.scrollUpButton_);
 
   // This is the main container for the fixed rows.
   this.rowNodes_ = doc.createElement('div');
@@ -533,8 +576,6 @@ hterm.ScrollPort.prototype.paintIframeContents_ = function() {
       '-webkit-user-select: text;' +
       '-moz-user-select: text;');
   this.screen_.appendChild(this.rowNodes_);
-
-  this.screen_.appendChild(this.scrollDownButton_);
 
   // Two nodes to hold offscreen text during the copy event.
   this.topSelectBag_ = doc.createElement('x-select-bag');
@@ -551,7 +592,10 @@ hterm.ScrollPort.prototype.paintIframeContents_ = function() {
   // scrolled off the top or bottom of the visible range.
   this.topFold_ = doc.createElement('x-fold');
   this.topFold_.id = 'hterm:top-fold-for-row-selection';
-  this.topFold_.style.cssText = 'display: block;';
+  this.topFold_.style.cssText = `
+    display: block;
+    height: var(--hterm-screen-padding-size);
+  `;
   this.rowNodes_.appendChild(this.topFold_);
 
   this.bottomFold_ = this.topFold_.cloneNode();
@@ -577,7 +621,7 @@ hterm.ScrollPort.prototype.paintIframeContents_ = function() {
   // TODO(rginda): This means that hterm nested in an iframe will not correctly
   // detect browser zoom level.  We should come up with a better solution.
   // Note: This must be http:// else Chrome cannot create the element correctly.
-  var xmlns = 'http://www.w3.org/2000/svg';
+  const xmlns = 'http://www.w3.org/2000/svg';
   this.svg_ =
       /** @type {?SVGSVGElement} */
       (this.div_.ownerDocument.createElementNS(xmlns, 'svg'));
@@ -659,16 +703,13 @@ hterm.ScrollPort.prototype.scrollPageDown = function() {
  *
  * @param {string} fontFamily Value of the CSS 'font-family' to use for this
  *     scrollport.  Should be a monospace font.
- * @param {string=} opt_smoothing Optional value for '-webkit-font-smoothing'.
+ * @param {string=} smoothing Optional value for '-webkit-font-smoothing'.
  *     Defaults to an empty string if not specified.
  */
-hterm.ScrollPort.prototype.setFontFamily = function(fontFamily, opt_smoothing) {
+hterm.ScrollPort.prototype.setFontFamily = function(
+    fontFamily, smoothing = '') {
   this.screen_.style.fontFamily = fontFamily;
-  if (opt_smoothing) {
-    this.screen_.style.webkitFontSmoothing = opt_smoothing;
-  } else {
-    this.screen_.style.webkitFontSmoothing = '';
-  }
+  this.screen_.style.webkitFontSmoothing = smoothing;
 
   this.syncCharacterSize();
 };
@@ -690,8 +731,9 @@ hterm.ScrollPort.prototype.setUserCssUrl = function(url) {
   if (url) {
     this.userCssLink_.setAttribute('href', url);
 
-    if (!this.userCssLink_.parentNode)
+    if (!this.userCssLink_.parentNode) {
       this.document_.head.appendChild(this.userCssLink_);
+    }
   } else if (this.userCssLink_.parentNode) {
     this.document_.head.removeChild(this.userCssLink_);
   }
@@ -716,30 +758,6 @@ hterm.ScrollPort.prototype.blur = function() {
   this.screen_.blur();
 };
 
-/** @return {string} */
-hterm.ScrollPort.prototype.getForegroundColor = function() {
-  return this.screen_.style.color;
-};
-
-/** @param {string} color */
-hterm.ScrollPort.prototype.setForegroundColor = function(color) {
-  this.screen_.style.color = color;
-  this.scrollUpButton_.style.backgroundColor = color;
-  this.scrollDownButton_.style.backgroundColor = color;
-};
-
-/** @return {string} */
-hterm.ScrollPort.prototype.getBackgroundColor = function() {
-  return this.screen_.style.backgroundColor;
-};
-
-/** @param {string} color */
-hterm.ScrollPort.prototype.setBackgroundColor = function(color) {
-  this.screen_.style.backgroundColor = color;
-  this.scrollUpButton_.style.color = color;
-  this.scrollDownButton_.style.color = color;
-};
-
 /** @param {string} image */
 hterm.ScrollPort.prototype.setBackgroundImage = function(image) {
   this.screen_.style.backgroundImage = image;
@@ -753,6 +771,12 @@ hterm.ScrollPort.prototype.setBackgroundSize = function(size) {
 /** @param {string} position */
 hterm.ScrollPort.prototype.setBackgroundPosition = function(position) {
   this.screen_.style.backgroundPosition = position;
+};
+
+/** @param {number} size */
+hterm.ScrollPort.prototype.setScreenPaddingSize = function(size) {
+  this.screenPaddingSize = size;
+  this.resize();
 };
 
 /** @param {boolean} ctrlVPaste */
@@ -773,10 +797,12 @@ hterm.ScrollPort.prototype.setPasteOnDrop = function(pasteOnDrop) {
  * @return {{height: number, width: number}}
  */
 hterm.ScrollPort.prototype.getScreenSize = function() {
-  var size = hterm.getClientSize(lib.notNull(this.screen_));
+  const size = hterm.getClientSize(lib.notNull(this.screen_));
+  const rightPadding = Math.max(
+      this.screenPaddingSize, this.currentScrollbarWidthPx);
   return {
-    height: size.height,
-    width: size.width - this.currentScrollbarWidthPx
+    height: size.height - (2 * this.screenPaddingSize),
+    width: size.width - this.screenPaddingSize - rightPadding,
   };
 };
 
@@ -788,7 +814,7 @@ hterm.ScrollPort.prototype.getScreenSize = function() {
  * @return {number}
  */
 hterm.ScrollPort.prototype.getScreenWidth = function() {
-  return this.getScreenSize().width ;
+  return this.getScreenSize().width;
 };
 
 /**
@@ -798,6 +824,16 @@ hterm.ScrollPort.prototype.getScreenWidth = function() {
  */
 hterm.ScrollPort.prototype.getScreenHeight = function() {
   return this.getScreenSize().height;
+};
+
+/**
+ * Get the horizontal position in px where the scrollbar starts.
+ *
+ * @return {number}
+ */
+hterm.ScrollPort.prototype.getScrollbarX = function() {
+  return hterm.getClientSize(lib.notNull(this.screen_)).width -
+         this.currentScrollbarWidthPx;
 };
 
 /**
@@ -854,16 +890,16 @@ hterm.ScrollPort.prototype.setRowProvider = function(rowProvider) {
  * changed.
  */
 hterm.ScrollPort.prototype.invalidate = function() {
-  var node = this.topFold_.nextSibling;
+  let node = this.topFold_.nextSibling;
   while (node != this.bottomFold_) {
-    var nextSibling = node.nextSibling;
+    const nextSibling = node.nextSibling;
     node.parentElement.removeChild(node);
     node = nextSibling;
   }
 
   this.previousRowNodeCache_ = null;
-  var topRowIndex = this.getTopRowIndex();
-  var bottomRowIndex = this.getBottomRowIndex(topRowIndex);
+  const topRowIndex = this.getTopRowIndex();
+  const bottomRowIndex = this.getBottomRowIndex(topRowIndex);
 
   this.drawVisibleRows_(topRowIndex, bottomRowIndex);
 };
@@ -872,14 +908,14 @@ hterm.ScrollPort.prototype.invalidate = function() {
  * Schedule invalidate.
  */
 hterm.ScrollPort.prototype.scheduleInvalidate = function() {
-  if (this.timeouts_.invalidate)
+  if (this.timeouts_.invalidate) {
     return;
+  }
 
-  var self = this;
-  this.timeouts_.invalidate = setTimeout(function () {
-      delete self.timeouts_.invalidate;
-      self.invalidate();
-    }, 0);
+  this.timeouts_.invalidate = setTimeout(() => {
+    delete this.timeouts_.invalidate;
+    this.invalidate();
+  });
 };
 
 /**
@@ -904,15 +940,15 @@ hterm.ScrollPort.prototype.getFontSize = function() {
 /**
  * Measure the size of a single character in pixels.
  *
- * @param {string=} opt_weight The font weight to measure, or 'normal' if
+ * @param {string=} weight The font weight to measure, or 'normal' if
  *     omitted.
  * @return {!hterm.Size} A new hterm.Size object.
  */
-hterm.ScrollPort.prototype.measureCharacterSize = function(opt_weight) {
+hterm.ScrollPort.prototype.measureCharacterSize = function(weight = '') {
   // Number of lines used to average the height of a single character.
-  var numberOfLines = 100;
+  const numberOfLines = 100;
   // Number of chars per line used to average the width of a single character.
-  var lineLength = 100;
+  const lineLength = 100;
 
   if (!this.ruler_) {
     this.ruler_ = this.document_.createElement('div');
@@ -940,12 +976,12 @@ hterm.ScrollPort.prototype.measureCharacterSize = function(opt_weight) {
     this.rulerBaseline_.textContent = 'X';
   }
 
-  this.rulerSpan_.style.fontWeight = opt_weight || '';
+  this.rulerSpan_.style.fontWeight = weight;
 
   this.rowNodes_.appendChild(this.ruler_);
-  var rulerSize = hterm.getClientSize(this.rulerSpan_);
+  const rulerSize = hterm.getClientSize(this.rulerSpan_);
 
-  var size = new hterm.Size(rulerSize.width / lineLength,
+  const size = new hterm.Size(rulerSize.width / lineLength,
                             rulerSize.height / numberOfLines);
 
   this.ruler_.appendChild(this.rulerBaseline_);
@@ -977,18 +1013,13 @@ hterm.ScrollPort.prototype.syncCharacterSize = function() {
  * dimensions of the 'x-screen'.
  */
 hterm.ScrollPort.prototype.resize = function() {
-  this.currentScrollbarWidthPx =
-    hterm.getClientWidth(lib.notNull(this.screen_)) - this.screen_.clientWidth;
-
+  this.syncScrollbarWidth_();
   this.syncScrollHeight();
   this.syncRowNodesDimensions_();
 
-  var self = this;
   this.publish(
-      'resize', { scrollPort: this },
-      function() {
-        self.scheduleRedraw();
-      });
+      'resize', {scrollPort: this},
+      () => this.scheduleRedraw());
 };
 
 /**
@@ -1022,7 +1053,7 @@ hterm.ScrollPort.prototype.assertiveAnnounce_ = function() {
  * Set the position and size of the row nodes element.
  */
 hterm.ScrollPort.prototype.syncRowNodesDimensions_ = function() {
-  var screenSize = this.getScreenSize();
+  const screenSize = this.getScreenSize();
 
   this.lastScreenWidth_ = screenSize.width;
   this.lastScreenHeight_ = screenSize.height;
@@ -1033,7 +1064,7 @@ hterm.ScrollPort.prototype.syncRowNodesDimensions_ = function() {
       screenSize.height, this.characterSize.height);
 
   // Then compute the height of our integral number of rows.
-  var visibleRowsHeight = this.visibleRowCount * this.characterSize.height;
+  const visibleRowsHeight = this.visibleRowCount * this.characterSize.height;
 
   // Then the difference between the screen height and total row height needs to
   // be made up for as top margin.  We need to record this value so it
@@ -1044,8 +1075,8 @@ hterm.ScrollPort.prototype.syncRowNodesDimensions_ = function() {
   this.topFold_.style.marginBottom = this.visibleRowTopMargin + 'px';
 
 
-  var topFoldOffset = 0;
-  var node = this.topFold_.previousSibling;
+  let topFoldOffset = 0;
+  let node = this.topFold_.previousSibling;
   while (node) {
     topFoldOffset += hterm.getClientHeight(node);
     node = node.previousSibling;
@@ -1053,9 +1084,25 @@ hterm.ScrollPort.prototype.syncRowNodesDimensions_ = function() {
 
   // Set the dimensions of the visible rows container.
   this.rowNodes_.style.width = screenSize.width + 'px';
-  this.rowNodes_.style.height = visibleRowsHeight + topFoldOffset + 'px';
-  this.rowNodes_.style.left = this.screen_.offsetLeft + 'px';
-  this.rowNodes_.style.top = this.screen_.offsetTop - topFoldOffset + 'px';
+  this.rowNodes_.style.height =
+      visibleRowsHeight + topFoldOffset + this.screenPaddingSize + 'px';
+  this.rowNodes_.style.left =
+      this.screen_.offsetLeft + this.screenPaddingSize + 'px';
+  this.rowNodes_.style.top =
+      this.screen_.offsetTop - topFoldOffset + 'px';
+};
+
+/**
+ * Measure scrollbar width.
+ *
+ * @private
+ */
+hterm.ScrollPort.prototype.syncScrollbarWidth_ = function() {
+  const width = hterm.getClientWidth(lib.notNull(this.screen_)) -
+                this.screen_.clientWidth;
+  if (width > 0) {
+    this.currentScrollbarWidthPx = width;
+  }
 };
 
 /**
@@ -1065,6 +1112,7 @@ hterm.ScrollPort.prototype.syncScrollHeight = function() {
   this.lastRowCount_ = this.rowProvider_.getRowCount();
   this.scrollArea_.style.height = (this.characterSize.height *
                                    this.lastRowCount_ +
+                                   (2 * this.screenPaddingSize) +
                                    this.visibleRowTopMargin +
                                    this.visibleRowBottomMargin +
                                    'px');
@@ -1077,14 +1125,14 @@ hterm.ScrollPort.prototype.syncScrollHeight = function() {
  * run only one redraw occurs.
  */
 hterm.ScrollPort.prototype.scheduleRedraw = function() {
-  if (this.timeouts_.redraw)
+  if (this.timeouts_.redraw) {
     return;
+  }
 
-  var self = this;
-  this.timeouts_.redraw = setTimeout(function () {
-      delete self.timeouts_.redraw;
-      self.redraw_();
-    }, 0);
+  this.timeouts_.redraw = setTimeout(() => {
+    delete this.timeouts_.redraw;
+    this.redraw_();
+  });
 };
 
 /**
@@ -1120,8 +1168,8 @@ hterm.ScrollPort.prototype.redraw_ = function() {
 
   this.currentRowNodeCache_ = {};
 
-  var topRowIndex = this.getTopRowIndex();
-  var bottomRowIndex = this.getBottomRowIndex(topRowIndex);
+  const topRowIndex = this.getTopRowIndex();
+  const bottomRowIndex = this.getBottomRowIndex(topRowIndex);
 
   this.drawTopFold_(topRowIndex);
   this.drawBottomFold_(bottomRowIndex);
@@ -1159,8 +1207,9 @@ hterm.ScrollPort.prototype.drawTopFold_ = function(topRowIndex) {
       this.selection.startRow.rowIndex >= topRowIndex) {
     // Selection is entirely below the top fold, just make sure the fold is
     // the first child.
-    if (this.rowNodes_.firstChild != this.topFold_)
+    if (this.rowNodes_.firstChild != this.topFold_) {
       this.rowNodes_.insertBefore(this.topFold_, this.rowNodes_.firstChild);
+    }
 
     return;
   }
@@ -1168,9 +1217,10 @@ hterm.ScrollPort.prototype.drawTopFold_ = function(topRowIndex) {
   if (!this.selection.isMultiline ||
       this.selection.endRow.rowIndex >= topRowIndex) {
     // Only the startRow is above the fold.
-    if (this.selection.startRow.nextSibling != this.topFold_)
+    if (this.selection.startRow.nextSibling != this.topFold_) {
       this.rowNodes_.insertBefore(this.topFold_,
                                   this.selection.startRow.nextSibling);
+    }
   } else {
     // Both rows are above the fold.
     if (this.selection.endRow.nextSibling != this.topFold_) {
@@ -1185,7 +1235,7 @@ hterm.ScrollPort.prototype.drawTopFold_ = function(topRowIndex) {
     }
   }
 
-  while(this.rowNodes_.firstChild != this.selection.startRow) {
+  while (this.rowNodes_.firstChild != this.selection.startRow) {
     this.rowNodes_.removeChild(this.rowNodes_.firstChild);
   }
 };
@@ -1210,8 +1260,9 @@ hterm.ScrollPort.prototype.drawBottomFold_ = function(bottomRowIndex) {
       this.selection.endRow.rowIndex <= bottomRowIndex) {
     // Selection is entirely above the bottom fold, just make sure the fold is
     // the last child.
-    if (this.rowNodes_.lastChild != this.bottomFold_)
+    if (this.rowNodes_.lastChild != this.bottomFold_) {
       this.rowNodes_.appendChild(this.bottomFold_);
+    }
 
     return;
   }
@@ -1219,9 +1270,10 @@ hterm.ScrollPort.prototype.drawBottomFold_ = function(bottomRowIndex) {
   if (!this.selection.isMultiline ||
       this.selection.startRow.rowIndex <= bottomRowIndex) {
     // Only the endRow is below the fold.
-    if (this.bottomFold_.nextSibling != this.selection.endRow)
+    if (this.bottomFold_.nextSibling != this.selection.endRow) {
       this.rowNodes_.insertBefore(this.bottomFold_,
                                   this.selection.endRow);
+    }
   } else {
     // Both rows are below the fold.
     if (this.bottomFold_.nextSibling != this.selection.startRow) {
@@ -1236,7 +1288,7 @@ hterm.ScrollPort.prototype.drawBottomFold_ = function(bottomRowIndex) {
     }
   }
 
-  while(this.rowNodes_.lastChild != this.selection.endRow) {
+  while (this.rowNodes_.lastChild != this.selection.endRow) {
     this.rowNodes_.removeChild(this.rowNodes_.lastChild);
   }
 };
@@ -1260,41 +1312,41 @@ hterm.ScrollPort.prototype.drawBottomFold_ = function(bottomRowIndex) {
  */
 hterm.ScrollPort.prototype.drawVisibleRows_ = function(
     topRowIndex, bottomRowIndex) {
-  var self = this;
-
   // Keep removing nodes, starting with currentNode, until we encounter
   // targetNode.  Throws on failure.
-  function removeUntilNode(currentNode, targetNode) {
+  const removeUntilNode = (currentNode, targetNode) => {
     while (currentNode != targetNode) {
-      if (!currentNode)
-        throw 'Did not encounter target node';
+      if (!currentNode) {
+        throw new Error('Did not encounter target node');
+      }
 
-      if (currentNode == self.bottomFold_)
-        throw 'Encountered bottom fold before target node';
+      if (currentNode == this.bottomFold_) {
+        throw new Error('Encountered bottom fold before target node');
+      }
 
-      var deadNode = currentNode;
+      const deadNode = currentNode;
       currentNode = currentNode.nextSibling;
       deadNode.parentNode.removeChild(deadNode);
     }
-  }
+  };
 
   // Shorthand for things we're going to use a lot.
-  var selectionStartRow = this.selection.startRow;
-  var selectionEndRow = this.selection.endRow;
-  var bottomFold = this.bottomFold_;
+  const selectionStartRow = this.selection.startRow;
+  const selectionEndRow = this.selection.endRow;
+  const bottomFold = this.bottomFold_;
 
   // The node we're examining during the current iteration.
-  var node = this.topFold_.nextSibling;
+  let node = this.topFold_.nextSibling;
 
-  var targetDrawCount = Math.min(this.visibleRowCount,
-                                 this.rowProvider_.getRowCount());
+  const targetDrawCount = Math.min(this.visibleRowCount,
+                                   this.rowProvider_.getRowCount());
 
-  for (var drawCount = 0; drawCount < targetDrawCount; drawCount++) {
-    var rowIndex = topRowIndex + drawCount;
+  for (let drawCount = 0; drawCount < targetDrawCount; drawCount++) {
+    const rowIndex = topRowIndex + drawCount;
 
     if (node == bottomFold) {
       // We've hit the bottom fold, we need to insert a new row.
-      var newNode = this.fetchRowNode_(rowIndex);
+      const newNode = this.fetchRowNode_(rowIndex);
       if (!newNode) {
         console.log("Couldn't fetch row index: " + rowIndex);
         break;
@@ -1329,7 +1381,7 @@ hterm.ScrollPort.prototype.drawVisibleRows_ = function(
     if (node == selectionStartRow || node == selectionEndRow) {
       // We encountered the start/end of the selection, but we don't want it
       // yet.  Insert a new row instead.
-      var newNode = this.fetchRowNode_(rowIndex);
+      const newNode = this.fetchRowNode_(rowIndex);
       if (!newNode) {
         console.log("Couldn't fetch row index: " + rowIndex);
         break;
@@ -1341,7 +1393,7 @@ hterm.ScrollPort.prototype.drawVisibleRows_ = function(
 
     // There is nothing special about this node, but it's in our way.  Replace
     // it with the node that should be here.
-    var newNode = this.fetchRowNode_(rowIndex);
+    const newNode = this.fetchRowNode_(rowIndex);
     if (!newNode) {
       console.log("Couldn't fetch row index: " + rowIndex);
       break;
@@ -1357,8 +1409,9 @@ hterm.ScrollPort.prototype.drawVisibleRows_ = function(
     node = newNode.nextSibling;
   }
 
-  if (node != this.bottomFold_)
+  if (node != this.bottomFold_) {
     removeUntilNode(node, bottomFold);
+  }
 };
 
 /**
@@ -1433,7 +1486,7 @@ hterm.ScrollPort.prototype.cacheRowNode_ = function(rowNode) {
  * @return {!Node}
  */
 hterm.ScrollPort.prototype.fetchRowNode_ = function(rowIndex) {
-  var node;
+  let node;
 
   if (this.previousRowNodeCache_ && rowIndex in this.previousRowNodeCache_) {
     node = this.previousRowNodeCache_[rowIndex];
@@ -1441,8 +1494,9 @@ hterm.ScrollPort.prototype.fetchRowNode_ = function(rowIndex) {
     node = this.rowProvider_.getRowNode(rowIndex);
   }
 
-  if (this.currentRowNodeCache_)
+  if (this.currentRowNodeCache_) {
     this.cacheRowNode_(node);
+  }
 
   return node;
 };
@@ -1451,7 +1505,7 @@ hterm.ScrollPort.prototype.fetchRowNode_ = function(rowIndex) {
  * Select all rows in the viewport.
  */
 hterm.ScrollPort.prototype.selectAll = function() {
-  var firstRow;
+  let firstRow;
 
   if (this.topFold_.nextSibling.rowIndex != 0) {
     while (this.topFold_.previousSibling) {
@@ -1465,8 +1519,8 @@ hterm.ScrollPort.prototype.selectAll = function() {
     firstRow = this.topFold_.nextSibling;
   }
 
-  var lastRowIndex = this.rowProvider_.getRowCount() - 1;
-  var lastRow;
+  const lastRowIndex = this.rowProvider_.getRowCount() - 1;
+  let lastRow;
 
   if (this.bottomFold_.previousSibling.rowIndex != lastRowIndex) {
     while (this.bottomFold_.nextSibling) {
@@ -1479,7 +1533,7 @@ hterm.ScrollPort.prototype.selectAll = function() {
     lastRow = this.bottomFold_.previousSibling.rowIndex;
   }
 
-  var selection = this.document_.getSelection();
+  const selection = this.document_.getSelection();
   selection.collapse(firstRow, 0);
   selection.extend(lastRow, lastRow.childNodes.length);
 
@@ -1508,15 +1562,17 @@ hterm.ScrollPort.prototype.scrollRowToTop = function(rowIndex) {
   this.isScrolledEnd = (
     rowIndex + this.visibleRowCount >= this.lastRowCount_);
 
-  var scrollTop = rowIndex * this.characterSize.height +
+  let scrollTop = rowIndex * this.characterSize.height +
       this.visibleRowTopMargin;
 
-  var scrollMax = this.getScrollMax_();
-  if (scrollTop > scrollMax)
+  const scrollMax = this.getScrollMax_();
+  if (scrollTop > scrollMax) {
     scrollTop = scrollMax;
+  }
 
-  if (this.screen_.scrollTop == scrollTop)
+  if (this.screen_.scrollTop == scrollTop) {
     return;
+  }
 
   this.screen_.scrollTop = scrollTop;
   this.scheduleRedraw();
@@ -1533,15 +1589,17 @@ hterm.ScrollPort.prototype.scrollRowToBottom = function(rowIndex) {
   this.isScrolledEnd = (
     rowIndex + this.visibleRowCount >= this.lastRowCount_);
 
-  var scrollTop = rowIndex * this.characterSize.height +
+  let scrollTop = rowIndex * this.characterSize.height +
       this.visibleRowTopMargin + this.visibleRowBottomMargin;
   scrollTop -= this.visibleRowCount * this.characterSize.height;
 
-  if (scrollTop < 0)
+  if (scrollTop < 0) {
     scrollTop = 0;
+  }
 
-  if (this.screen_.scrollTop == scrollTop)
+  if (this.screen_.scrollTop == scrollTop) {
     return;
+  }
 
   this.screen_.scrollTop = scrollTop;
 };
@@ -1580,7 +1638,7 @@ hterm.ScrollPort.prototype.getBottomRowIndex = function(topRowIndex) {
  * @param {!Event} e
  */
 hterm.ScrollPort.prototype.onScroll_ = function(e) {
-  var screenSize = this.getScreenSize();
+  const screenSize = this.getScreenSize();
   if (screenSize.width != this.lastScreenWidth_ ||
       screenSize.height != this.lastScreenHeight_) {
     // This event may also fire during a resize (but before the resize event!).
@@ -1593,7 +1651,7 @@ hterm.ScrollPort.prototype.onScroll_ = function(e) {
   }
 
   this.redraw_();
-  this.publish('scroll', { scrollPort: this });
+  this.publish('scroll', {scrollPort: this});
 };
 
 /**
@@ -1623,19 +1681,22 @@ hterm.ScrollPort.prototype.onScrollWheel_ = function(e) {
   // or if it is non-cancelable since preventDefault is ignored for these.
   // See https://crbug.com/894223 where blink sends non-cancelable touchpad
   // scrollWheel events.
-  if (e.defaultPrevented || !e.cancelable)
+  if (e.defaultPrevented || !e.cancelable) {
     return;
+  }
 
   // Figure out how far this event wants us to scroll.
   const delta = this.scrollWheelDelta(e);
 
   let top = this.screen_.scrollTop - delta.y;
-  if (top < 0)
+  if (top < 0) {
     top = 0;
+  }
 
-  var scrollMax = this.getScrollMax_();
-  if (top > scrollMax)
+  const scrollMax = this.getScrollMax_();
+  if (top > scrollMax) {
     top = scrollMax;
+  }
 
   if (top != this.screen_.scrollTop) {
     // Moving scrollTop causes a scroll event, which triggers the redraw.
@@ -1703,14 +1764,15 @@ hterm.ScrollPort.prototype.onTouch = function(e) {};
 hterm.ScrollPort.prototype.onTouch_ = function(e) {
   this.onTouch(e);
 
-  if (e.defaultPrevented)
+  if (e.defaultPrevented) {
     return;
+  }
 
   // Extract the fields from the Touch event that we need.  If we saved the
   // event directly, it has references to other objects (like x-row) that
   // might stick around for a long time.  This way we only have small objects
   // in our lastTouch_ state.
-  var scrubTouch = function(t) {
+  const scrubTouch = function(t) {
     return {
       id: t.identifier,
       y: t.clientY,
@@ -1718,7 +1780,7 @@ hterm.ScrollPort.prototype.onTouch_ = function(e) {
     };
   };
 
-  var i, touch;
+  let i, touch;
   switch (e.type) {
     case 'touchstart':
       // Workaround focus bug on CrOS if possible.
@@ -1741,14 +1803,15 @@ hterm.ScrollPort.prototype.onTouch_ = function(e) {
     case 'touchcancel':
     case 'touchend':
       // Throw away existing touches that we're finished with.
-      for (i = 0; i < e.changedTouches.length; ++i)
+      for (i = 0; i < e.changedTouches.length; ++i) {
         delete this.lastTouch_[e.changedTouches[i].identifier];
+      }
       break;
 
-    case 'touchmove':
+    case 'touchmove': {
       // Walk all of the touches in this one event and merge all of their
       // changes into one delta.  This lets multiple fingers scroll faster.
-      var delta = 0;
+      let delta = 0;
       for (i = 0; i < e.changedTouches.length; ++i) {
         touch = scrubTouch(e.changedTouches[i]);
         delta += (this.lastTouch_[touch.id].y - touch.y);
@@ -1758,19 +1821,22 @@ hterm.ScrollPort.prototype.onTouch_ = function(e) {
       // Invert to match the touchscreen scrolling direction of browser windows.
       delta *= -1;
 
-      var top = this.screen_.scrollTop - delta;
-      if (top < 0)
+      let top = this.screen_.scrollTop - delta;
+      if (top < 0) {
         top = 0;
+      }
 
-      var scrollMax = this.getScrollMax_();
-      if (top > scrollMax)
+      const scrollMax = this.getScrollMax_();
+      if (top > scrollMax) {
         top = scrollMax;
+      }
 
       if (top != this.screen_.scrollTop) {
         // Moving scrollTop causes a scroll event, which triggers the redraw.
         this.screen_.scrollTop = top;
       }
       break;
+    }
   }
 
   // To disable gestures or anything else interfering with our scrolling.
@@ -1813,8 +1879,9 @@ hterm.ScrollPort.prototype.onCopy = function(e) { };
 hterm.ScrollPort.prototype.onCopy_ = function(e) {
   this.onCopy(e);
 
-  if (e.defaultPrevented)
+  if (e.defaultPrevented) {
     return;
+  }
 
   this.resetSelectBags_();
   this.selection.sync();
@@ -1824,12 +1891,12 @@ hterm.ScrollPort.prototype.onCopy_ = function(e) {
     return;
   }
 
-  var topRowIndex = this.getTopRowIndex();
-  var bottomRowIndex = this.getBottomRowIndex(topRowIndex);
+  const topRowIndex = this.getTopRowIndex();
+  const bottomRowIndex = this.getBottomRowIndex(topRowIndex);
 
   if (this.selection.startRow.rowIndex < topRowIndex) {
     // Start of selection is above the top fold.
-    var endBackfillIndex;
+    let endBackfillIndex;
 
     if (this.selection.endRow.rowIndex < topRowIndex) {
       // Entire selection is above the top fold.
@@ -1848,7 +1915,7 @@ hterm.ScrollPort.prototype.onCopy_ = function(e) {
 
   if (this.selection.endRow.rowIndex > bottomRowIndex) {
     // Selection ends below the bottom fold.
-    var startBackfillIndex;
+    let startBackfillIndex;
 
     if (this.selection.startRow.rowIndex > bottomRowIndex) {
       // Entire selection is below the bottom fold.
@@ -1871,11 +1938,13 @@ hterm.ScrollPort.prototype.onCopy_ = function(e) {
  * @param {!KeyboardEvent} e
  */
 hterm.ScrollPort.prototype.onBodyKeyDown_ = function(e) {
-  if (!this.ctrlVPaste)
+  if (!this.ctrlVPaste) {
     return;
+  }
 
-  if ((e.ctrlKey || e.metaKey) && e.keyCode == 86 /* 'V' */)
+  if ((e.ctrlKey || e.metaKey) && e.keyCode == 86 /* 'V' */) {
     this.pasteTarget_.focus();
+  }
 };
 
 /**
@@ -1888,12 +1957,11 @@ hterm.ScrollPort.prototype.onBodyKeyDown_ = function(e) {
 hterm.ScrollPort.prototype.onPaste_ = function(e) {
   this.pasteTarget_.focus();
 
-  var self = this;
-  setTimeout(function() {
-      self.publish('paste', { text: self.pasteTarget_.value });
-      self.pasteTarget_.value = '';
-      self.focus();
-    }, 0);
+  setTimeout(() => {
+    this.publish('paste', {text: this.pasteTarget_.value});
+    this.pasteTarget_.value = '';
+    this.focus();
+  });
 };
 
 /**
@@ -1917,8 +1985,9 @@ hterm.ScrollPort.prototype.handlePasteTargetTextInput_ = function(e) {
  * @param {!DragEvent} e The drag event that fired us.
  */
 hterm.ScrollPort.prototype.onDragAndDrop_ = function(e) {
-  if (!this.pasteOnDrop)
+  if (!this.pasteOnDrop) {
     return;
+  }
 
   e.preventDefault();
 
@@ -1929,21 +1998,25 @@ hterm.ScrollPort.prototype.onDragAndDrop_ = function(e) {
   // text).  e.g. text/html is OK.
   if (e.shiftKey) {
     e.dataTransfer.types.forEach((t) => {
-      if (!format && t != 'text/plain' && t.startsWith('text/'))
+      if (!format && t != 'text/plain' && t.startsWith('text/')) {
         format = t;
+      }
     });
 
     // If we found a non-plain text source, try it out first.
-    if (format)
+    if (format) {
       data = e.dataTransfer.getData(format);
+    }
   }
 
   // If we haven't loaded anything useful, fall back to plain text.
-  if (!data)
+  if (!data) {
     data = e.dataTransfer.getData('text/plain');
+  }
 
-  if (data)
+  if (data) {
     this.publish('paste', {text: data});
+  }
 };
 
 /**
@@ -1952,7 +2025,14 @@ hterm.ScrollPort.prototype.onDragAndDrop_ = function(e) {
  * @param {boolean} state
  */
 hterm.ScrollPort.prototype.setScrollbarVisible = function(state) {
-  this.screen_.style.overflowY = state ? 'scroll' : 'hidden';
+  if (state) {
+    this.screen_.style.overflowY = 'scroll';
+    this.currentScrollbarWidthPx = hterm.ScrollPort.DEFAULT_SCROLLBAR_WIDTH;
+    this.syncScrollbarWidth_();
+  } else {
+    this.screen_.style.overflowY = 'hidden';
+    this.currentScrollbarWidthPx = 0;
+  }
 };
 
 /**

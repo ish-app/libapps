@@ -21,7 +21,19 @@ hterm.Keyboard.KeyDef;
  */
 hterm.Keyboard.KeyDefFunction;
 
-/** @typedef {!hterm.Keyboard.KeyAction|!hterm.Keyboard.KeyDefFunction} */
+/**
+ * @typedef {function(!KeyboardEvent, !hterm.Keyboard.KeyDef):
+ *               !hterm.Keyboard.KeyDefFunction|!hterm.Keyboard.KeyAction}
+ */
+hterm.Keyboard.KeyDefFunctionProvider;
+
+/**
+ * @typedef {(
+ *      !hterm.Keyboard.KeyAction|
+ *      !hterm.Keyboard.KeyDefFunction|
+ *      !hterm.Keyboard.KeyDefFunctionProvider
+ *  )}
+ */
 hterm.Keyboard.KeyDefAction;
 
 /**
@@ -92,8 +104,9 @@ hterm.Keyboard.KeyMap = function(keyboard) {
  * @param {!hterm.Keyboard.KeyDef} def The actions this key triggers.
  */
 hterm.Keyboard.KeyMap.prototype.addKeyDef = function(keyCode, def) {
-  if (keyCode in this.keyDefs)
+  if (keyCode in this.keyDefs) {
     console.warn('Duplicate keyCode: ' + keyCode);
+  }
 
   this.keyDefs[keyCode] = def;
 };
@@ -104,7 +117,6 @@ hterm.Keyboard.KeyMap.prototype.addKeyDef = function(keyCode, def) {
 hterm.Keyboard.KeyMap.prototype.reset = function() {
   this.keyDefs = {};
 
-  const self = this;
   const CANCEL = hterm.Keyboard.KeyActions.CANCEL;
   const DEFAULT = hterm.Keyboard.KeyActions.DEFAULT;
   const PASS = hterm.Keyboard.KeyActions.PASS;
@@ -119,13 +131,13 @@ hterm.Keyboard.KeyMap.prototype.reset = function() {
    * @param {!hterm.Keyboard.KeyDef} k
    * @return {!hterm.Keyboard.KeyAction}
    */
-  function resolve(action, e, k) {
+  const resolve = (action, e, k) => {
     if (typeof action == 'function') {
       const keyDefFn = /** @type {!hterm.Keyboard.KeyDefFunction} */ (action);
-      return keyDefFn.call(self, e, k);
+      return keyDefFn.call(this, e, k);
     }
     return action;
-  }
+  };
 
   /**
    * If not application keypad a, else b.  The keys that care about
@@ -135,13 +147,15 @@ hterm.Keyboard.KeyMap.prototype.reset = function() {
    * @param {!hterm.Keyboard.KeyDefAction} b
    * @return {!hterm.Keyboard.KeyDefFunction}
    */
-  function ak(a, b) {
-    return function(e, k) {
-      var action = (e.shiftKey || e.ctrlKey || e.altKey || e.metaKey ||
-                    !self.keyboard.applicationKeypad) ? a : b;
+  /* TODO(crbug.com/1065216): Delete this if no longer needed.
+  const ak = (a, b) => {
+    return (e, k) => {
+      const action = (e.shiftKey || e.ctrlKey || e.altKey || e.metaKey ||
+                      !this.keyboard.applicationKeypad) ? a : b;
       return resolve(action, e, k);
     };
-  }
+  };
+  */
 
   /**
    * If mod or not application cursor a, else b.  The keys that care about
@@ -151,13 +165,13 @@ hterm.Keyboard.KeyMap.prototype.reset = function() {
    * @param {!hterm.Keyboard.KeyDefAction} b
    * @return {!hterm.Keyboard.KeyDefFunction}
    */
-  function ac(a, b) {
-    return function(e, k) {
-      var action = (e.shiftKey || e.ctrlKey || e.altKey || e.metaKey ||
-                    !self.keyboard.applicationCursor) ? a : b;
+  const ac = (a, b) => {
+    return (e, k) => {
+      const action = (e.shiftKey || e.ctrlKey || e.altKey || e.metaKey ||
+                      !this.keyboard.applicationCursor) ? a : b;
       return resolve(action, e, k);
     };
-  }
+  };
 
   /**
    * If not backspace-sends-backspace keypad a, else b.
@@ -166,12 +180,12 @@ hterm.Keyboard.KeyMap.prototype.reset = function() {
    * @param {!hterm.Keyboard.KeyDefAction} b
    * @return {!hterm.Keyboard.KeyDefFunction}
    */
-  function bs(a, b) {
-    return function(e, k) {
-      var action = !self.keyboard.backspaceSendsBackspace ? a : b;
+  const bs = (a, b) => {
+    return (e, k) => {
+      const action = !this.keyboard.backspaceSendsBackspace ? a : b;
       return resolve(action, e, k);
     };
-  }
+  };
 
   /**
    * If not e.shiftKey a, else b.
@@ -180,13 +194,13 @@ hterm.Keyboard.KeyMap.prototype.reset = function() {
    * @param {!hterm.Keyboard.KeyDefAction} b
    * @return {!hterm.Keyboard.KeyDefFunction}
    */
-  function sh(a, b) {
-    return function(e, k) {
-      var action = !e.shiftKey ? a : b;
+  const sh = (a, b) => {
+    return (e, k) => {
+      const action = !e.shiftKey ? a : b;
       e.maskShiftKey = true;
       return resolve(action, e, k);
     };
-  }
+  };
 
   /**
    * If not e.altKey a, else b.
@@ -195,12 +209,12 @@ hterm.Keyboard.KeyMap.prototype.reset = function() {
    * @param {!hterm.Keyboard.KeyDefAction} b
    * @return {!hterm.Keyboard.KeyDefFunction}
    */
-  function alt(a, b) {
-    return function(e, k) {
-      var action = !e.altKey ? a : b;
+  const alt = (a, b) => {
+    return (e, k) => {
+      const action = !e.altKey ? a : b;
       return resolve(action, e, k);
     };
-  }
+  };
 
   /**
    * If no modifiers a, else b.
@@ -209,12 +223,13 @@ hterm.Keyboard.KeyMap.prototype.reset = function() {
    * @param {!hterm.Keyboard.KeyDefAction} b
    * @return {!hterm.Keyboard.KeyDefFunction}
    */
-  function mod(a, b) {
-    return function(e, k) {
-      var action = !(e.shiftKey || e.ctrlKey || e.altKey || e.metaKey) ? a : b;
+  const mod = (a, b) => {
+    return (e, k) => {
+      const action = !(e.shiftKey || e.ctrlKey || e.altKey || e.metaKey) ?
+        a : b;
       return resolve(action, e, k);
     };
-  }
+  };
 
   /**
    * Compute a control character for a given character.
@@ -222,15 +237,25 @@ hterm.Keyboard.KeyMap.prototype.reset = function() {
    * @param {string} ch
    * @return {string}
    */
-  function ctl(ch) { return String.fromCharCode(ch.charCodeAt(0) - 64); }
+  const ctl = (ch) => String.fromCharCode(ch.charCodeAt(0) - 64);
 
-  // Call a method on the keymap instance.
-  function c(m) { return function(e, k) { return this[m](e, k); }; }
+  /**
+   * Call a method on the keymap instance.
+   *
+   * @param {string} m name of method to call.
+   * @return {(
+   *     !hterm.Keyboard.KeyDefFunction|
+   *     !hterm.Keyboard.KeyDefFunctionProvider
+   * )}
+   */
+  const c = (m) => {
+    return (e, k) => this[m](e, k);
+  };
 
   // Ignore if not trapping media keys.
-  function med(fn) {
-    return function(e, k) {
-      if (!self.keyboard.mediaKeysAreFKeys) {
+  const med = (fn) => {
+    return (e, k) => {
+      if (!this.keyboard.mediaKeysAreFKeys) {
         // Block Back, Forward, and Reload keys to avoid navigating away from
         // the current page.
         return (e.keyCode == 166 || e.keyCode == 167 || e.keyCode == 168) ?
@@ -238,7 +263,7 @@ hterm.Keyboard.KeyMap.prototype.reset = function() {
       }
       return resolve(fn, e, k);
     };
-  }
+  };
 
   /**
    * @param {number} keyCode
@@ -259,6 +284,12 @@ hterm.Keyboard.KeyMap.prototype.reset = function() {
   };
 
   // Browser-specific differences.
+  // let keycapMute;
+  // let keycapVolDn;
+  // let keycapVolDn
+  let keycapSC;
+  let keycapEP;
+  let keycapMU;
   if (window.navigator && navigator.userAgent &&
       navigator.userAgent.includes('Firefox')) {
     // Firefox defines some keys uniquely.  No other browser defines these in
@@ -266,30 +297,31 @@ hterm.Keyboard.KeyMap.prototype.reset = function() {
     // as it isn't standardized.  At some point we should switch to "key".
     // https://developer.mozilla.org/en-US/docs/Web/API/KeyboardEvent/keyCode
     // http://unixpapa.com/js/key.html
-    // var keycapMute = 181;   // Mute
-    // var keycapVolDn = 182;  // Volume Down
-    // var keycapVolUp = 183;  // Volume Up
-    var keycapSC = 59;      // ;:
-    var keycapEP = 61;      // =+
-    var keycapMU = 173;     // -_
+    // keycapMute = 181;   // Mute
+    // keycapVolDn = 182;  // Volume Down
+    // keycapVolUp = 183;  // Volume Up
+    keycapSC = 59;      // ;:
+    keycapEP = 61;      // =+
+    keycapMU = 173;     // -_
 
     // Firefox Italian +*.
     add(171, '+*', DEFAULT, c('onZoom_'), DEFAULT, c('onZoom_'));
   } else {
     // All other browsers use these mappings.
-    // var keycapMute = 173;   // Mute
-    // var keycapVolDn = 174;  // Volume Down
-    // var keycapVolUp = 175;  // Volume Up
-    var keycapSC = 186;     // ;:
-    var keycapEP = 187;     // =+
-    var keycapMU = 189;     // -_
+    // keycapMute = 173;   // Mute
+    // keycapVolDn = 174;  // Volume Down
+    // keycapVolUp = 175;  // Volume Up
+    keycapSC = 186;     // ;:
+    keycapEP = 187;     // =+
+    keycapMU = 189;     // -_
   }
 
-  var ESC = '\x1b';
-  var CSI = '\x1b[';
-  var SS3 = '\x1bO';
+  const ESC = '\x1b';
+  const CSI = '\x1b[';
+  const SS3 = '\x1bO';
 
   // These fields are: [keycode, keycap, normal, control, alt, meta]
+  /* eslint-disable no-multi-spaces */
 
   // The browser sends the keycode 0 for some keys.  We'll just assume it's
   // going to do the right thing by default for those keys.
@@ -331,12 +363,12 @@ hterm.Keyboard.KeyMap.prototype.reset = function() {
   add(8,   '[BKSP]', bs('\x7f', '\b'), bs('\b', '\x7f'), DEFAULT,     DEFAULT);
 
   // Third row.
-  add(9,   '[TAB]', sh('\t', CSI + 'Z'), STRIP,     PASS,    DEFAULT);
+  add(9,   '[TAB]', sh('\t', CSI + 'Z'), c('onCtrlTab_'), PASS, DEFAULT);
   add(81,  'qQ',    DEFAULT,             ctl('Q'),  DEFAULT, DEFAULT);
-  add(87,  'wW',    DEFAULT,             ctl('W'),  DEFAULT, DEFAULT);
+  add(87,  'wW',    DEFAULT,         c('onCtrlW_'), DEFAULT, DEFAULT);
   add(69,  'eE',    DEFAULT,             ctl('E'),  DEFAULT, DEFAULT);
   add(82,  'rR',    DEFAULT,             ctl('R'),  DEFAULT, DEFAULT);
-  add(84,  'tT',    DEFAULT,             ctl('T'),  DEFAULT, DEFAULT);
+  add(84,  'tT',    DEFAULT,         c('onCtrlT_'), DEFAULT, DEFAULT);
   add(89,  'yY',    DEFAULT,             ctl('Y'),  DEFAULT, DEFAULT);
   add(85,  'uU',    DEFAULT,             ctl('U'),  DEFAULT, DEFAULT);
   add(73,  'iI',    DEFAULT,             ctl('I'),  DEFAULT, DEFAULT);
@@ -346,16 +378,16 @@ hterm.Keyboard.KeyMap.prototype.reset = function() {
   add(221, ']}',    DEFAULT,             ctl(']'),  DEFAULT, DEFAULT);
   add(220, '\\|',   DEFAULT,             ctl('\\'), DEFAULT, DEFAULT);
 
-  // Fourth row. We let Ctrl-Shift-J pass for Chrome DevTools.
+  // Fourth row. We let Ctrl+Shift+J pass for Chrome DevTools.
   // To be compliant with xterm's behavior for modifiers on Enter
-  // would mean maximizing the window with Alt-Enter... so we don't
+  // would mean maximizing the window with Alt+Enter... so we don't
   // want to do that. Our behavior on Enter is what most other
   // modern emulators do.
   add(20,  '[CAPS]',  PASS,    PASS,                        PASS,    DEFAULT);
   add(65,  'aA',      DEFAULT, ctl('A'),                    DEFAULT, DEFAULT);
   add(83,  'sS',      DEFAULT, ctl('S'),                    DEFAULT, DEFAULT);
   add(68,  'dD',      DEFAULT, ctl('D'),                    DEFAULT, DEFAULT);
-  add(70,  'fF',      DEFAULT, ctl('F'),                    DEFAULT, DEFAULT);
+  add(70,  'fF', DEFAULT, sh(ctl('F'), c('onCtrlShiftF_')), DEFAULT, DEFAULT);
   add(71,  'gG',      DEFAULT, ctl('G'),                    DEFAULT, DEFAULT);
   add(72,  'hH',      DEFAULT, ctl('H'),                    DEFAULT, DEFAULT);
   add(74,  'jJ',      DEFAULT, sh(ctl('J'), PASS),          DEFAULT, DEFAULT);
@@ -366,9 +398,9 @@ hterm.Keyboard.KeyMap.prototype.reset = function() {
   add(13,  '[ENTER]', '\r',    DEFAULT,                     DEFAULT, DEFAULT);
 
   // Fifth row.  This includes the copy/paste shortcuts.  On some
-  // platforms it's Ctrl-C/V, on others it's Meta-C/V.  We assume either
-  // Ctrl-C/Meta-C should pass to the browser when there is a selection,
-  // and Ctrl-Shift-V/Meta-*-V should always pass to the browser (since
+  // platforms it's Ctrl+C/V, on others it's Meta+C/V.  We assume either
+  // Ctrl+C/Meta+C should pass to the browser when there is a selection,
+  // and Ctrl+Shift+V/Meta+*+V should always pass to the browser (since
   // these seem to be recognized as paste too).
   add(16,  '[SHIFT]', PASS, PASS,                  PASS,    DEFAULT);
   add(90,  'zZ',   DEFAULT, ctl('Z'),              DEFAULT, DEFAULT);
@@ -443,16 +475,16 @@ hterm.Keyboard.KeyMap.prototype.reset = function() {
     // users to make these always behave as function keys (see those bindings
     // above for more details).
     /* eslint-disable max-len */
-    add(166, '[BACK]',   med(mod(SS3+'P', CSI+'P')), DEFAULT, CSI+'23~', DEFAULT);  // F1
-    add(167, '[FWD]',    med(mod(SS3+'Q', CSI+'Q')), DEFAULT, CSI+'24~', DEFAULT);  // F2
-    add(168, '[RELOAD]', med(mod(SS3+'R', CSI+'R')), DEFAULT, CSI+'25~', DEFAULT);  // F3
-    add(183, '[FSCR]',   med(mod(SS3+'S', CSI+'S')), DEFAULT, CSI+'26~', DEFAULT);  // F4
-    add(182, '[WINS]',   med(CSI + '15~'),           DEFAULT, CSI+'28~', DEFAULT);  // F5
-    add(216, '[BRIT-]',  med(CSI + '17~'),           DEFAULT, CSI+'29~', DEFAULT);  // F6
-    add(217, '[BRIT+]',  med(CSI + '18~'),           DEFAULT, CSI+'31~', DEFAULT);  // F7
-    add(173, '[MUTE]',   med(CSI + '19~'),           DEFAULT, CSI+'32~', DEFAULT);  // F8
-    add(174, '[VOL-]',   med(CSI + '20~'),           DEFAULT, CSI+'33~', DEFAULT);  // F9
-    add(175, '[VOL+]',   med(CSI + '21~'),           DEFAULT, CSI+'34~', DEFAULT);  // F10
+    add(166, '[BACK]',   med(mod(SS3 + 'P', CSI + 'P')), DEFAULT, CSI + '23~', DEFAULT);  // F1
+    add(167, '[FWD]',    med(mod(SS3 + 'Q', CSI + 'Q')), DEFAULT, CSI + '24~', DEFAULT);  // F2
+    add(168, '[RELOAD]', med(mod(SS3 + 'R', CSI + 'R')), DEFAULT, CSI + '25~', DEFAULT);  // F3
+    add(183, '[FSCR]',   med(mod(SS3 + 'S', CSI + 'S')), DEFAULT, CSI + '26~', DEFAULT);  // F4
+    add(182, '[WINS]',   med(CSI + '15~'),               DEFAULT, CSI + '28~', DEFAULT);  // F5
+    add(216, '[BRIT-]',  med(CSI + '17~'),               DEFAULT, CSI + '29~', DEFAULT);  // F6
+    add(217, '[BRIT+]',  med(CSI + '18~'),               DEFAULT, CSI + '31~', DEFAULT);  // F7
+    add(173, '[MUTE]',   med(CSI + '19~'),               DEFAULT, CSI + '32~', DEFAULT);  // F8
+    add(174, '[VOL-]',   med(CSI + '20~'),               DEFAULT, CSI + '33~', DEFAULT);  // F9
+    add(175, '[VOL+]',   med(CSI + '21~'),               DEFAULT, CSI + '34~', DEFAULT);  // F10
     /* eslint-enable max-len */
 
     // We could make this into F11, but it'd be a bit weird.  Chrome allows us
@@ -469,6 +501,7 @@ hterm.Keyboard.KeyMap.prototype.reset = function() {
     // We don't use this for anything, but keep it from popping up by default.
     add(153, '[ASSIST]', DEFAULT, DEFAULT, DEFAULT, DEFAULT);
   }
+  /* eslint-enable no-multi-spaces */
 };
 
 /**
@@ -478,8 +511,9 @@ hterm.Keyboard.KeyMap.prototype.reset = function() {
  * @return {symbol|string} Key action or sequence.
  */
 hterm.Keyboard.KeyMap.prototype.onKeyInsert_ = function(e) {
-  if (this.keyboard.shiftInsertPaste && e.shiftKey)
+  if (this.keyboard.shiftInsertPaste && e.shiftKey) {
     return hterm.Keyboard.KeyActions.PASS;
+  }
 
   return '\x1b[2~';
 };
@@ -491,8 +525,8 @@ hterm.Keyboard.KeyMap.prototype.onKeyInsert_ = function(e) {
  * @return {symbol|string} Key action or sequence.
  */
 hterm.Keyboard.KeyMap.prototype.onKeyHome_ = function(e) {
-  if (!this.keyboard.homeKeysScroll ^ e.shiftKey) {
-    if ((e.altey || e.ctrlKey || e.shiftKey) ||
+  if (this.keyboard.homeKeysScroll === e.shiftKey) {
+    if ((e.altKey || e.ctrlKey || e.shiftKey) ||
         !this.keyboard.applicationCursor) {
       return '\x1b[H';
     }
@@ -511,7 +545,7 @@ hterm.Keyboard.KeyMap.prototype.onKeyHome_ = function(e) {
  * @return {symbol|string} Key action or sequence.
  */
 hterm.Keyboard.KeyMap.prototype.onKeyEnd_ = function(e) {
-  if (!this.keyboard.homeKeysScroll ^ e.shiftKey) {
+  if (this.keyboard.homeKeysScroll === e.shiftKey) {
     if ((e.altKey || e.ctrlKey || e.shiftKey) ||
         !this.keyboard.applicationCursor) {
       return '\x1b[F';
@@ -531,8 +565,9 @@ hterm.Keyboard.KeyMap.prototype.onKeyEnd_ = function(e) {
  * @return {symbol|string} Key action or sequence.
  */
 hterm.Keyboard.KeyMap.prototype.onKeyPageUp_ = function(e) {
-  if (!this.keyboard.pageKeysScroll ^ e.shiftKey)
+  if (this.keyboard.pageKeysScroll === e.shiftKey) {
     return '\x1b[5~';
+  }
 
   this.keyboard.terminal.scrollPageUp();
   return hterm.Keyboard.KeyActions.CANCEL;
@@ -551,8 +586,9 @@ hterm.Keyboard.KeyMap.prototype.onKeyPageUp_ = function(e) {
  */
 hterm.Keyboard.KeyMap.prototype.onKeyDel_ = function(e) {
   if (this.keyboard.altBackspaceIsMetaBackspace &&
-      this.keyboard.altKeyPressed && !e.altKey)
+      this.keyboard.altKeyPressed && !e.altKey) {
     return '\x1b\x7f';
+  }
   return '\x1b[3~';
 };
 
@@ -563,8 +599,9 @@ hterm.Keyboard.KeyMap.prototype.onKeyDel_ = function(e) {
  * @return {symbol|string} Key action or sequence.
  */
 hterm.Keyboard.KeyMap.prototype.onKeyPageDown_ = function(e) {
-  if (!this.keyboard.pageKeysScroll ^ e.shiftKey)
+  if (this.keyboard.pageKeysScroll === e.shiftKey) {
     return '\x1b[6~';
+  }
 
   this.keyboard.terminal.scrollPageDown();
   return hterm.Keyboard.KeyActions.CANCEL;
@@ -624,17 +661,18 @@ hterm.Keyboard.KeyMap.prototype.onClear_ = function(e) {
  * @return {symbol|string} Key action or sequence.
  */
 hterm.Keyboard.KeyMap.prototype.onF11_ = function(e) {
-  if (hterm.windowType != 'popup')
+  if (hterm.windowType != 'popup') {
     return hterm.Keyboard.KeyActions.PASS;
-  else
+  } else {
     return '\x1b[23~';
+  }
 };
 
 /**
- * Either pass Ctrl-1..9 to the browser or send them to the host.
+ * Either pass Ctrl+1..9 to the browser or send them to the host.
  *
- * Note that Ctrl-1 and Ctrl-9 don't actually have special sequences mapped
- * to them in xterm or gnome-terminal.  The range is really Ctrl-2..8, but
+ * Note that Ctrl+1 and Ctrl+9 don't actually have special sequences mapped
+ * to them in xterm or gnome-terminal.  The range is really Ctrl+2..8, but
  * we handle 1..9 since Chrome treats the whole range special.
  *
  * @param {!KeyboardEvent} e The event to process.
@@ -645,8 +683,9 @@ hterm.Keyboard.KeyMap.prototype.onCtrlNum_ = function(e, keyDef) {
   // Compute a control character for a given character.
   function ctl(ch) { return String.fromCharCode(ch.charCodeAt(0) - 64); }
 
-  if (this.keyboard.terminal.passCtrlNumber && !e.shiftKey)
+  if (this.keyboard.terminal.passCtrlNumber && !e.shiftKey) {
     return hterm.Keyboard.KeyActions.PASS;
+  }
 
   switch (keyDef.keyCap.substr(0, 1)) {
     case '1': return '1';
@@ -663,29 +702,83 @@ hterm.Keyboard.KeyMap.prototype.onCtrlNum_ = function(e, keyDef) {
 };
 
 /**
- * Either pass Alt-1..9 to the browser or send them to the host.
+ * Either pass Alt+1..9 to the browser or send them to the host.
  *
  * @param {!KeyboardEvent} e The event to process.
  * @return {symbol|string} Key action or sequence.
  */
 hterm.Keyboard.KeyMap.prototype.onAltNum_ = function(e) {
-  if (this.keyboard.terminal.passAltNumber && !e.shiftKey)
+  if (this.keyboard.terminal.passAltNumber && !e.shiftKey) {
     return hterm.Keyboard.KeyActions.PASS;
+  }
 
   return hterm.Keyboard.KeyActions.DEFAULT;
 };
 
 /**
- * Either pass Meta-1..9 to the browser or send them to the host.
+ * Either pass Meta+1..9 to the browser or send them to the host.
  *
  * @param {!KeyboardEvent} e The event to process.
  * @return {symbol|string} Key action or sequence.
  */
 hterm.Keyboard.KeyMap.prototype.onMetaNum_ = function(e) {
-  if (this.keyboard.terminal.passMetaNumber && !e.shiftKey)
+  if (this.keyboard.terminal.passMetaNumber && !e.shiftKey) {
     return hterm.Keyboard.KeyActions.PASS;
+  }
 
   return hterm.Keyboard.KeyActions.DEFAULT;
+};
+
+/**
+ * Either pass ctrl+[shift]+tab to the browser or strip.
+ *
+ * @param {!KeyboardEvent} e The event to process.
+ * @return {symbol|string} Key action or sequence.
+ */
+hterm.Keyboard.KeyMap.prototype.onCtrlTab_ = function(e) {
+  if (this.keyboard.terminal.passCtrlTab) {
+    return hterm.Keyboard.KeyActions.PASS;
+  }
+  return hterm.Keyboard.KeyActions.STRIP;
+};
+
+/**
+ * Either pass Ctrl & Shift W (close tab/window) to the browser or send it to
+ * the host.
+ *
+ * @param {!KeyboardEvent} e The event to process.
+ * @return {symbol|string} Key action or sequence.
+ */
+hterm.Keyboard.KeyMap.prototype.onCtrlW_ = function(e) {
+  if (this.keyboard.terminal.passCtrlW) {
+    return hterm.Keyboard.KeyActions.PASS;
+  }
+  return '\x17';
+};
+
+/**
+ * Either pass Ctrl & Shift T (new/reopen tab) to the browser or send it to the
+ * host.
+ *
+ * @param {!KeyboardEvent} e The event to process.
+ * @return {symbol|string} Key action or sequence.
+ */
+hterm.Keyboard.KeyMap.prototype.onCtrlT_ = function(e) {
+  if (this.keyboard.terminal.passCtrlT) {
+    return hterm.Keyboard.KeyActions.PASS;
+  }
+  return '\x14';
+};
+
+/**
+ * Display the find bar.
+ *
+ * @param {!KeyboardEvent} e The event to process.
+ * @return {symbol} Key action or sequence.
+ */
+hterm.Keyboard.KeyMap.prototype.onCtrlShiftF_ = function(e) {
+  this.keyboard.terminal.findBar.display();
+  return hterm.Keyboard.KeyActions.CANCEL;
 };
 
 /**
@@ -695,12 +788,12 @@ hterm.Keyboard.KeyMap.prototype.onMetaNum_ = function(e) {
  * @return {symbol|string} Key action or sequence.
  */
 hterm.Keyboard.KeyMap.prototype.onCtrlC_ = function(e) {
-  var selection = this.keyboard.terminal.getDocument().getSelection();
+  const selection = this.keyboard.terminal.getDocument().getSelection();
 
   if (!selection.isCollapsed) {
     if (this.keyboard.ctrlCCopy && !e.shiftKey) {
-      // Ctrl-C should copy if there is a selection, send ^C otherwise.
-      // Perform the copy by letting the browser handle Ctrl-C.  On most
+      // Ctrl+C should copy if there is a selection, send ^C otherwise.
+      // Perform the copy by letting the browser handle Ctrl+C.  On most
       // browsers, this is the *only* way to place text on the clipboard from
       // the 'drive-by' web.
       if (this.keyboard.terminal.clearSelectionAfterCopy) {
@@ -710,7 +803,7 @@ hterm.Keyboard.KeyMap.prototype.onCtrlC_ = function(e) {
     }
 
     if (!this.keyboard.ctrlCCopy && e.shiftKey) {
-      // Ctrl-Shift-C should copy if there is a selection, send ^C otherwise.
+      // Ctrl+Shift+C should copy if there is a selection, send ^C otherwise.
       // Perform the copy manually.  This only works in situations where
       // document.execCommand('copy') is allowed.
       if (this.keyboard.terminal.clearSelectionAfterCopy) {
@@ -728,15 +821,22 @@ hterm.Keyboard.KeyMap.prototype.onCtrlC_ = function(e) {
  * Either send a ^N or open a new window to the same location.
  *
  * @param {!KeyboardEvent} e The event to process.
- * @return {symbol|string} Key action or sequence.
+ * @return {!hterm.Keyboard.KeyDefFunction|symbol|string} Key action or
+ *     sequence.
  */
 hterm.Keyboard.KeyMap.prototype.onCtrlN_ = function(e) {
+  if (this.keyboard.terminal.passCtrlN) {
+    return hterm.Keyboard.KeyActions.PASS;
+  }
+
   if (e.shiftKey) {
-    lib.f.openWindow(document.location.href, '',
-                     'chrome=no,close=yes,resize=yes,scrollbars=yes,' +
-                     'minimizable=yes,width=' + window.innerWidth +
-                     ',height=' + window.innerHeight);
-    return hterm.Keyboard.KeyActions.CANCEL;
+    return function(e, k) {
+      lib.f.openWindow(document.location.href, '',
+                       'chrome=no,close=yes,resize=yes,scrollbars=yes,' +
+                       'minimizable=yes,width=' + window.innerWidth +
+                       ',height=' + window.innerHeight);
+      return hterm.Keyboard.KeyActions.CANCEL;
+    };
   }
 
   return '\x0e';
@@ -745,8 +845,8 @@ hterm.Keyboard.KeyMap.prototype.onCtrlN_ = function(e) {
 /**
  * Either send a ^V or issue a paste command.
  *
- * The default behavior is to paste if the user presses Ctrl-Shift-V, and send
- * a ^V if the user presses Ctrl-V. This can be flipped with the
+ * The default behavior is to paste if the user presses Ctrl+Shift+V, and send
+ * a ^V if the user presses Ctrl+V. This can be flipped with the
  * 'ctrl-v-paste' preference.
  *
  * @param {!KeyboardEvent} e The event to process.
@@ -755,14 +855,15 @@ hterm.Keyboard.KeyMap.prototype.onCtrlN_ = function(e) {
 hterm.Keyboard.KeyMap.prototype.onCtrlV_ = function(e) {
   if ((!e.shiftKey && this.keyboard.ctrlVPaste) ||
       (e.shiftKey && !this.keyboard.ctrlVPaste)) {
-    // We try to do the pasting ourselves as not all browsers/OSs bind Ctrl-V to
-    // pasting.  Notably, on macOS, Ctrl-V/Ctrl-Shift-V do nothing.
+    // We try to do the pasting ourselves as not all browsers/OSs bind Ctrl+V to
+    // pasting.  Notably, on macOS, Ctrl+V/Ctrl+Shift+V do nothing.
     // However, this might run into web restrictions, so if it fails, we still
     // fallback to the letting the native behavior (hopefully) save us.
-    if (this.keyboard.terminal.paste())
+    if (this.keyboard.terminal.paste() !== false) {
       return hterm.Keyboard.KeyActions.CANCEL;
-    else
+    } else {
       return hterm.Keyboard.KeyActions.PASS;
+    }
   }
 
   return '\x16';
@@ -772,40 +873,42 @@ hterm.Keyboard.KeyMap.prototype.onCtrlV_ = function(e) {
  * Either the default action or open a new window to the same location.
  *
  * @param {!KeyboardEvent} e The event to process.
- * @return {symbol|string} Key action or sequence.
+ * @return {!hterm.Keyboard.KeyDefFunction|symbol} Key action or sequence.
  */
 hterm.Keyboard.KeyMap.prototype.onMetaN_ = function(e) {
   if (e.shiftKey) {
-    lib.f.openWindow(document.location.href, '',
-                     'chrome=no,close=yes,resize=yes,scrollbars=yes,' +
-                     'minimizable=yes,width=' + window.outerWidth +
-                     ',height=' + window.outerHeight);
-    return hterm.Keyboard.KeyActions.CANCEL;
+    return function(e, k) {
+      lib.f.openWindow(document.location.href, '',
+                       'chrome=no,close=yes,resize=yes,scrollbars=yes,' +
+                       'minimizable=yes,width=' + window.outerWidth +
+                       ',height=' + window.outerHeight);
+      return hterm.Keyboard.KeyActions.CANCEL;
+    };
   }
 
   return hterm.Keyboard.KeyActions.DEFAULT;
 };
 
 /**
- * Either send a Meta-C or allow the browser to interpret the keystroke as a
+ * Either send a Meta+C or allow the browser to interpret the keystroke as a
  * copy command.
  *
- * If there is no selection, or if the user presses Meta-Shift-C, then we'll
+ * If there is no selection, or if the user presses Meta+Shift+C, then we'll
  * transmit an '\x1b' (if metaSendsEscape is on) followed by 'c' or 'C'.
  *
  * If there is a selection, we defer to the browser.  In this case we clear out
  * the selection so the user knows we heard them, and also to give them a
- * chance to send a Meta-C by just hitting the key again.
+ * chance to send a Meta+C by just hitting the key again.
  *
  * @param {!KeyboardEvent} e The event to process.
  * @param {!hterm.Keyboard.KeyDef} keyDef Key definition.
  * @return {symbol|string} Key action or sequence.
  */
 hterm.Keyboard.KeyMap.prototype.onMetaC_ = function(e, keyDef) {
-  var document = this.keyboard.terminal.getDocument();
+  const document = this.keyboard.terminal.getDocument();
   if (e.shiftKey || document.getSelection().isCollapsed) {
     // If the shift key is being held, or there is no document selection, send
-    // a Meta-C.  The keyboard code will add the ESC if metaSendsEscape is true,
+    // a Meta+C.  The keyboard code will add the ESC if metaSendsEscape is true,
     // we just have to decide between 'c' and 'C'.
     return keyDef.keyCap.substr(e.shiftKey ? 1 : 0, 1);
   }
@@ -818,17 +921,18 @@ hterm.Keyboard.KeyMap.prototype.onMetaC_ = function(e, keyDef) {
 };
 
 /**
- * Either PASS or DEFAULT Meta-V, depending on preference.
+ * Either PASS or DEFAULT Meta+V, depending on preference.
  *
- * Always PASS Meta-Shift-V to allow browser to interpret the keystroke as
+ * Always PASS Meta+Shift+V to allow browser to interpret the keystroke as
  * a paste command.
  *
  * @param {!KeyboardEvent} e The event to process.
  * @return {symbol|string} Key action or sequence.
  */
 hterm.Keyboard.KeyMap.prototype.onMetaV_ = function(e) {
-  if (e.shiftKey)
+  if (e.shiftKey) {
     return hterm.Keyboard.KeyActions.PASS;
+  }
 
   return this.keyboard.passMetaV ?
       hterm.Keyboard.KeyActions.PASS :
@@ -850,12 +954,14 @@ hterm.Keyboard.KeyMap.prototype.onMetaV_ = function(e) {
  * @return {symbol|string} Key action or sequence.
  */
 hterm.Keyboard.KeyMap.prototype.onZoom_ = function(e, keyDef) {
-  if (!(this.keyboard.ctrlPlusMinusZeroZoom ^ e.shiftKey)) {
+  if (this.keyboard.ctrlPlusMinusZeroZoom === e.shiftKey) {
     // If ctrl-PMZ controls zoom and the shift key is pressed, or
     // ctrl-shift-PMZ controls zoom and this shift key is not pressed,
     // then we want to send the control code instead of affecting zoom.
-    if (keyDef.keyCap == '-_')
-      return '\x1f';  // ^_
+    if (keyDef.keyCap == '-_') {
+      // ^_
+      return '\x1f';
+    }
 
     // Only ^_ is valid, the other sequences have no meaning.
     return hterm.Keyboard.KeyActions.CANCEL;
@@ -867,11 +973,11 @@ hterm.Keyboard.KeyMap.prototype.onZoom_ = function(e, keyDef) {
     return hterm.Keyboard.KeyActions.PASS;
   }
 
-  var cap = keyDef.keyCap.substr(0, 1);
+  const cap = keyDef.keyCap.substr(0, 1);
   if (cap == '0') {
       this.keyboard.terminal.setFontSize(0);
   } else {
-    var size = this.keyboard.terminal.getFontSize();
+    let size = this.keyboard.terminal.getFontSize();
 
     if (cap == '-' || keyDef.keyCap == '[KP-]') {
       size -= 1;

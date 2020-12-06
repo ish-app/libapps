@@ -29,9 +29,13 @@ test.listenForPrefChange = function(prefMgr, prefName) {
 };
 
 // Setup the mocha framework.
-// TODO(juwa@google.com): Move preference manager into a module such that it is
+// TODO(lxj@google.com): Move preference manager into a module such that it is
 // no longer a global variable.
-mocha.setup({ui: 'bdd', globals: ['PreferenceManager', 'preferenceManager']});
+mocha.setup({ui: 'bdd', globals: [
+  'PreferenceManager',
+  'preferenceManager',
+  'webFontPromises',
+]});
 mocha.checkLeaks();
 
 // Add a global shortcut to the assert API.
@@ -39,20 +43,23 @@ const assert = chai.assert;
 
 // Catch any random errors before the test runner runs.
 let earlyError = null;
-/** Catch any errors. */
-window.onerror = function() {
-  earlyError = Array.from(arguments);
+/**
+ * Catch any errors.
+ *
+ * @param {*} args Whatever arguments are passed in.
+ */
+window.onerror = function(...args) {
+  earlyError = Array.from(args);
 };
 
 /** Run the test framework once everything is finished. */
-window.onload = function() {
+window.onload = async function() {
   hterm.defaultStorage = new lib.Storage.Memory();
 
-  lib.init(() => {
-    mocha.run();
+  await lib.init();
+  mocha.run();
 
-    if (earlyError !== null) {
-      assert.fail(`uncaught exception detected:\n${earlyError.join('\n')}\n`);
-    }
-  });
+  if (earlyError !== null) {
+    assert.fail(`uncaught exception detected:\n${earlyError.join('\n')}\n`);
+  }
 };

@@ -27,9 +27,6 @@ nassh.CommandInstance = function(argv) {
   // Command arguments.
   this.argv_ = argv;
 
-  // Whether to show welcome messages.
-  this.welcome_ = !argv.args.some(arg => arg.includes("--no-welcome"));
-
   // Command environment.
   this.environment_ = argv.environment || {};
 
@@ -78,8 +75,14 @@ nassh.CommandInstance = function(argv) {
   // Terminal Window reference (can accept another hterm tab's window).
   this.terminalWindow = argv.terminalWindow || window;
 
-  // Root preference manager.
+  /**
+   * @type {?string} The current connection profile.
+   */
+  this.profileId_ = null;
+
+  // Root preference managers.
   this.prefs_ = new nassh.PreferenceManager();
+  this.localPrefs_ = new nassh.LocalPreferenceManager();
 
   // Prevent us from reporting an exit twice.
   this.exited_ = false;
@@ -124,10 +127,9 @@ nassh.CommandInstance.prototype.run = function() {
   this.io = this.argv_.io.push();
 
   // Similar to lib.fs.err, except this logs to the terminal too.
-  var ferr = (msg) => {
-    return (err) => {
-      var ary = Array.apply(null, arguments);
-      console.error(msg + ': ' + ary.join(', '));
+  const ferr = (msg) => {
+    return (err, ...args) => {
+      console.error(`${msg}: ${args.join(', ')}`);
 
       this.io.println(nassh.msg('UNEXPECTED_ERROR'));
       this.io.println(err);
@@ -141,44 +143,55 @@ nassh.CommandInstance.prototype.run = function() {
     this.io.print('\x1b]0;' + this.manifest_.name + ' ' +
                     this.manifest_.version + '\x07');
 
-    // Welcome unless --no-welcome.
-    if (this.welcome_) {
-      showWelcome();
-    }
+    showWelcome();
 
     nassh.getFileSystem()
       .then(onFileSystemFound)
       .catch(ferr('FileSystem init failed'));
+
+    this.localPrefs_.readStorage(() => {
+      this.localPrefs_.syncProfiles(this.prefs_);
+      const updater = this.updateWindowDimensions_.bind(this);
+      window.addEventListener('resize', updater);
+      // Window doesn't offer a 'move' event, and blur/resize don't seem to
+      // work.  Listening for mouseout should be low enough overhead.
+      window.addEventListener('mouseout', updater);
+    });
   });
 
   const showWelcome = () => {
-    this.io.println(
-        nassh.msg('WELCOME_VERSION',
-                  ['\x1b[1m' + this.manifest_.name + '\x1b[m',
-                   '\x1b[1m' + this.manifest_.version + '\x1b[m']));
+    const style = {bold: true};
 
-    this.io.println(
-        nassh.msg('WELCOME_FAQ', ['\x1b[1mhttps://goo.gl/muppJj\x1b[m']));
+    this.io.println(nassh.msg(
+        'WELCOME_VERSION',
+        [nassh.sgrText(this.manifest_.name, style),
+         nassh.sgrText(this.manifest_.version, style)]));
+
+    this.io.println(nassh.msg(
+        'WELCOME_FAQ',
+        [nassh.sgrText('https://goo.gl/muppJj', style)]));
 
     if (hterm.windowType != 'popup' && hterm.os != 'mac') {
       this.io.println('');
-      this.io.println(nassh.msg('OPEN_AS_WINDOW_TIP',
-                                ['\x1b[1mhttps://goo.gl/muppJj\x1b[m']));
+      this.io.println(nassh.msg(
+          'OPEN_AS_WINDOW_TIP',
+          [nassh.sgrText('https://goo.gl/muppJj', style)]));
       this.io.println('');
     }
 
     // Show some release highlights the first couple of runs with a new version.
     // We'll reset the counter when the release notes change.
-    this.io.println(nassh.msg('WELCOME_CHANGELOG',
-                              ['\x1b[1mhttps://goo.gl/YnmXOs\x1b[m']));
-    let notes = lib.resource.getData('nassh/release/highlights');
+    this.io.println(nassh.msg(
+        'WELCOME_CHANGELOG',
+        [nassh.sgrText(nassh.osc8Link('/html/changelog.html'), style)]));
+    const notes = lib.resource.getData('nassh/release/highlights');
     if (this.prefs_.getNumber('welcome/notes-version') != notes.length) {
       // They upgraded, so reset the counters.
       this.prefs_.set('welcome/show-count', 0);
       this.prefs_.set('welcome/notes-version', notes.length);
     }
     // Figure out how many times we've shown this.
-    var notesShowCount = this.prefs_.getNumber('welcome/show-count');
+    const notesShowCount = this.prefs_.getNumber('welcome/show-count');
     if (notesShowCount < 10) {
       // For new runs, show the highlights directly.
       this.io.print(nassh.msg('WELCOME_RELEASE_HIGHLIGHTS',
@@ -188,7 +201,7 @@ nassh.CommandInstance.prototype.run = function() {
     }
 
     // Display a random tip every time they launch to advertise features.
-    let num = lib.f.randomInt(1, 14);
+    const num = lib.f.randomInt(1, 14);
     this.io.println('');
     this.io.println(nassh.msg('WELCOME_TIP_OF_DAY',
                               [num, nassh.msg(`TIP_${num}`)]));
@@ -200,7 +213,8 @@ nassh.CommandInstance.prototype.run = function() {
       const htermVer = lib.resource.getData('hterm/changelog/version');
       const htermRev = lib.resource.getData('hterm/git/HEAD');
       const htermAgeMinutes =
-          Math.round((new Date() - new Date(htermDate)) / 1000 / 60);
+          Math.round((new Date().getTime() - new Date(htermDate).getTime()) /
+                     1000 / 60);
 
       this.io.println(`[dev] hterm v${htermVer} (git ${htermRev})`);
       this.io.println(`[dev] built on ${htermDate} ` +
@@ -211,11 +225,11 @@ nassh.CommandInstance.prototype.run = function() {
   const onFileSystemFound = (fileSystem) => {
     this.fileSystem_ = fileSystem;
 
-    var argstr = this.argv_.args.join(' ');
+    const argstr = this.argv_.args.join(' ');
 
     // This item is set before we redirect away to login to a relay server.
     // If it's set now, it's the first time we're reloading after the redirect.
-    var pendingRelay = this.storage.getItem('nassh.pendingRelay');
+    const pendingRelay = this.storage.getItem('nassh.pendingRelay');
     this.storage.removeItem('nassh.pendingRelay');
 
     if (!argstr || (this.storage.getItem('nassh.promptOnReload') &&
@@ -231,6 +245,12 @@ nassh.CommandInstance.prototype.run = function() {
 
       this.promptForDestination_();
     } else {
+      const params = new URLSearchParams(this.terminalLocation.search);
+      // An undocumented hack for extension popup to force a one-off connection.
+      if (params.get('promptOnReload') == 'yes') {
+        this.storage.setItem('nassh.promptOnReload', 'yes');
+      }
+
       this.connectToArgString(argstr);
     }
   };
@@ -258,84 +278,40 @@ nassh.CommandInstance.prototype.reconnect = function(argstr) {
 };
 
 /**
- * Removes a file from the HTML5 filesystem.
- *
- * Most likely you want to remove something from the /.ssh/ directory.
- *
- * This command is only here to support unsavory JS console hacks for managing
- * the /.ssh/ directory.
- *
- * @param {string} fullPath The full path to the file to remove.
+ * Event for when the window dimensions change.
  */
-nassh.CommandInstance.prototype.removeFile = function(fullPath) {
-  lib.fs.removeFile(this.fileSystem_.root, '/.ssh/' + fullPath);
-};
+nassh.CommandInstance.prototype.updateWindowDimensions_ = function() {
+  if (!this.profileId_) {
+    // We haven't connected yet, so nothing to save.
+    return;
+  }
 
-/**
- * Removes a directory from the HTML5 filesystem.
- *
- * Most likely you'll want to remove the entire /.ssh/ directory.
- *
- * This command is only here to support unsavory JS console hacks for managing
- * the /.ssh/ directory.
- *
- * @param {string} fullPath The full path to the file to remove.
- */
-nassh.CommandInstance.prototype.removeDirectory = function(fullPath) {
-  this.fileSystem_.root.getDirectory(
-      fullPath, {},
-      function (f) {
-        f.removeRecursively(lib.fs.log('Removed: ' + fullPath),
-                            lib.fs.err('Error removing' + fullPath));
-      },
-      lib.fs.log('Error finding: ' + fullPath)
-  );
-};
+  // The web platform doesn't provide a way to check the window state, so use
+  // Chrome APIs directly for that.
+  chrome.windows.getCurrent((win) => {
+    // Ignore minimized state completely.
+    if (win.state === 'minimized') {
+      return;
+    }
 
-/**
- * Remove all known hosts.
- *
- * This command is only here to support unsavory JS console hacks for managing
- * the /.ssh/ directory.
- *
- * @return {boolean}
- */
-nassh.CommandInstance.prototype.removeAllKnownHosts = function() {
-  this.fileSystem_.root.getFile(
-      '/.ssh/known_hosts', {create: false},
-      function(fileEntry) { fileEntry.remove(function() {}); });
-  /*
-   * This isn't necessary, but it makes the user interface a little nicer as
-   * most people don't realize that "undefined" is what you get from a void
-   * javascript function.  Example console output:
-   * > term_.command.removeAllKnownHosts()
-   * true
-   */
-  return true;
-};
+    const profile = this.localPrefs_.getProfile(lib.notNull(this.profileId_));
+    profile.set('win/state', win.state);
 
-/**
- * Remove a known host by index.
- *
- * This command is only here to support unsavory JS console hacks for managing
- * the /.ssh/ directory.
- *
- * @param {number} index One-based index of the known host entry to remove.
- */
-nassh.CommandInstance.prototype.removeKnownHostByIndex = function(index) {
-  const path = '/.ssh/known_hosts';
-  lib.fs.readFile(this.fileSystem_.root, path)
-    .then((contents) => {
-      const ary = contents.split('\n');
-      ary.splice(index - 1, 1);
-      return lib.fs.overwriteFile(this.fileSystem_.root, path, ary.join('\n'));
-    })
-    .catch(lib.fs.log(`Error accessing ${path}`));
+    // Only record dimensions when we're not fullscreen/maximized.  This allows
+    // the position/size to be remembered independent of temporarily going to
+    // the max screen dimensions.
+    if (win.state === 'normal') {
+      profile.set('win/top', window.screenTop);
+      profile.set('win/left', window.screenLeft);
+      profile.set('win/height', window.outerHeight);
+      profile.set('win/width', window.outerWidth);
+    }
+  });
 };
 
 /** Prompt for destination */
 nassh.CommandInstance.prototype.promptForDestination_ = function() {
-  var connectDialog = this.io.createFrame(
+  const connectDialog = this.io.createFrame(
       lib.f.getURL('/html/nassh_connect_dialog.html'), null);
 
   connectDialog.onMessage = (event) => {
@@ -346,10 +322,10 @@ nassh.CommandInstance.prototype.promptForDestination_ = function() {
   // Resize the connection dialog iframe to try and fit all the content,
   // but not more.  This way we don't end up with a lot of empty space.
   function resize() {
-    let body = this.iframe_.contentWindow.document.body;
-    let shortcutList = body.querySelector('#shortcut-list');
-    let dialogBillboard = body.querySelector('.dialog-billboard');
-    let dialogButtons = body.querySelector('.dialog-buttons');
+    const body = this.iframe_.contentWindow.document.body;
+    const shortcutList = body.querySelector('#shortcut-list');
+    const dialogBillboard = body.querySelector('.dialog-billboard');
+    const dialogButtons = body.querySelector('.dialog-buttons');
 
     this.container_.style.height = '0px';
     let height = shortcutList.scrollHeight +
@@ -371,7 +347,7 @@ nassh.CommandInstance.prototype.promptForDestination_ = function() {
     this.container_.style.top = '';
     this.container_.style.bottom = '10%';
 
-    var resize_ = resize.bind(this);
+    const resize_ = resize.bind(this);
     resize_();
     window.addEventListener('resize', resize_);
     this.onClose = () => {
@@ -393,7 +369,7 @@ nassh.CommandInstance.prototype.connectToArgString = function(argstr) {
   this.storage.removeItem('nassh.isSftp');
 
   // Handle profile-id:XXX forms.  These are bookmarkable.
-  var ary = argstr.match(/^profile-id:([a-z0-9]+)(\?.*)?/i);
+  const ary = argstr.match(/^profile-id:([a-z0-9]+)(\?.*)?/i);
   if (ary) {
     if (isMount) {
       this.mountProfile(ary[1]);
@@ -433,6 +409,7 @@ nassh.CommandInstance.prototype.commonProfileSetup_ = function(
       return;
     }
 
+    this.profileId_ = profileID;
     document.querySelector('#terminal').focus();
 
     this.terminalLocation.hash = 'profile-id:' + profileID;
@@ -462,7 +439,6 @@ nassh.CommandInstance.prototype.prefsToConnectParams_ = function(prefs) {
     identity: prefs.get('identity'),
     argstr: prefs.get('argstr'),
     terminalProfile: prefs.get('terminal-profile'),
-    authAgentAppID: prefs.get('auth-agent-appid'),
   };
 };
 
@@ -480,7 +456,7 @@ nassh.CommandInstance.prototype.mountProfile = function(profileID) {
       return;
     }
 
-    var args = {
+    const args = {
       argv: {
         terminalIO: this.io,
         terminalStorage: this.storage,
@@ -494,8 +470,8 @@ nassh.CommandInstance.prototype.mountProfile = function(profileID) {
         mountOptions: {
           fileSystemId: prefs.id,
           displayName: prefs.get('description'),
-          writable: true
-        }
+          writable: true,
+        },
       },
       connectOptions: this.prefsToConnectParams_(prefs),
     };
@@ -559,40 +535,48 @@ nassh.CommandInstance.prototype.connectToProfile = function(profileID) {
  * @return {?Object} Returns null if we couldn't parse the destination.
  *     An object if we were able to parse out the connect settings.
  */
-nassh.CommandInstance.parseURI = function(uri, stripSchema=true,
-                                          decodeComponents=false) {
+nassh.CommandInstance.parseURI = function(uri, stripSchema = true,
+                                          decodeComponents = false) {
   if (stripSchema && uri.startsWith('ssh:')) {
     // Strip off the "ssh:" prefix.
     uri = uri.substr(4);
     // Strip off the "//" if it exists.
-    if (uri.startsWith('//'))
+    if (uri.startsWith('//')) {
       uri = uri.substr(2);
+    }
   }
 
   /* eslint-disable */
   // Parse the connection string.
   var ary = uri.match(
-      //|user |@| [  ipv6       %zoneid   ]| host |   :port      @ relay options
-      /^([^@]+)@(\[[:0-9a-f]+(?:%[^\]]+)?\]|[^:@]+)(?::(\d+))?(?:@([^:]+)(?::(\d+))?)?$/);
+      //|user |@| [  ipv6       %zoneid   ]| host |   :port     |@| [  ipv6       %zoneid   ]|relay|   :relay port |
+      /^([^@]+)@(\[[:0-9a-f]+(?:%[^\]]+)?\]|[^:@]+)(?::(\d+))?(?:@(\[[:0-9a-f]+(?:%[^\]]+)?\]|[^:]+)(?::(\d+))?)?$/);
   /* eslint-enable */
 
-  if (!ary)
+  if (!ary) {
     return null;
+  }
 
-  let params = {};
-  var username = ary[1];
-  var hostname = ary[2];
-  var port = ary[3];
+  const params = {};
+  let username = ary[1];
+  let hostname = ary[2];
+  const port = ary[3];
 
   // If it's IPv6, remove the brackets.
-  if (hostname.startsWith('[') && hostname.endsWith(']'))
+  if (hostname.startsWith('[') && hostname.endsWith(']')) {
     hostname = hostname.substr(1, hostname.length - 2);
+  }
 
-  var relayHostname, relayPort;
+  let relayHostname, relayPort;
   if (ary[4]) {
     relayHostname = ary[4];
-    if (ary[5])
+    // If it's IPv6, remove the brackets.
+    if (relayHostname.startsWith('[') && relayHostname.endsWith(']')) {
+      relayHostname = relayHostname.substr(1, relayHostname.length - 2);
+    }
+    if (ary[5]) {
       relayPort = ary[5];
+    }
   }
 
   const decode = (x) => decodeComponents && x ? unescape(x) : x;
@@ -655,8 +639,9 @@ nassh.CommandInstance.parseDestination = function(destination) {
   if (destination.startsWith('uri:')) {
     // Strip off the "uri:" before decoding it.
     destination = unescape(destination.substr(4));
-    if (!destination.startsWith('ssh:'))
+    if (!destination.startsWith('ssh:')) {
       return null;
+    }
 
     stripSchema = true;
     decodeComponents = true;
@@ -664,15 +649,17 @@ nassh.CommandInstance.parseDestination = function(destination) {
 
   const rv = nassh.CommandInstance.parseURI(destination, stripSchema,
                                             decodeComponents);
-  if (rv === null)
+  if (rv === null) {
     return rv;
+  }
 
   // Turn the relay URI settings into nassh command line options.
   let nasshOptions;
   if (rv.relayHostname !== undefined) {
     nasshOptions = '--proxy-host=' + rv.relayHostname;
-    if (rv.relayPort !== undefined)
+    if (rv.relayPort !== undefined) {
       nasshOptions += ' --proxy-port=' + rv.relayPort;
+    }
   }
   rv.nasshOptions = nasshOptions;
 
@@ -695,7 +682,7 @@ nassh.CommandInstance.prototype.connectToDestination = function(destination) {
     return;
   }
 
-  var rv = nassh.CommandInstance.parseDestination(destination);
+  const rv = nassh.CommandInstance.parseDestination(destination);
   if (rv === null) {
     this.io.println(nassh.msg('BAD_DESTINATION', [destination]));
     this.exit(nassh.CommandInstance.EXIT_INTERNAL_ERROR, true);
@@ -704,7 +691,7 @@ nassh.CommandInstance.prototype.connectToDestination = function(destination) {
 
   // We have to set the url here rather than in connectToArgString, because
   // some callers may come directly to connectToDestination.
-  this.terminalLocation.hash = rv.uri;
+  this.terminalLocation.hash = destination;
 
   this.connectTo(rv);
 };
@@ -715,7 +702,7 @@ nassh.CommandInstance.prototype.connectToDestination = function(destination) {
  * @param {string} destination A string of the form username@host[:port].
  */
 nassh.CommandInstance.prototype.mountDestination = function(destination) {
-  var rv = nassh.CommandInstance.parseDestination(destination);
+  const rv = nassh.CommandInstance.parseDestination(destination);
   if (rv === null) {
     this.io.println(nassh.msg('BAD_DESTINATION', [destination]));
     this.exit(nassh.CommandInstance.EXIT_INTERNAL_ERROR, true);
@@ -724,9 +711,9 @@ nassh.CommandInstance.prototype.mountDestination = function(destination) {
 
   // We have to set the url here rather than in connectToArgString, because
   // some callers may come directly to connectToDestination.
-  this.terminalLocation.hash = rv.uri;
+  this.terminalLocation.hash = destination;
 
-  var args = {
+  const args = {
     argv: {
       terminalIO: this.io,
       terminalStorage: this.storage,
@@ -739,8 +726,8 @@ nassh.CommandInstance.prototype.mountDestination = function(destination) {
       mountOptions: {
         fileSystemId: rv.username + rv.hostname,
         displayName: rv.username + rv.hostname,
-        writable: true
-      }
+        writable: true,
+      },
     },
     connectOptions: rv,
   };
@@ -760,12 +747,12 @@ nassh.CommandInstance.prototype.mountDestination = function(destination) {
  * @return {!Object} The various components.
  */
 nassh.CommandInstance.splitCommandLine = function(argstr) {
-  var args = argstr || '';
-  var command = '';
+  let args = argstr || '';
+  let command = '';
 
   // Tokenize the string first.
-  var i;
-  var ary = args.match(/("[^"]*"|\S+)/g);
+  let i;
+  let ary = args.match(/("[^"]*"|\S+)/g);
   if (ary) {
     // If there is a -- separator in here, we split that off and leave the
     // command line untouched (other than normalizing of whitespace between
@@ -785,10 +772,11 @@ nassh.CommandInstance.splitCommandLine = function(argstr) {
     // Strip out any whitespace.  There shouldn't be anything left that the
     // regex wouldn't have matched, but let's be paranoid.
     args = args.trim();
-    if (args)
+    if (args) {
       ary = [args];
-    else
+    } else {
       ary = [];
+    }
   }
 
   return {
@@ -813,7 +801,7 @@ nassh.CommandInstance.prototype.sftpConnectToDestination = function(
 
   // We have to set the url here rather than in connectToArgString, because
   // some callers may come directly to connectToDestination.
-  this.terminalLocation.hash = rv.destination;
+  this.terminalLocation.hash = destination;
 
   const args = {
     argv: {
@@ -844,8 +832,7 @@ nassh.CommandInstance.prototype.connectTo = function(params) {
   }
 
   if (params.hostname == '>crosh') {
-    // TODO: This will need to be done better.  document.location changes don't
-    // work in v2 apps.
+    // TODO: This should be done better.
     const template = 'crosh.html?profile=%encodeURIComponent(terminalProfile)';
     this.terminalLocation.href = lib.f.replaceVars(template, params);
     return;
@@ -873,8 +860,8 @@ nassh.CommandInstance.prototype.connectTo = function(params) {
 
   // Merge nassh options from the ssh:// URI that we believe are safe.
   const safeNasshOptions = new Set([
-    '--config', '--proxy-mode', '--proxy-host', '--proxy-port', '--ssh-agent',
-    '--welcome',
+    '--config', '--proxy-mode', '--proxy-host', '--proxy-port', '--proxy-user',
+    '--ssh-agent', '--welcome',
   ]);
   Object.keys(userOptions).forEach((option) => {
     if (safeNasshOptions.has(option)) {
@@ -885,7 +872,8 @@ nassh.CommandInstance.prototype.connectTo = function(params) {
   });
 
   // Finally post process the combined result.
-  options = nassh.CommandInstance.postProcessOptions(options, params.hostname);
+  options = nassh.CommandInstance.postProcessOptions(
+      options, params.hostname, params.username);
 
   // Merge ssh options from the ssh:// URI that we believe are safe.
   params.userSshArgs = [];
@@ -906,17 +894,52 @@ nassh.CommandInstance.prototype.connectTo = function(params) {
                  `currently supported`);
   }
 
+  if (options['--welcome'] === false) {
+    // Clear terminal display area.
+    this.io.terminal_.clearHome();
+  }
+
+  if (options['--field-trial-buffer']) {
+    nassh.buffer.backend = options['--field-trial-buffer'];
+  }
+
+  // Start driving non-CrOS people to the extension variant.
+  // We do this only for newer versions so we don't flag users on EOL devices
+  // who can't migrate to the extension.
+  if (this.manifest_ && this.manifest_.app && hterm.os != 'cros') {
+    const extUrl = 'https://chrome.google.com/webstore/detail/' +
+        'iodihamcpbpeioajjeobimgagajmlibd';
+    const docUrl = 'https://chromium.googlesource.com/apps/libapps/+/HEAD/' +
+        'nassh/doc/app-to-ext-migration.md';
+    this.io.println('');
+    this.io.println(nassh.msg('MIGRATE_TO_EXT', [
+      nassh.osc8Link(extUrl, 'link'),
+      nassh.osc8Link(docUrl, 'link'),
+    ]));
+    this.io.println('');
+  }
+
   // If the user has requested a proxy relay, load it up.
-  if (options['--proxy-mode'] == 'ssh-fe@google.com') {
-    this.relay_ = new nassh.Relay.Sshfe(this.io, options, params.username);
+  if (!options['--proxy-host']) {
+    // Do nothing when disabled.  We check this first to avoid excessive
+    // indentation or redundant checking of the proxy-host setting below.
+  } else if (options['--proxy-mode'] == 'ssh-fe@google.com') {
+    this.relay_ = new nassh.relay.Sshfe(this.io, options);
     this.io.println(nassh.msg(
         'FOUND_RELAY',
         [`${this.relay_.proxyHost}:${this.relay_.proxyPort}`]));
     this.relay_.init();
-  } else if (options['--proxy-mode'] == 'corp-relay@google.com') {
-    this.relay_ = new nassh.GoogleRelay(this.io, options,
-                                        this.terminalLocation,
-                                        this.storage);
+  } else if (options['--proxy-mode'] == 'corp-relay@google.com' ||
+             options['--proxy-mode'] == 'corp-relay-v4@google.com') {
+    if (options['--proxy-mode'] == 'corp-relay@google.com') {
+      this.relay_ = new nassh.relay.Corp(this.io, options,
+                                          this.terminalLocation,
+                                          this.storage);
+    } else {
+      this.relay_ = new nassh.relay.Corpv4(this.io, options,
+                                           this.terminalLocation,
+                                           this.storage);
+    }
 
     this.io.println(nassh.msg(
         'INITIALIZING_RELAY',
@@ -981,24 +1004,26 @@ nassh.CommandInstance.prototype.connectToFinalize_ = function(params, options) {
   // If they're using an internationalized domain name (IDN), then punycode
   // will return a different ASCII name.  Include that in the display for the
   // user so it's clear where we end up trying to connect to.
-  var idn_hostname = punycode.toASCII(params.hostname);
-  var disp_hostname = params.hostname;
-  if (idn_hostname != params.hostname)
+  const idn_hostname = punycode.toASCII(params.hostname);
+  let disp_hostname = params.hostname;
+  if (idn_hostname != params.hostname) {
     disp_hostname += ' (' + idn_hostname + ')';
+  }
 
   this.io.onVTKeystroke = this.onVTKeystroke_.bind(this);
   this.io.sendString = this.sendString_.bind(this);
   this.io.onTerminalResize = this.onTerminalResize_.bind(this);
 
-  var argv = {};
+  const argv = {};
   argv.terminalWidth = this.io.terminal_.screenSize.width;
   argv.terminalHeight = this.io.terminal_.screenSize.height;
   argv.useJsSocket = !!this.relay_;
   argv.environment = this.environment_;
   argv.writeWindow = 8 * 1024;
 
-  if (this.isSftp)
+  if (this.isSftp) {
     argv.subsystem = 'sftp';
+  }
 
   argv.arguments = [];
 
@@ -1016,8 +1041,9 @@ nassh.CommandInstance.prototype.connectToFinalize_ = function(params, options) {
       Object.keys(argv.environment).map((x) => `-oSendEnv=${x}`));
 
   // Disable IP address check for connection through proxy.
-  if (argv.useJsSocket)
+  if (argv.useJsSocket) {
     argv.arguments.push('-o CheckHostIP=no');
+  }
 
   if (params.identity) {
     // Load legacy/filtered keys from /.ssh/.
@@ -1027,8 +1053,9 @@ nassh.CommandInstance.prototype.connectToFinalize_ = function(params, options) {
 
     argv.arguments.push(`-i/.ssh/identity/${params.identity}`);
   }
-  if (params.port)
+  if (params.port) {
     argv.arguments.push('-p' + params.port);
+  }
 
   // We split the username apart so people can use whatever random characters in
   // it they want w/out causing parsing troubles ("@" or leading "-" or " ").
@@ -1037,12 +1064,14 @@ nassh.CommandInstance.prototype.connectToFinalize_ = function(params, options) {
 
   // Finally, we append the custom command line the user has constructed.
   // This matches native `ssh` behavior and makes our lives simpler.
-  var extraArgs = nassh.CommandInstance.splitCommandLine(params.argstr);
-  if (extraArgs.args)
+  const extraArgs = nassh.CommandInstance.splitCommandLine(params.argstr);
+  if (extraArgs.args) {
     argv.arguments = argv.arguments.concat(extraArgs.args);
+  }
   argv.arguments = argv.arguments.concat(params.userSshArgs);
-  if (extraArgs.command)
+  if (extraArgs.command) {
     argv.arguments.push('--', extraArgs.command);
+  }
 
   this.authAgentAppID_ = params.authAgentAppID;
   // If the agent app ID is not just an app ID, we parse it for the IDs of
@@ -1058,15 +1087,7 @@ nassh.CommandInstance.prototype.connectToFinalize_ = function(params, options) {
   }
 
   this.initPlugin_(() => {
-    if (!nassh.v2) {
-      this.terminalWindow.addEventListener(
-          'beforeunload', this.onBeforeUnload_);
-    }
-
-    if (!this.welcome_) {
-      // Clear terminal display area.
-      this.io.print('\x1b[2J\x1b[0;0H');
-    }
+    this.terminalWindow.addEventListener('beforeunload', this.onBeforeUnload_);
 
     this.io.println(nassh.msg('CONNECTING',
                               [`${params.username}@${disp_hostname}`]));
@@ -1085,8 +1106,8 @@ nassh.CommandInstance.prototype.connectToFinalize_ = function(params, options) {
  * @param {string=} optionString The set of --long options to parse.
  * @return {!Object} A map of --option to its value.
  */
-nassh.CommandInstance.tokenizeOptions = function(optionString='') {
-  let rv = {};
+nassh.CommandInstance.tokenizeOptions = function(optionString = '') {
+  const rv = {};
 
   // If it's empty, return right away else the regex split below will create
   // [''] which causes the parser to fail.
@@ -1125,10 +1146,12 @@ nassh.CommandInstance.tokenizeOptions = function(optionString='') {
  * Expand & process nassh options.
  *
  * @param {!Object<string, *>} options A map of --option to its value.
- * @param {string=} hostname The hostname we're connecting to.
+ * @param {string} hostname The hostname we're connecting to.
+ * @param {string} username The ssh username we're using.
  * @return {!Object<string, *>} A map of --option to its value.
  */
-nassh.CommandInstance.postProcessOptions = function(options, hostname='') {
+nassh.CommandInstance.postProcessOptions = function(
+    options, hostname, username) {
   let rv = Object.assign(options);
 
   // Handle various named "configs" we have.
@@ -1145,11 +1168,14 @@ nassh.CommandInstance.postProcessOptions = function(options, hostname='') {
     ].reduce((ret, host) => ret || hostname.endsWith(host), false);
     const proxyHost = useSupSshRelay ?
         'sup-ssh-relay.corp.google.com' : 'ssh-relay.corp.google.com';
+    const proxyMode = useSupSshRelay ?
+        'corp-relay-v4@google.com' : 'corp-relay@google.com';
 
     rv = Object.assign({
       'auth-agent-forward': forwardAgent,
       '--proxy-host': proxyHost,
       '--proxy-port': '443',
+      '--proxy-mode': proxyMode,
       '--use-ssl': true,
       '--report-ack-latency': true,
       '--report-connect-attempts': true,
@@ -1176,7 +1202,12 @@ nassh.CommandInstance.postProcessOptions = function(options, hostname='') {
   // Turn 'gnubby' into the default id.  We do it here because we haven't yet
   // ported the gnubbyd logic to the new ssh-agent frameworks.
   if (rv['--ssh-agent'] == 'gnubby') {
-    rv['--ssh-agent'] = nassh.GoogleRelay.defaultGnubbyExtension;
+    rv['--ssh-agent'] = nassh.goog.gnubby.defaultExtension;
+  }
+
+  // Default the relay username to the ssh username.
+  if (!rv['--proxy-user']) {
+    rv['--proxy-user'] = username;
   }
 
   return rv;
@@ -1200,7 +1231,7 @@ nassh.CommandInstance.prototype.dispatchMessage_ = function(
 
 /** @param {function()} onComplete */
 nassh.CommandInstance.prototype.initPlugin_ = function(onComplete) {
-  var onPluginLoaded = () => {
+  const onPluginLoaded = () => {
     this.io.println(nassh.msg('PLUGIN_LOADING_COMPLETE'));
     onComplete();
   };
@@ -1224,7 +1255,7 @@ nassh.CommandInstance.prototype.initPlugin_ = function(onComplete) {
   this.plugin_.addEventListener('load', onPluginLoaded);
   this.plugin_.addEventListener('message', this.onPluginMessage_.bind(this));
 
-  var errorHandler = (ev) => {
+  const errorHandler = (ev) => {
     this.io.println(nassh.msg('PLUGIN_LOADING_FAILED'));
     console.error('loading plugin failed', ev);
     this.exit(nassh.CommandInstance.EXIT_INTERNAL_ERROR, true);
@@ -1269,17 +1300,17 @@ nassh.CommandInstance.prototype.onVTKeystroke_ = function(data) {
  */
 nassh.CommandInstance.prototype.createTtyStream = function(
     fd, allowRead, allowWrite, onOpen) {
-  var arg = {
+  const arg = {
     fd: fd,
     allowRead: allowRead,
     allowWrite: allowWrite,
     inputBuffer: this.inputBuffer_,
-    io: this.io
+    io: this.io,
   };
 
-  var stream = this.streams_.openStream(nassh.Stream.Tty, fd, arg, onOpen);
+  const stream = this.streams_.openStream(nassh.Stream.Tty, fd, arg, onOpen);
   if (allowRead) {
-    var onDataAvailable = (isAvailable) => {
+    const onDataAvailable = (isAvailable) => {
       // Send current read status to plugin.
       this.sendToPlugin_('onReadReady', [fd, isAvailable]);
     };
@@ -1304,7 +1335,7 @@ nassh.CommandInstance.prototype.createTtyStream = function(
 nassh.CommandInstance.prototype.sendToPlugin_ = function(name, args) {
   try {
     this.plugin_.postMessage({name: name, arguments: args});
-  } catch(e) {
+  } catch (e) {
     // When we tear down the plugin, we sometimes have a tail of pending calls.
     // Rather than try and chase all of those down, swallow errors when the
     // plugin doesn't exist.
@@ -1346,10 +1377,7 @@ nassh.CommandInstance.prototype.exit = function(code, noReconnect) {
 
   this.exited_ = true;
 
-  if (!nassh.v2) {
-    this.terminalWindow.removeEventListener(
-        'beforeunload', this.onBeforeUnload_);
-  }
+  this.terminalWindow.removeEventListener('beforeunload', this.onBeforeUnload_);
 
   // Close all streams upon exit.
   this.streams_.closeAllStreams();
@@ -1378,7 +1406,7 @@ nassh.CommandInstance.prototype.exit = function(code, noReconnect) {
   }
 
   this.io.onVTKeystroke = (string) => {
-    var ch = string.toLowerCase();
+    const ch = string.toLowerCase();
     switch (ch) {
       case 'c':
       case '\x12': // ctrl-r
@@ -1412,10 +1440,11 @@ nassh.CommandInstance.prototype.exit = function(code, noReconnect) {
  * @return {string|undefined} Message to display.
  */
 nassh.CommandInstance.prototype.onBeforeUnload_ = function(e) {
-  if (hterm.windowType == 'popup')
+  if (hterm.windowType == 'popup') {
     return;
+  }
 
-  var msg = nassh.msg('BEFORE_UNLOAD');
+  const msg = nassh.msg('BEFORE_UNLOAD');
   e.returnValue = msg;
   return msg;
 };
@@ -1508,7 +1537,7 @@ nassh.CommandInstance.prototype.onPlugin_.printLog = function(str) {
  */
 nassh.CommandInstance.prototype.onPlugin_.exit = function(code) {
   console.log('plugin exit: ' + code);
-  this.exit(code, /*noReconnect=*/false);
+  this.exit(code, /* noReconnect= */ false);
 };
 
 /**
@@ -1526,13 +1555,13 @@ nassh.CommandInstance.prototype.onPlugin_.exit = function(code) {
  */
 nassh.CommandInstance.prototype.onPlugin_.openFile = function(fd, path, mode) {
   let isAtty;
-  var onOpen = (success) => {
+  const onOpen = (success) => {
     this.sendToPlugin_('onOpenFile', [fd, success, isAtty]);
   };
 
-  var DEV_STDIN = '/dev/stdin';
-  var DEV_STDOUT = '/dev/stdout';
-  var DEV_STDERR = '/dev/stderr';
+  const DEV_STDIN = '/dev/stdin';
+  const DEV_STDOUT = '/dev/stdout';
+  const DEV_STDERR = '/dev/stderr';
 
   if (path == '/dev/tty') {
     isAtty = true;
@@ -1545,8 +1574,8 @@ nassh.CommandInstance.prototype.onPlugin_.openFile = function(fd, path, mode) {
     this.streams_.openStream(nassh.Stream.Sftp, fd, info, onOpen);
   } else if (path == DEV_STDIN || path == DEV_STDOUT || path == DEV_STDERR) {
     isAtty = !this.isSftp;
-    var allowRead = path == DEV_STDIN;
-    var allowWrite = path == DEV_STDOUT || path == DEV_STDERR;
+    const allowRead = path == DEV_STDIN;
+    const allowWrite = path == DEV_STDOUT || path == DEV_STDERR;
     this.createTtyStream(fd, allowRead, allowWrite, onOpen);
   } else {
     this.sendToPlugin_('onOpenFile', [fd, false, false]);
@@ -1561,7 +1590,7 @@ nassh.CommandInstance.prototype.onPlugin_.openFile = function(fd, path, mode) {
  */
 nassh.CommandInstance.prototype.onPlugin_.openSocket = function(
     fd, host, port) {
-  var stream = null;
+  let stream = null;
 
   /**
    * @param {boolean} success
@@ -1613,7 +1642,7 @@ nassh.CommandInstance.prototype.onPlugin_.openSocket = function(
  * @param {!ArrayBuffer} data The content to write.
  */
 nassh.CommandInstance.prototype.onPlugin_.write = function(fd, data) {
-  var stream = this.streams_.getStreamByFd(fd);
+  const stream = this.streams_.getStreamByFd(fd);
 
   if (!stream) {
     console.warn('Attempt to write to unknown fd: ' + fd);
@@ -1638,20 +1667,24 @@ nassh.CommandInstance.prototype.onPlugin_.write = function(fd, data) {
 nassh.CommandInstance.prototype.onSftpInitialised = function() {
   if (this.isMount) {
     // Newer versions of Chrome support this API, but olders will error out.
-    if (lib.f.getChromeMilestone() >= 64)
+    if (lib.f.getChromeMilestone() >= 64) {
       this.mountOptions['persistent'] = false;
+    }
 
     // Mount file system.
     chrome.fileSystemProvider.mount(this.mountOptions);
 
     // Add this instance to list of SFTP instances.
-    nassh.sftp.fsp.sftpInstances[this.mountOptions.fileSystemId] = this;
+    nassh.sftp.fsp.sftpInstances[this.mountOptions.fileSystemId] = {
+      sftpClient: lib.notNull(this.sftpClient),
+      exit: this.exit.bind(this),
+    };
 
     this.io.showOverlay(nassh.msg('MOUNTED_MESSAGE') + ' '
                         + nassh.msg('CONNECT_OR_EXIT_MESSAGE'), null);
 
     this.io.onVTKeystroke = (string) => {
-      var ch = string.toLowerCase();
+      const ch = string.toLowerCase();
       switch (ch) {
         case 'c':
         case '\x12': // ctrl-r
@@ -1683,7 +1716,7 @@ nassh.CommandInstance.prototype.onSftpInitialised = function() {
  * @param {number} size How many bytes to read.
  */
 nassh.CommandInstance.prototype.onPlugin_.read = function(fd, size) {
-  var stream = this.streams_.getStreamByFd(fd);
+  const stream = this.streams_.getStreamByFd(fd);
 
   if (!stream) {
     console.warn('Attempt to read from unknown fd: ' + fd);
@@ -1702,7 +1735,7 @@ nassh.CommandInstance.prototype.onPlugin_.read = function(fd, size) {
  * @param {number} fd The file handle to close.
  */
 nassh.CommandInstance.prototype.onPlugin_.close = function(fd) {
-  var stream = this.streams_.getStreamByFd(fd);
+  const stream = this.streams_.getStreamByFd(fd);
 
   if (!stream) {
     console.warn('Attempt to close unknown fd: ' + fd);

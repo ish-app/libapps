@@ -302,8 +302,9 @@ void SshPluginInstance::StartSession(const pp::VarArray& args) {
       session_args_.Get(kTerminalWidthAttr).is_number() &&
       session_args_.HasKey(kTerminalHeightAttr) &&
       session_args_.Get(kTerminalHeightAttr).is_number()) {
-    file_system_.SetTerminalSize(session_args_.Get(kTerminalWidthAttr).AsInt(),
-                                 session_args_.Get(kTerminalHeightAttr).AsInt());
+    file_system_.SetTerminalSize(
+        session_args_.Get(kTerminalWidthAttr).AsInt(),
+        session_args_.Get(kTerminalHeightAttr).AsInt());
   }
   if (session_args_.HasKey(kUseJsSocketAttr) &&
       session_args_.Get(kUseJsSocketAttr).is_bool()) {
@@ -392,9 +393,21 @@ void SshPluginInstance::OnWriteAcknowledge(const pp::VarArray& args) {
   if (fd.is_number() && count.is_number()) {
     InputStreams::iterator it = streams_.find(fd.AsInt());
     if (it != streams_.end()) {
-      // TODO(dpolukhin): UInt here is only 32-bit, current version of API
-      // don't support 64-bit integer numbers.
-      it->second->OnWriteAcknowledge(count.AsInt());
+      // JS tops out at 53-bits for integers, so we can use signed ints here
+      // even though the underlying OnWriteAcknowledge is using uint64_t.
+      int64_t cnt;
+      if (count.is_int()) {
+        cnt = count.AsInt();
+      } else {
+        cnt = static_cast<int64_t>(count.AsDouble());
+      }
+      if (cnt < 0) {
+        PrintLogImpl(0, "onWriteAcknowledge: count is negative\n");
+      } else if (cnt > 1ULL << 53) {
+        PrintLogImpl(0, "onWriteAcknowledge: count is too big\n");
+      } else {
+        it->second->OnWriteAcknowledge(cnt);
+      }
     } else {
       PrintLogImpl(0, "onWriteAcknowledge: for unknown file descriptor\n");
     }

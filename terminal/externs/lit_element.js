@@ -41,6 +41,13 @@ class LitElement$$module$js$lit_element{
   render() {}
 
   /**
+   * @param {string=} propertyName
+   * @param {*=} oldValue
+   * @return {!Promise<void>}
+   */
+  requestUpdate(propertyName, oldValue) {}
+
+  /**
    * @param {(string|Array<(string|number)>)} path
    * @param {*} value
    * @param {Object=} root
@@ -69,3 +76,14 @@ function html$$module$js$lit_element(strings, ...values) {}
  * @param {!Element|!ShadowRoot|!DocumentFragment} element
  */
 function render$$module$js$lit_element(template, element) {}
+
+/**
+ * @param {*} value
+ * @return {CSSResult}
+ */
+function unsafeCSS$$module$js$lit_element(value) {}
+
+/**
+ * @param {*} value
+ */
+function live$$module$js$lit_element(value) {}

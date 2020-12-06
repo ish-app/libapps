@@ -13,23 +13,21 @@
  *
  * @param {!hterm.Terminal.IO} io
  * @param {!Object} options
- * @param {string} username
  * @constructor
  */
-nassh.Relay.Sshfe = function(io, options, username) {
+nassh.relay.Sshfe = function(io, options) {
   this.io = io;
   this.proxyHost = options['--proxy-host'];
   this.proxyPort = options['--proxy-port'] || 443;
-  this.username = username;
-  this.sshAgent_ = options['--ssh-agent'] ||
-      nassh.GoogleRelay.defaultGnubbyExtension;
+  this.username = options['--proxy-user'];
+  this.sshAgent_ = options['--ssh-agent'] || nassh.goog.gnubby.defaultExtension;
   this.relayServer = `wss://${this.proxyHost}:${this.proxyPort}`;
 };
 
 /**
  * Initialize this relay object.
  */
-nassh.Relay.Sshfe.prototype.init = function() {};
+nassh.relay.Sshfe.prototype.init = function() {};
 
 /**
  * Return an nassh.Stream object that will handle the socket stream
@@ -42,7 +40,7 @@ nassh.Relay.Sshfe.prototype.init = function() {};
  * @param {function()} onOpen
  * @return {!nassh.Stream}
  */
-nassh.Relay.Sshfe.prototype.openSocket = function(fd, host, port, streams,
+nassh.relay.Sshfe.prototype.openSocket = function(fd, host, port, streams,
                                                   onOpen) {
   const settings = {
     io: this.io,

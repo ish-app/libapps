@@ -16,7 +16,7 @@
  * collisions.
  */
 lib.resource = {
-  resources_: {}
+  resources_: {},
 };
 
 /** @typedef {{type: string, name: string, data: *}} */
@@ -35,7 +35,7 @@ lib.resource.add = function(name, type, data) {
   lib.resource.resources_[name] = {
     type: type,
     name: name,
-    data: data
+    data: data,
   };
 };
 
@@ -82,6 +82,6 @@ lib.resource.getData = function(name, defaultValue) {
  * @return {string} A data: url encoded version of the resource.
  */
 lib.resource.getDataUrl = function(name, defaultValue) {
-  var resource = lib.resource.get(name, defaultValue);
+  const resource = lib.resource.get(name, defaultValue);
   return 'data:' + resource.type + ',' + resource.data;
 };

@@ -14,6 +14,6 @@
 import {litelement} from './nassh_deps.rollup.js';
 
 /** @suppress {undefinedVars} */
-const {LitElement, render, html, css} = litelement;
+const {LitElement, render, html, css, unsafeCSS, live} = litelement;
 
-export {LitElement, render, html, css};
+export {LitElement, render, html, css, unsafeCSS, live};

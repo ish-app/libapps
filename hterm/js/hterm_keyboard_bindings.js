@@ -42,13 +42,42 @@ hterm.Keyboard.KeyBinding;
  * @constructor
  */
 hterm.Keyboard.Bindings = function() {
+  /** @private {!Object<number, !Array<!hterm.Keyboard.KeyBinding>>} */
   this.bindings_ = {};
+};
+
+/**
+ * Default bindings for each OS.
+ *
+ * @type {!Object<string, !Object<string, string>>}
+ */
+hterm.Keyboard.Bindings.OsDefaults = {
+  'android': {
+  },
+  'cros': {
+    // Submit feedback.
+    'Alt+Shift+I': 'PASS',
+    // Toggle chromevox.
+    'Ctrl+Alt+Z': 'PASS',
+    // Switch input method.
+    'Ctrl+Space': 'PASS',
+  },
+  'linux': {
+  },
+  'mac': {
+    // Home.
+    'Meta+Left': '"\u001b[H"',
+    // End.
+    'Meta+Right': '"\u001b[F"',
+  },
+  'windows': {
+  },
 };
 
 /**
  * Remove all bindings.
  */
-hterm.Keyboard.Bindings.prototype.clear = function () {
+hterm.Keyboard.Bindings.prototype.clear = function() {
   this.bindings_ = {};
 };
 
@@ -62,10 +91,10 @@ hterm.Keyboard.Bindings.prototype.clear = function () {
  * @param {!hterm.Keyboard.KeyBindingAction} action
  */
 hterm.Keyboard.Bindings.prototype.addBinding_ = function(keyPattern, action) {
-  var binding = null;
-  var list = this.bindings_[keyPattern.keyCode];
+  let binding = null;
+  const list = this.bindings_[keyPattern.keyCode];
   if (list) {
-    for (var i = 0; i < list.length; i++) {
+    for (let i = 0; i < list.length; i++) {
       if (list[i].keyPattern.matchKeyPattern(keyPattern)) {
         binding = list[i];
         break;
@@ -97,18 +126,18 @@ hterm.Keyboard.Bindings.prototype.addBinding_ = function(keyPattern, action) {
  * If a binding for the keyPattern already exists it will be overridden.
  *
  * More specific keyPatterns take precedence over those with wildcards.  Given
- * bindings for "Ctrl-A" and "Ctrl-*-A", and a "Ctrl-A" keydown, the "Ctrl-A"
- * binding will match even if "Ctrl-*-A" was created last.
+ * bindings for "Ctrl+A" and "Ctrl+*+A", and a "Ctrl+A" keydown, the "Ctrl+A"
+ * binding will match even if "Ctrl+*+A" was created last.
  *
  * If action is a string, it will be passed through hterm.Parser.parseKeyAction.
  *
  * For example:
- *   // Will replace Ctrl-P keystrokes with the string "hiya!".
- *   addBinding('Ctrl-P', "'hiya!'");
+ *   // Will replace Ctrl+P keystrokes with the string "hiya!".
+ *   addBinding('Ctrl+P', "'hiya!'");
  *   // Will cancel the keystroke entirely (make it do nothing).
- *   addBinding('Alt-D', hterm.Keyboard.KeyActions.CANCEL);
+ *   addBinding('Alt+D', hterm.Keyboard.KeyActions.CANCEL);
  *   // Will execute the code and return the action.
- *   addBinding('Ctrl-T', function() {
+ *   addBinding('Ctrl+T', function() {
  *     console.log('Got a T!');
  *     return hterm.Keyboard.KeyActions.PASS;
  *   });
@@ -124,10 +153,10 @@ hterm.Keyboard.Bindings.prototype.addBinding = function(key, action) {
   }
 
   // Here we treat key as a string.
-  var p = new hterm.Parser();
+  const p = new hterm.Parser();
 
   p.reset(key);
-  var sequence;
+  let sequence;
 
   try {
     sequence = p.parseKeySequence();
@@ -168,16 +197,22 @@ hterm.Keyboard.Bindings.prototype.addBinding = function(key, action) {
  *
  * For example:
  *  {
- *    // Will replace Ctrl-P keystrokes with the string "hiya!".
- *    'Ctrl-P': "'hiya!'",
+ *    // Will replace Ctrl+P keystrokes with the string "hiya!".
+ *    'Ctrl+P': "'hiya!'",
  *    // Will cancel the keystroke entirely (make it do nothing).
- *    'Alt-D': hterm.Keyboard.KeyActions.CANCEL,
+ *    'Alt+D': hterm.Keyboard.KeyActions.CANCEL,
  *  }
  *
  * @param {!Object<string, !hterm.Keyboard.KeyBindingAction>} map
+ * @param {boolean=} addOsDefaults If true, OS defaults are added first to
+ *     ensure user defined mappings take precedence.
  */
-hterm.Keyboard.Bindings.prototype.addBindings = function(map) {
-  for (var key in map) {
+hterm.Keyboard.Bindings.prototype.addBindings = function(
+    map, addOsDefaults = false) {
+  if (addOsDefaults) {
+    this.addBindings(hterm.Keyboard.Bindings.OsDefaults[hterm.os] || {});
+  }
+  for (const key in map) {
     this.addBinding(key, map[key]);
   }
 };
@@ -193,14 +228,16 @@ hterm.Keyboard.Bindings.prototype.addBindings = function(map) {
  * @return {?hterm.Keyboard.KeyBinding} The keyboard binding for this key.
  */
 hterm.Keyboard.Bindings.prototype.getBinding = function(keyDown) {
-  var list = this.bindings_[keyDown.keyCode];
-  if (!list)
+  const list = this.bindings_[keyDown.keyCode];
+  if (!list) {
     return null;
+  }
 
-  for (var i = 0; i < list.length; i++) {
-    var binding = list[i];
-    if (binding.keyPattern.matchKeyDown(keyDown))
+  for (let i = 0; i < list.length; i++) {
+    const binding = list[i];
+    if (binding.keyPattern.matchKeyDown(keyDown)) {
       return binding;
+    }
   }
 
   return null;

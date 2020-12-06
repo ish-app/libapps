@@ -21,9 +21,8 @@
 
 # Introduction
 
-Secure Shell is a Chrome App (currently a "v1.5" app, soon to become a "v2" or
-Platform App) that combines hterm with a NaCl build of OpenSSH to provide
-a PuTTY-like app for Chrome users.
+Secure Shell is a Chrome extension that combines hterm with a NaCl build of
+OpenSSH to provide a PuTTY-like app for Chrome users.
 
 See [/HACK.md](/HACK.md) for general information about working with the source
 control setup.
@@ -37,11 +36,7 @@ The Secure Shell app depends on some library code from
     nassh$ ./bin/mkdeps
 
 This will create the `nassh/js/nassh_deps.concat.js` file containing all of the
-necessary libdot and hterm source.  If you find yourself changing a lot of
-libdot or hterm code and testing those changes in Secure Shell you can run this
-script with the "--forever" (aka -f) option.  When run in this manner it will
-automatically re-create nassh_deps.concat.js file whenever one of the source
-files is changed.
+necessary libdot and hterm source.
 
 ## The NaCl plugin dependency
 
@@ -61,14 +56,14 @@ $ cp -a output/hterm/plugin/ ../nassh/
 2. Grab an existing release.  For example:
 ```
 # In the nassh/ directory.
-$ wget https://commondatastorage.googleapis.com/chromeos-localmirror/secureshell/releases/0.8.39.tar.xz
-$ tar --strip-components=1 -xf 0.8.39.tar.xz hterm/plugin
+$ wget https://commondatastorage.googleapis.com/chromeos-localmirror/secureshell/releases/0.27.tar.xz
+$ tar -xvf 0.27.tar.xz plugin/
 ```
 
 3. Copy the `plugin/` directory from the latest version of Secure Shell.
 If you have Secure Shell installed, the plugin can be found in your profile
 directory, under
-`Default/Extensions/pnhechapfaindjhompbnflcldabbghjo/<version>/plugin/`.
+`Default/Extensions/iodihamcpbpeioajjeobimgagajmlibd/<version>/plugin/`.
 
 # Dev-Test cycle
 
@@ -120,10 +115,6 @@ time, but is largely for Chrome OS only now.  The [manifest_ext.json] is used to
 build the Secure Shell Extension which works on all platforms (but lacks any
 Chrome OS specific features).
 
-The [manifest_v2.json] is not used currently.  Some day we might finish the
-migration and replace [manifest_v1.5.json] with it so we only have one app
-manifest.  Today it is not often tested.
-
 The "v1.5" and "v2" app formats should not be confused with the "v1" and "v2"
 manifest formats.  Secure Shell uses the legacy/deprecated "v1.5" app style to
 launch itself rather than the "v2" style.  It means that, in many ways, the
@@ -154,6 +145,15 @@ are already removed from the [manifest_ext.json] for the extension.
   <br>
   Note: Making connections over https using relay servers will still work
   though.  See the [FAQ] for more details.
+* Access to [chrome.sockets] APIs.  This allows connecting directly to SSH
+  servers (e.g. port 22).  We're allowing this pending [Native Sockets] support
+  in the web platform itself.
+* Access to `chrome.crashReportPrivate` APIs.
+  This allows users to opt-in to providing crash-reports.
+  Not required to be able to use Secure Shell of course.
+* Access to `chrome.metricsPrivate` APIs.
+  This allows users to opt-in to metrics/UMA collection about basic features.
+  Not required to be able to use Secure Shell of course.
 * SFTP backend for Chrome OS (`fileSystemProvider` and
   `file_system_provider_capabilities`).
   [(1)](https://cs.chromium.org/chromium/src/chrome/common/extensions/api/_permission_features.json)
@@ -267,7 +267,6 @@ The vast majority of the code here lives under [js/].
   * [chrome-bootstrap.css]: Theme code for the extensions options page.
 * [manifest_ext.json]: The Chrome manifest for the extension.
 * [manifest_v1.5.json]: The Chrome manifest for the "v1.5" app.
-* [manifest_v2.json]: The Chrome manifest for the "v2" app.
 
 ## JavaScript Source Layout
 
@@ -275,16 +274,17 @@ The vast majority of the code here lives under [js/].
   * [nassh.js]: Main `nassh` object setup and glue code to Chrome runtime.
   * [nassh_app.js]: Main `nassh.App` code.
   * [nassh_command_instance.js]: Main `nassh.CommandInstance` launching code.
-  * [nassh_google_relay.js]: Web relay `nassh.GoogleRelay` code for proxying
-    connections.
   * [nassh_preference_manager.js]: Logic holding user preferences.
+* Relay code.
+  * [nassh_relay_corp.js]: Web relay `nassh.relay.Corp` code for proxying
+    connections via [Corp Relay] protocol.
 * Extension glue code
-  * [nassh_background.js]: Background extension code.  
+  * [nassh_background.js]: Background extension code.
   * [nassh_main.js]: Main code to initialize a new connection and hand off.
 * Stream (I/O) related code
   * [nassh_stream.js]: Basic class for implementing all `nassh.Stream` streams.
-  * [nassh_stream_google_relay.js]: 
-  * [nassh_stream_set.js]: 
+  * [nassh_stream_relay_corp.js]: Stream for [Corp Relay] connections.
+  * [nassh_stream_set.js]:
   * [nassh_stream_sftp.js]: Stream for passing binary SFTP data through.
   * [nassh_stream_sshagent.js]:
     SSH agent implementation using nassh.agent.Agent to relay requests to
@@ -383,7 +383,7 @@ The `name` field can be any one of:
 | `onOpenFile`         | Open a new file.                 | (int `fd`, bool `success`, bool `is_atty`) |
 | `onOpenSocket`       | Open a new socket.               | (int `fd`, bool `success`, bool `is_atty`) |
 | `onRead`             | Send new data to the plugin.     | (int `fd`, ArrayBuffer `data`) |
-| `onWriteAcknowledge` | Tell plugin we've read data.     | (int `fd`, int `count`) |
+| `onWriteAcknowledge` | Tell plugin we've read data.     | (int `fd`, number `count`) |
 | `onClose`            | Close an existing fd.            | (int `fd`) |
 | `onReadReady`        | Notify plugin data is available. | (int `fd`, bool `result`) |
 | `onResize`           | Notify terminal size changes.    | (int `width`, int `height`) |
@@ -402,6 +402,10 @@ The session object currently has these members:
 * int `writeWindow`: Size of the write window.
 * str `authAgentAppID`: Extension id to use as the ssh-agent.
 * str `subsystem`: Which subsystem to launch.
+
+The `onWriteAcknowledge` `count` field tracks the total byte count sent for the
+connection, not the `count` from the most recent `write` request.
+It supports up to `Number.MAX_SAFE_INTEGER` bytes.
 
 ## NaCl->JS API
 
@@ -517,7 +521,6 @@ Here's a random list of documents which would be useful to people.
 
 [manifest_ext.json]: ../manifest_ext.json
 [manifest_v1.5.json]: ../manifest_v1.5.json
-[manifest_v2.json]: ../manifest_v2.json
 [manifest_crosh.json]: https://cs.chromium.org/chromium/src/chrome/browser/resources/chromeos/crosh_builtin/manifest.json
 
 [chrome-bootstrap.css]: ../third_party/chrome-bootstrap/chrome-bootstrap.css
@@ -547,16 +550,16 @@ Here's a random list of documents which would be useful to people.
 [nassh_connect_dialog.js]: ../js/nassh_connect_dialog.js
 [nassh_extension_popup.js]: ../js/nassh_extension_popup.js
 [nassh_google_relay_html.js]: ../js/nassh_google_relay_html.js
-[nassh_google_relay.js]: ../js/nassh_google_relay.js
 [nassh_main.js]: ../js/nassh_main.js
 [nassh_preference_manager.js]: ../js/nassh_preference_manager.js
 [nassh_preferences_editor.js]: ../js/nassh_preferences_editor.js
+[nassh_relay_corp.js]: ../js/nassh_relay_corp.js
 [nassh_sftp_client.js]: ../js/nassh_sftp_client.js
 [nassh_sftp_fsp.js]: ../js/nassh_sftp_fsp.js
 [nassh_sftp_packet.js]: ../js/nassh_sftp_packet.js
 [nassh_sftp_packet_types.js]: ../js/nassh_sftp_packet_types.js
 [nassh_sftp_status.js]: ../js/nassh_sftp_status.js
-[nassh_stream_google_relay.js]: ../js/nassh_stream_google_relay.js
+[nassh_stream_relay_corp.js]: ../js/nassh_stream_relay_corp.js
 [nassh_stream.js]: ../js/nassh_stream.js
 [nassh_stream_set.js]: ../js/nassh_stream_set.js
 [nassh_stream_sftp.js]: ../js/nassh_stream_sftp.js
@@ -569,9 +572,11 @@ Here's a random list of documents which would be useful to people.
 [FAQ]: FAQ.md
 
 [copy-data]: https://tools.ietf.org/html/draft-ietf-secsh-filexfer-extensions-00#section-7
+[Corp Relay: relay-protocol.md#corp-relay
 [crosh]: chromeos-crosh.md
 [gnubbyd]: https://chrome.google.com/webstore/detail/beknehfpfkghjoafdifaflglpjkojoco
 [NaCl]: https://developer.chrome.com/native-client
+[Native Sockets]: https://crbug.com/909927
 [OpenSSH]: https://www.openssh.com/
 [OpenSSH SFTP Protocol]: https://github.com/openssh/openssh-portable/blob/master/PROTOCOL
 [SFTPv3]: https://tools.ietf.org/html/draft-ietf-secsh-filexfer-02

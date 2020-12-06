@@ -4,6 +4,9 @@
 
 'use strict';
 
+/**
+ * @suppress {constantProperty} Allow tests in browsers.
+ */
 window.chrome = window.chrome || {};
 
 /**
@@ -26,7 +29,7 @@ MockEvent.prototype.addListener = function(listener) {
 
 /** @param {?EventListener|function(!Event)} listener */
 MockEvent.prototype.removeListener = function(listener) {
-  this.listeners_ = this.listeners_.filter((l) => l != listener);
+  this.listeners_ = this.listeners_.filter((x) => x != listener);
 };
 
 /**
@@ -38,8 +41,8 @@ MockEvent.prototype.removeListener = function(listener) {
 MockEvent.prototype.dispatch = function(...args) {
   return new Promise((resolve) => {
     setTimeout(() => {
-      for (const l of this.listeners_) {
-        l.apply(null, args);
+      for (const listener of this.listeners_) {
+        listener.apply(null, args);
       }
       resolve();
     }, 0);
@@ -60,10 +63,12 @@ function MockTerminalPrivate() {
    */
   this.observers_ = {};
   this.onProcessOutput = new MockEvent();
+  this.onA11yStatusChanged = new MockEvent();
 
   /** @type {string} */
-  this.openTerminalProcessId = '';
+  this.openVmshellProcessId = '';
   this.croshSettings = {};
+  this.a11yStatus = false;
 }
 
 /**
@@ -78,7 +83,10 @@ MockTerminalPrivate.Controller = function() {
    * @const
    */
   this.origTerminalPrivate_ = chrome.terminalPrivate;
-  /** @suppress {checkTypes} The mock is not an exact match. */
+  /**
+   * @suppress {constantProperty} Reassigning to chrome.terminalPrivate.
+   * @suppress {checkTypes} The mock is not an exact match.
+   */
   chrome.terminalPrivate = this.instance = new MockTerminalPrivate();
 };
 
@@ -104,7 +112,7 @@ MockTerminalPrivate.Controller.prototype.removeObserver = function(
     fnName, callback) {
   if (this.instance.observers_[fnName]) {
     this.instance.observers_[fnName] =
-        this.instance.observers_[fnName].filter(o => o != callback);
+        this.instance.observers_[fnName].filter((o) => o != callback);
   }
 };
 
@@ -115,7 +123,7 @@ MockTerminalPrivate.Controller.prototype.removeObserver = function(
  * @return {!Promise<!Array<*>>} Arguments from function.
  */
 MockTerminalPrivate.Controller.prototype.on = function(fnName) {
-  return new Promise(resolve => {
+  return new Promise((resolve) => {
     const observer = (...args) => {
       this.removeObserver(fnName, observer);
       resolve(args);
@@ -128,7 +136,7 @@ MockTerminalPrivate.Controller.prototype.on = function(fnName) {
  * Stop the mock.
  */
 MockTerminalPrivate.Controller.prototype.stop = function() {
-  /** @suppress {duplicate} Reassigning to const chrome.terminalPrivate. */
+  /** @suppress {constantProperty} Reassigning to chrome.terminalPrivate. */
   chrome.terminalPrivate = this.origTerminalPrivate_;
 };
 
@@ -155,19 +163,16 @@ MockTerminalPrivate.prototype.notifyObservers_ = function(fnName, args) {
 };
 
 /**
- * Starts new process.
+ * Starts new vmshell process.
  *
- * @param {string} processName Name of the process to open. May be 'crosh' or
- *     'vmshell'.
  * @param {!Array<string>} args Command line arguments to pass to the process.
  * @param {function(string)} callback Returns id of the launched process. If no
  *     process was launched returns -1.
  */
-MockTerminalPrivate.prototype.openTerminalProcess = function(
-    processName, args, callback) {
+MockTerminalPrivate.prototype.openVmshellProcess = function(args, callback) {
   setTimeout(() => {
-    callback(this.openTerminalProcessId);
-    this.notifyObservers_('openTerminalProcess', arguments);
+    callback(this.openVmshellProcessId);
+    this.notifyObservers_('openVmshellProcess', [args, callback]);
   }, 0);
 };
 
@@ -181,7 +186,7 @@ MockTerminalPrivate.prototype.openTerminalProcess = function(
 MockTerminalPrivate.prototype.closeTerminalProcess = function(id, callback) {
   setTimeout(() => {
     callback(true);
-    this.notifyObservers_('closeTerminalProcess', arguments);
+    this.notifyObservers_('closeTerminalProcess', [id, callback]);
   }, 0);
 };
 
@@ -197,7 +202,7 @@ MockTerminalPrivate.prototype.closeTerminalProcess = function(id, callback) {
 MockTerminalPrivate.prototype.sendInput = function(id, input, callback) {
   setTimeout(() => {
     callback(true);
-    this.notifyObservers_('sendInput', arguments);
+    this.notifyObservers_('sendInput', [id, input, callback]);
   }, 0);
 };
 
@@ -214,7 +219,7 @@ MockTerminalPrivate.prototype.onTerminalResize = function(
     id, width, height, callback) {
   setTimeout(() => {
     callback(true);
-    this.notifyObservers_('onTerminalResize', arguments);
+    this.notifyObservers_('onTerminalResize', [id, width, height, callback]);
   }, 0);
 };
 
@@ -228,7 +233,7 @@ MockTerminalPrivate.prototype.onTerminalResize = function(
  *     dispatched.
  */
 MockTerminalPrivate.prototype.ackOutput = function(tabId, id) {
-  this.notifyObservers_('ackOutput', arguments);
+  this.notifyObservers_('ackOutput', [tabId, id]);
 };
 
 /**
@@ -242,7 +247,44 @@ MockTerminalPrivate.prototype.ackOutput = function(tabId, id) {
 MockTerminalPrivate.prototype.getCroshSettings = function(callback) {
   setTimeout(() => {
     callback(this.croshSettings);
-    this.notifyObservers_('getCroshSettings', arguments);
+    this.notifyObservers_('getCroshSettings', [callback]);
+  }, 0);
+};
+
+/**
+ * Returns the current a11y status.
+ *
+ * @param {function(boolean)} callback Callback that will be called
+ *     with the current a11y status.
+ */
+MockTerminalPrivate.prototype.getA11yStatus = function(callback) {
+  setTimeout(() => {
+    callback(this.a11yStatus);
+    this.notifyObservers_('getA11yStatus', [callback]);
+  }, 0);
+};
+
+/**
+ * Open the Terminal Settings page.
+ *
+ * @param {function()} callback Callback that will be called when complete.
+ */
+MockTerminalPrivate.prototype.openOptionsPage = function(callback) {
+  setTimeout(() => {
+    callback();
+    this.notifyObservers_('openOptionsPage', [callback]);
+  }, 0);
+};
+
+/**
+ * Open the Terminal tabbed window.
+ *
+ * @param {function()} callback Callback that will be called when complete.
+ */
+MockTerminalPrivate.prototype.openWindow = function(callback) {
+  setTimeout(() => {
+    callback();
+    this.notifyObservers_('openWindow', [callback]);
   }, 0);
 };
 
@@ -263,7 +305,7 @@ function MockWindow() {
         obj[prop] = new MockEvent();
       }
       return obj[prop];
-    }
+    },
   });
 }
 

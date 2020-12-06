@@ -189,9 +189,6 @@ int dup(int oldfd) {
 int dup2(int oldfd, int newfd) {
   STUB_ENOSYS(-1, "");
 }
-int utime(const char* filename, const /*struct utimbuf*/void* times) {
-  STUB_ENOSYS(-1, "");
-}
 
 speed_t cfgetispeed(const struct termios* termios_p) {
   STUB_RETURN(B0, "termios=%p", termios_p);
@@ -209,7 +206,8 @@ int tcgetattr(int fd, struct termios* termios_p) {
   STUB_RETURN(0, "fd=%i termios=%p", fd, termios_p);
 }
 int tcsetattr(int fd, int optional_actions, const struct termios* termios_p) {
-  STUB_RETURN(0, "fd=%i actions=%i termios=%p", fd, optional_actions, termios_p);
+  STUB_RETURN(0, "fd=%i actions=%i termios=%p",
+              fd, optional_actions, termios_p);
 }
 
 struct passwd* getpwuid(uid_t uid) {  // NOLINT(runtime/threadsafe_fn)

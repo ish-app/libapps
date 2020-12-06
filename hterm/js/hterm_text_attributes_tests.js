@@ -14,7 +14,7 @@ describe('hterm_text_attributes_tests.js', () => {
  * Make sure isDefault works sanely.
  */
 it('isDefault', () => {
-  var tattrs = new hterm.TextAttributes();
+  const tattrs = new hterm.TextAttributes();
 
   // We should be in the default state initially.
   assert.isTrue(tattrs.isDefault());
@@ -33,7 +33,7 @@ it('isDefault', () => {
  */
 it('createContainer', () => {
   const tattrs = new hterm.TextAttributes(window.document);
-  var node;
+  let node;
 
   // We don't check all the fields currently.  Not clear it's worth the effort.
   // Focus on fields that have had issues in the past.
@@ -59,7 +59,7 @@ it('createContainer', () => {
  */
 it('matchesContainer', () => {
   const tattrs = new hterm.TextAttributes(window.document);
-  var node;
+  let node;
 
   // For plain string, this is just isDefault.
   assert.isTrue(tattrs.matchesContainer(''));
@@ -140,7 +140,7 @@ it('underline-colors', () => {
   node = tattrs.createContainer('asdf');
   assert.equal('underline', node.style.textDecorationLine);
   assert.equal('solid', node.style.textDecorationStyle);
-  assert.equal('rgb(204, 0, 0)', node.style.textDecorationColor);
+  assert.equal('rgb(var(--hterm-color-1))', node.style.textDecorationColor);
 
   // True color.
   tattrs.underlineSource = 'rgb(1, 2, 3)';
@@ -161,7 +161,10 @@ it('inverse-colors', () => {
   // Set an attribute to force a container (rather than a text node),
   // but doesn't affect the color behavior in syncColors.
   tattrs.underline = true;
-  tattrs.setDefaults('rgb(1, 2, 3)', 'rgb(3, 2, 1)');
+  window.document.documentElement.style.setProperty(
+      '--hterm-foreground-color', 'rgb(1, 2, 3)');
+  window.document.documentElement.style.setProperty(
+      '--hterm-background-color', 'rgb(3, 2, 1)');
 
   // Test with default colors.
   tattrs.inverse = false;
@@ -182,14 +185,14 @@ it('inverse-colors', () => {
   tattrs.inverse = false;
   tattrs.syncColors();
   node = tattrs.createContainer('asdf');
-  assert.equal(tattrs.colorPalette[0], node.style.color);
-  assert.equal(tattrs.colorPalette[1], node.style.backgroundColor);
+  assert.equal('rgb(var(--hterm-color-0))', node.style.color);
+  assert.equal('rgb(var(--hterm-color-1))', node.style.backgroundColor);
 
   tattrs.inverse = true;
   tattrs.syncColors();
   node = tattrs.createContainer('asdf');
-  assert.equal(tattrs.colorPalette[1], node.style.color);
-  assert.equal(tattrs.colorPalette[0], node.style.backgroundColor);
+  assert.equal('rgb(var(--hterm-color-1))', node.style.color);
+  assert.equal('rgb(var(--hterm-color-0))', node.style.backgroundColor);
 
   // Test with true colors.
   tattrs.foregroundSource = 'rgb(1, 1, 1)';
@@ -212,12 +215,14 @@ it('inverse-colors', () => {
  */
 it('invisible', () => {
   const tattrs = new hterm.TextAttributes(window.document);
-  let node;
 
   // Set an attribute to force a container (rather than a text node),
   // but doesn't affect the color behavior in syncColors.
   tattrs.underline = true;
-  tattrs.setDefaults('rgb(1, 2, 3)', 'rgb(3, 2, 1)');
+  window.document.documentElement.style.setProperty(
+      '--hterm-foreground-color', 'rgb(1, 2, 3)');
+  window.document.documentElement.style.setProperty(
+      '--hterm-background-color', 'rgb(3, 2, 1)');
 
   // Set colors to something other than the default.
   tattrs.foregroundSource = 'rgb(1, 1, 1)';
@@ -226,73 +231,15 @@ it('invisible', () => {
   // Invisible settings should have same colors.
   tattrs.invisible = true;
   tattrs.syncColors();
-  node = tattrs.createContainer('asdf');
+  const node = tattrs.createContainer('asdf');
   assert.equal(tattrs.backgroundSource, node.style.color);
   assert.equal(tattrs.backgroundSource, node.style.backgroundColor);
 });
 
-/**
- * Check color palette reset.
- */
-it('reset-color-palette', () => {
-  const tattrs = new hterm.TextAttributes(window.document);
-
-  // The color entries we'll test.
-  const indices = [0, 7, 15, 31, 63, 127, 255];
-  // The unique color we'll test against.
-  const custom = '#123456';
-
-  // Change the colors.
-  indices.forEach((index) => {
-    // Make sure the default doesn't match our custom color.
-    assert.isTrue(tattrs.colorPalette[index] != custom);
-    tattrs.colorPalette[index] = custom;
-  });
-
-  // Reset the palette and check the colors.
-  tattrs.resetColorPalette();
-  indices.forEach((index) => {
-    assert.isTrue(tattrs.colorPalette[index] != custom);
-  });
-});
-
-/**
- * Check individual color reset.
- */
-it('reset-color', () => {
-  const tattrs = new hterm.TextAttributes(window.document);
-
-  // The color entries we'll test.
-  const indices = [0, 7, 15, 31, 63, 127, 255];
-  // The unique color we'll test against.
-  const custom = '#123456';
-
-  // Change the colors and test the reset.
-  indices.forEach((index) => {
-    // Make sure the default doesn't match our custom color.
-    assert.isTrue(tattrs.colorPalette[index] != custom);
-
-    tattrs.colorPalette[index] = custom;
-    tattrs.resetColor(index);
-
-    // Check it's back to the stock value.
-    assert.equal(lib.colors.stockColorPalette[index],
-                 tattrs.colorPalette[index]);
-  });
-
-  // Check some edge cases don't crash.
-  tattrs.colorPalette[0] = custom;
-  tattrs.resetColor('0');
-  assert.equal(lib.colors.stockColorPalette[0], tattrs.colorPalette[0]);
-
-  // Shouldn't do anything.
-  tattrs.resetColor('alskdjf');
-});
-
 it('splitWidecharString-ascii', () => {
-  var text = 'abcdefghijklmn';
+  const text = 'abcdefghijklmn';
 
-  var actual = hterm.TextAttributes.splitWidecharString(text);
+  const actual = hterm.TextAttributes.splitWidecharString(text);
   assert.equal(actual.length, 1, "Normal text shouldn't be split.");
   assert.equal(actual[0].str, text,
                "The text doesn't have enough content.");
@@ -300,9 +247,9 @@ it('splitWidecharString-ascii', () => {
 });
 
 it('splitWidecharString-wide', () => {
-  var text = 'abcd\u3041\u3042def\u3043ghi';
+  const text = 'abcd\u3041\u3042def\u3043ghi';
 
-  var actual = hterm.TextAttributes.splitWidecharString(text);
+  const actual = hterm.TextAttributes.splitWidecharString(text);
   assert.equal(actual.length, 6, 'Failed to split wide chars.');
   assert.equal(actual[0].str, 'abcd',
                'Failed to obtain the first segment');
@@ -325,9 +272,9 @@ it('splitWidecharString-wide', () => {
 });
 
 it('splitWidecharString-surrogates', () => {
-  var text = 'abc\uD834\uDD00\uD842\uDD9D';
+  const text = 'abc\uD834\uDD00\uD842\uDD9D';
 
-  var actual = hterm.TextAttributes.splitWidecharString(text);
+  const actual = hterm.TextAttributes.splitWidecharString(text);
   assert.equal(actual.length, 2, 'Failed to split surrogate pairs.');
   assert.equal(actual[0].str, 'abc\uD834\uDD00',
                'Failed to obtain the first segment');
@@ -339,9 +286,9 @@ it('splitWidecharString-surrogates', () => {
 });
 
 it('splitWidecharString-ccs', () => {
-  var text = 'xA\u030Ax';
+  const text = 'xA\u030Ax';
 
-  var actual = hterm.TextAttributes.splitWidecharString(text);
+  const actual = hterm.TextAttributes.splitWidecharString(text);
   assert.equal(actual.length, 1, 'Failed to split combining sequences.');
   assert.equal(actual[0].str, text);
 });

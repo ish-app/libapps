@@ -20,7 +20,7 @@ function MockRowProvider(document, count) {
   this.rowNodeCache_ = null;
 
   this.callCounts_ = {
-    getRowNode: 0
+    getRowNode: 0,
   };
 }
 
@@ -40,8 +40,9 @@ MockRowProvider.prototype.resetCallCount = function(name) {
  * @return {number} The number of times the function has been called.
  */
 MockRowProvider.prototype.getCallCount = function(name) {
-  if (!(name in this.callCounts_))
-    throw 'Unknown name: ' + name;
+  if (!(name in this.callCounts_)) {
+    throw new Error(`Unknown name: ${name}`);
+  }
 
   return this.callCounts_[name];
 };
@@ -83,8 +84,9 @@ MockRowProvider.prototype.getRowCount = function() {
  * @return {!Object} The specified row record.
  */
 MockRowProvider.prototype.getRowRecord_ = function(index) {
-  if (index < 0 || index >= this.rows_.length)
-    throw 'Index out of bounds: ' + index;
+  if (index < 0 || index >= this.rows_.length) {
+    throw new Error(`Index out of bounds: ${index}`);
+  }
 
   if (!this.rows_[index]) {
     this.rows_[index] = {
@@ -98,7 +100,7 @@ MockRowProvider.prototype.getRowRecord_ = function(index) {
       '<x-state data-fg=5 data-bg=0> magenta</x-state>' +
       '<x-state data-fg=6 data-bg=0> cyan</x-state>',
       text:
-      'This is line ' + index + ' red green yellow blue magenta cyan'
+      'This is line ' + index + ' red green yellow blue magenta cyan',
     };
   }
 
@@ -113,11 +115,12 @@ MockRowProvider.prototype.getRowRecord_ = function(index) {
  * @return {string} The text of the specified rows.
  */
 MockRowProvider.prototype.getRowsText = function(start, end) {
-  if (start < 0 || end >= this.rows_.length)
-    throw 'Index out of bounds.';
+  if (start < 0 || end >= this.rows_.length) {
+    throw new Error('Index out of bounds.');
+  }
 
-  var text = this.rows_.slice(start, end);
-  return text.map(function (e) { return e.text; }).join('\n');
+  const text = this.rows_.slice(start, end);
+  return text.map(function(e) { return e.text; }).join('\n');
 };
 
 /**
@@ -127,7 +130,7 @@ MockRowProvider.prototype.getRowsText = function(start, end) {
  * @return {string} The text of the specified row.
  */
 MockRowProvider.prototype.getRowText = function(index) {
-  var rec = this.getRowRecord_(index);
+  const rec = this.getRowRecord_(index);
   return rec.text;
 };
 
@@ -141,16 +144,18 @@ MockRowProvider.prototype.getRowText = function(index) {
 MockRowProvider.prototype.getRowNode = function(index) {
   this.addCallCount('getRowNode');
 
-  if (this.rowNodeCache_ && index in this.rowNodeCache_)
+  if (this.rowNodeCache_ && index in this.rowNodeCache_) {
     return this.rowNodeCache_[index];
+  }
 
-  var rec = this.getRowRecord_(index);
-  var rowNode = this.document_.createElement('x-row');
+  const rec = this.getRowRecord_(index);
+  const rowNode = this.document_.createElement('x-row');
   rowNode.rowIndex = index;
   rowNode.innerHTML = rec.html;
 
-  if (this.rowNodeCache_)
+  if (this.rowNodeCache_) {
     this.rowNodeCache_[index] = rowNode;
+  }
 
   return rowNode;
 };

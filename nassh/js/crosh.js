@@ -17,28 +17,38 @@ window.addEventListener('DOMContentLoaded', (event) => {
   const params = new URLSearchParams(document.location.search);
 
   // Make it easy to re-open as a window.
-  if (params.get('openas') == 'window') {
-    // Delete the 'openas' string so we don't get into a loop.  We want to
-    // preserve the rest of the query string when opening the window.
-    params.delete('openas');
-    const url = new URL(document.location.toString());
-    url.search = params.toString();
-    Crosh.openNewWindow_(url.href).then(() => window.close());
-    return;
+  const openas = params.get('openas');
+  switch (openas) {
+    case 'window': {
+      // Delete the 'openas' string so we don't get into a loop.  We want to
+      // preserve the rest of the query string when opening the window.
+      params.delete('openas');
+      const url = new URL(document.location.toString());
+      url.search = params.toString();
+      Crosh.openNewWindow_(url.href).then(() => window.close());
+      return;
+    }
+
+    case 'fullscreen':
+    case 'maximized':
+      chrome.windows.getCurrent((win) => {
+        chrome.windows.update(win.id, {state: openas});
+      });
+      break;
   }
 
   nassh.disableTabDiscarding();
 
-  // Modifications if crosh is running as chrome://terminal.
-  if (location.href.startsWith('chrome://terminal/')) {
-    lib.registerInit('terminal-private-storage', (onInit) => {
-      hterm.defaultStorage = new lib.Storage.TerminalPrivate(onInit);
+  // Modifications if crosh is running as a web app.
+  if (Crosh.isWebApp()) {
+    lib.registerInit('terminal-private-storage', () => {
+      hterm.defaultStorage = new lib.Storage.TerminalPrivate();
     });
     lib.registerInit('messages', nassh.loadMessages);
     lib.registerInit('migrate-settings', Crosh.migrateSettings);
   }
 
-  lib.init(Crosh.init);
+  lib.init().then(Crosh.init);
 });
 
 /**
@@ -69,6 +79,17 @@ function Crosh(argv) {
 Crosh.croshBuiltinId = 'nkoccljplnhpfnfiajclkommnmllphnl';
 
 /**
+ * Returns true if this is running as a web app in
+ * chrome-untrusted://[crosh|terminal]/, or false if this is running as a nassh
+ * app/extension.
+ *
+ * @return {boolean}
+ */
+Crosh.isWebApp = function() {
+  return location.href.startsWith('chrome-untrusted://');
+};
+
+/**
  * Return a formatted message in the current locale.
  *
  * @param {string} name The name of the message to return.
@@ -80,28 +101,29 @@ Crosh.msg = function(name, args) {
 };
 
 /**
- * Migrates settings from crosh extension to chrome://terminal.
+ * Migrates settings from crosh extension on first run as a web app.
  * TODO(crbug.com/1019021): Remove after M83.
  *
  * Copy any settings from the previous crosh extension which were stored in
- * chrome.storage.sync into the current local storage of chrome://terminal.
+ * chrome.storage.sync.
  *
- * @param {function():void} callback Invoked when complete.
+ * @return {!Promise<void>} Resolves once settings have been migrated.
  */
-Crosh.migrateSettings = function(callback) {
+Crosh.migrateSettings = async function() {
   if (!chrome.terminalPrivate || !chrome.terminalPrivate.getCroshSettings) {
-    callback();
     return;
   }
 
-  hterm.defaultStorage.getItem('crosh.settings.migrated', (migrated) => {
-    if (migrated) {
-      callback();
-      return;
-    }
+  const migrated = await hterm.defaultStorage.getItem(
+      'crosh.settings.migrated');
+  if (migrated) {
+    return;
+  }
+
+  return new Promise((resolve) => {
     chrome.terminalPrivate.getCroshSettings((settings) => {
       settings['crosh.settings.migrated'] = true;
-      hterm.defaultStorage.setItems(settings, callback);
+      hterm.defaultStorage.setItems(settings).then(resolve);
     });
   });
 };
@@ -117,7 +139,11 @@ Crosh.migrateSettings = function(callback) {
 Crosh.init = function() {
   const params = new URLSearchParams(document.location.search);
   const profileName = params.get('profile');
-  var terminal = new hterm.Terminal(profileName);
+  const terminal = new hterm.Terminal(profileName);
+  // Use legacy pasting when running as an extension to avoid prompt.
+  // TODO(crbug.com/1063219) We need this to not prompt the user for clipboard
+  // permission.
+  terminal.alwaysUseLegacyPasting = !Crosh.isWebApp();
 
   // If we want to execute something other than the default crosh.
   const commandName = params.get('command') || 'crosh';
@@ -125,11 +151,12 @@ Crosh.init = function() {
 
   terminal.decorate(lib.notNull(document.querySelector('#terminal')));
   const runCrosh = function() {
-    terminal.keyboard.bindings.addBinding('Ctrl-Shift-P', function() {
+    terminal.keyboard.bindings.addBinding('Ctrl+Shift+P', function() {
       nassh.openOptionsPage();
       return hterm.Keyboard.KeyActions.CANCEL;
     });
 
+    terminal.onOpenOptionsPage = nassh.openOptionsPage;
     terminal.setCursorPosition(0, 0);
     terminal.setCursorVisible(true);
     terminal.runCommandClass(Crosh, commandName, params.getAll('args[]'));
@@ -137,7 +164,20 @@ Crosh.init = function() {
     terminal.command.keyboard_ = terminal.keyboard;
   };
   terminal.onTerminalReady = function() {
-    if (window.chrome && chrome.accessibilityFeatures &&
+    nassh.loadWebFonts(terminal.getDocument());
+    // TODO(crbug.com/1019034): chrome.terminalPrivate a11y was added in M82.
+    // We can migrate fully to it and remove chrome.accessibilityFeatures once
+    // M82 is stable.
+    if (chrome.terminalPrivate.onA11yStatusChanged &&
+        chrome.terminalPrivate.getA11yStatus) {
+      chrome.terminalPrivate.onA11yStatusChanged.addListener(
+          (enabled) => terminal.setAccessibilityEnabled(enabled));
+      chrome.terminalPrivate.getA11yStatus((enabled) => {
+        terminal.setAccessibilityEnabled(enabled);
+          runCrosh();
+        });
+    } else if (
+        chrome.accessibilityFeatures &&
         chrome.accessibilityFeatures.spokenFeedback) {
       chrome.accessibilityFeatures.spokenFeedback.onChange.addListener(
           (details) => terminal.setAccessibilityEnabled(details.value));
@@ -164,15 +204,17 @@ Crosh.init = function() {
      action: function() {
        lib.f.openWindow('https://goo.gl/muppJj', '_blank');
      }},
-    {name: Crosh.msg('OPTIONS_BUTTON_LABEL'),
+    {name: Crosh.msg('HTERM_OPTIONS_BUTTON_LABEL'),
      action: function() { nassh.openOptionsPage(); }},
+    {name: Crosh.msg('SEND_FEEDBACK_LABEL'),
+     action: nassh.sendFeedback},
   ]);
 
   // Useful for console debugging.
   window.term_ = terminal;
   console.log(Crosh.msg(
       'CONSOLE_CROSH_OPTIONS_NOTICE',
-      ['Ctrl-Shift-P', lib.f.getURL('/html/nassh_preferences_editor.html')]));
+      ['Ctrl+Shift+P', lib.f.getURL('/html/nassh_preferences_editor.html')]));
 
   return true;
 };
@@ -233,13 +275,14 @@ Crosh.prototype.run = function() {
 
   // We're not currently a window, so show a message to the user with a link to
   // open as a new window.
-  if (hterm.windowType != 'popup') {
+  if (hterm.windowType != 'popup' && !Crosh.isWebApp()) {
     const params = new URLSearchParams(document.location.search);
     params.set('openas', 'window');
     const url = new URL(document.location.toString());
     url.search = params.toString();
-    this.io.println(Crosh.msg('OPEN_AS_WINDOW_TIP',
-                              [`\x1b]8;;${url.href}\x07[crosh]\x1b]8;;\x07`]));
+    this.io.println(Crosh.msg(
+        'OPEN_AS_WINDOW_TIP',
+        [nassh.sgrText(nassh.osc8Link(url.href, '[crosh]'), {bold: true})]));
     this.io.println('');
   }
 
@@ -326,9 +369,10 @@ Crosh.prototype.onTerminalResize_ = function(width, height) {
   chrome.terminalPrivate.onTerminalResize(this.id_,
       Number(width), Number(height),
       function(success) {
-        if (!success)
-          console.warn("terminalPrivate.onTerminalResize failed");
-      }
+        if (!success) {
+          console.warn('terminalPrivate.onTerminalResize failed');
+        }
+      },
   );
 };
 
@@ -343,15 +387,16 @@ Crosh.prototype.exit = function(code) {
 
   if (code == 0) {
     this.io.pop();
-    if (this.argv_.onExit)
+    if (this.argv_.onExit) {
       this.argv_.onExit(code);
+    }
     return;
   }
 
   this.io.println(Crosh.msg('COMMAND_COMPLETE', [this.commandName, code]));
   this.io.println(Crosh.msg('RECONNECT_MESSAGE'));
   this.io.onVTKeystroke = (string) => {
-    var ch = string.toLowerCase();
+    const ch = string.toLowerCase();
     if (ch == 'r' || ch == ' ' || ch == '\x0d' /* enter */ ||
         ch == '\x12' /* ctrl-r */) {
       document.location.reload();
@@ -366,8 +411,9 @@ Crosh.prototype.exit = function(code) {
     if (ch == 'e' || ch == 'x' || ch == '\x1b' /* ESC */ ||
         ch == '\x17' /* C-w */) {
       this.io.pop();
-      if (this.argv_.onExit)
+      if (this.argv_.onExit) {
         this.argv_.onExit(code);
+      }
     }
   };
 };

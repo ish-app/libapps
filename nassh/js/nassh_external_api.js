@@ -12,7 +12,35 @@ nassh.External = {};
 /**
  * Commands available.
  */
-nassh.External.COMMANDS = {};
+nassh.External.COMMANDS = new Map();
+
+/**
+ * Our own extension ids.
+ */
+nassh.External.SelfExtIds = new Set([
+  'pnhechapfaindjhompbnflcldabbghjo',  // Secure Shell App (stable).
+  'okddffdblfhhnmhodogpojmfkjmhinfp',  // Secure Shell App (dev).
+  'iodihamcpbpeioajjeobimgagajmlibd',  // Secure Shell Extension (stable).
+  'algkcnfjnajfhgimadimbjhmpaeohhln',  // Secure Shell Extension (dev).
+  'nkoccljplnhpfnfiajclkommnmllphnl',  // Crosh.
+]);
+
+nassh.External.COMMANDS.set('hello',
+/**
+ * Probe the extension.
+ *
+ * @param {*} request The hello message.
+ * @param {!MessageSender} sender chrome.runtime.MessageSender
+ * @param {function(!Object=)} sendResponse called to send response.
+ */
+function(request, sender, sendResponse) {
+  sendResponse({
+    error: false,
+    message: 'hello',
+    internal: sender.internal,
+    id: sender.id,
+  });
+});
 
 /**
  * Root dir for all files to be written under.
@@ -28,19 +56,25 @@ nassh.External.ROOT_DIR = '/external';
  */
 nassh.External.sessionCounter_ = 0;
 
+nassh.External.COMMANDS.set('mount',
 /**
  * Performs SFTP mount.
  *
  * @param {{username:string, hostname:string, port:(number|undefined),
  *     identityFile:string, knownHosts:string, fileSystemId:string,
  *     displayName:string}} request Request to mount specified host.
- * @param {{id:string}} sender chrome.runtime.MessageSender
+ * @param {!MessageSender} sender chrome.runtime.MessageSender
  * @param {function(!Object=)} sendResponse called to send response.
  */
-nassh.External.COMMANDS.mount = (request, sender, sendResponse) => {
+function(request, sender, sendResponse) {
   const sessionId = nassh.External.sessionCounter_++;
   const knownHosts = `${nassh.External.ROOT_DIR}/${sessionId}.known_hosts`;
   const identityFile = `${nassh.External.ROOT_DIR}/${sessionId}.identity_file`;
+  /**
+   * @param {string} filename The filename to write to.
+   * @param {string} content The data to write out.
+   * @return {!Promise<void>} A promise completing when the write finishes.
+   */
   const writeFile = (filename, content) => {
     return lib.fs.overwriteFile(
         nassh.External.fileSystem_.root, filename, content);
@@ -57,7 +91,7 @@ nassh.External.COMMANDS.mount = (request, sender, sendResponse) => {
           fileSystemId: request.fileSystemId,
           displayName: request.displayName,
           writable: true,
-        }
+        },
       },
       connectOptions: {
         username: request.username,
@@ -72,7 +106,7 @@ nassh.External.COMMANDS.mount = (request, sender, sendResponse) => {
     console.error(e);
     sendResponse({error: true, message: e.message, stack: e.stack});
   });
-};
+});
 
 /**
  * @typedef {{
@@ -89,7 +123,7 @@ nassh.External.NewWindowSettings;
  * @param {!Object} response The response to send back to the caller.
  * @param {!nassh.External.NewWindowSettings} request Customize the new window
  *     behavior.
- * @param {{id:string}} sender chrome.runtime.MessageSender.
+ * @param {!MessageSender} sender chrome.runtime.MessageSender.
  * @param {function(!Object=)} sendResponse called to send response.
  */
 nassh.External.newWindow_ = function(
@@ -111,12 +145,12 @@ nassh.External.newWindow_ = function(
     }
   };
 
-  let width = checkNumber('width');
+  const width = checkNumber('width');
   if (width === false) {
     return;
   }
 
-  let height = checkNumber('height');
+  const height = checkNumber('height');
   if (height === false) {
     return;
   }
@@ -127,15 +161,16 @@ nassh.External.newWindow_ = function(
   sendResponse(response);
 };
 
+nassh.External.COMMANDS.set('crosh',
 /**
  * Opens a new crosh window.
  *
  * @param {!nassh.External.NewWindowSettings} request Customize the new window
  *     behavior.
- * @param {{id:string}} sender chrome.runtime.MessageSender.
+ * @param {!MessageSender} sender chrome.runtime.MessageSender.
  * @param {function(!Object=)} sendResponse called to send response.
  */
-nassh.External.COMMANDS.crosh = function(request, sender, sendResponse) {
+function(request, sender, sendResponse) {
   if (!sender.internal) {
     delete request.url;
   }
@@ -147,17 +182,18 @@ nassh.External.COMMANDS.crosh = function(request, sender, sendResponse) {
   nassh.External.newWindow_(
       {error: false, message: 'openCrosh'},
       request, sender, sendResponse);
-};
+});
 
+nassh.External.COMMANDS.set('nassh',
 /**
  * Opens a new nassh window.
  *
  * @param {!nassh.External.NewWindowSettings} request Customize the new window
  *     behavior.
- * @param {{id:string}} sender chrome.runtime.MessageSender.
+ * @param {!MessageSender} sender chrome.runtime.MessageSender.
  * @param {function(!Object=)} sendResponse called to send response.
  */
-nassh.External.COMMANDS.nassh = function(request, sender, sendResponse) {
+function(request, sender, sendResponse) {
   if (!sender.internal) {
     delete request.url;
   }
@@ -169,32 +205,118 @@ nassh.External.COMMANDS.nassh = function(request, sender, sendResponse) {
   nassh.External.newWindow_(
       {error: false, message: 'openNassh'},
       request, sender, sendResponse);
-};
+});
+
+nassh.External.COMMANDS.set('prefsImport',
+/**
+ * Import new preferences.
+ *
+ * @param {{prefs:(!Object|string)}} request The preferences to import.
+ * @param {!MessageSender} sender chrome.runtime.MessageSender
+ * @param {function(!Object=)} sendResponse called to send response.
+ */
+function(request, sender, sendResponse) {
+  if (!sender.internal && !nassh.External.SelfExtIds.has(sender.id)) {
+    sendResponse(
+        {error: true, message: 'prefsImport: External access not allowed'});
+    return;
+  }
+
+  let prefs;
+  if (request.asJson) {
+    lib.assert(typeof request.prefs == 'string');
+    prefs = /** @type {!Object} */ (JSON.parse(request.prefs));
+  } else {
+    lib.assert(typeof request.prefs == 'object');
+    prefs = request.prefs;
+  }
+  nassh.importPreferences(prefs, () => {
+    sendResponse({error: false, message: 'prefsImport'});
+  });
+});
+
+nassh.External.COMMANDS.set('prefsExport',
+/**
+ * Export existing preferences.
+ *
+ * @param {{asJson:boolean}} request How to export the preferences.
+ * @param {!MessageSender} sender chrome.runtime.MessageSender
+ * @param {function(!Object=)} sendResponse called to send response.
+ */
+function(request, sender, sendResponse) {
+  if (!sender.internal && !nassh.External.SelfExtIds.has(sender.id)) {
+    sendResponse(
+        {error: true, message: 'prefsExport: External access not allowed'});
+    return;
+  }
+
+  nassh.exportPreferences((prefs) => {
+    if (request.asJson) {
+      prefs = JSON.stringify(prefs);
+    }
+    sendResponse({error: false, message: 'prefsExport', prefs: prefs});
+  });
+});
+
+nassh.External.COMMANDS.set('openProtoReg',
+/**
+ * Show the protocol registration dialog.
+ *
+ * @param {*} request Not used.
+ * @param {!MessageSender} sender chrome.runtime.MessageSender
+ * @param {function(!Object=)} sendResponse Called to send response.
+ */
+function(request, sender, sendResponse) {
+  lib.f.openWindow(lib.f.getURL('/html/nassh_preferences_editor.html#handlers'),
+                   '_blank');
+  sendResponse({error: false, message: 'openProtoReg'});
+});
+
+/**
+ * Whether we've initialized enough for message handlers.
+ *
+ * @private
+ */
+let messageHandlersReady = false;
 
 /** @typedef {{command:string}} */
 nassh.External.OnMessageRequest;
 
 /**
- * Invoked when external app/extension calls chrome.runtime.sendMessage.
- * https://developer.chrome.com/apps/runtime#event-onMessageExternal.
+ * Common message dispatcher.
  *
+ * @param {boolean} internal Whether the sender is this own extension.
  * @param {!nassh.External.OnMessageRequest} request
- * @param {{id:string}} sender chrome.runtime.MessageSender.
+ * @param {!MessageSender} sender chrome.runtime.MessageSender.
  * @param {function(!Object=)} sendResponse called to send response.
- * @return {boolean}
+ * @return {boolean} Whether sendResponse will be called asynchronously.
  * @private
  */
-nassh.External.onMessageExternal_ = (request, sender, sendResponse) => {
-  sender.internal = false;
+nassh.External.dispatchMessage_ = (internal, request, sender, sendResponse) => {
+  // If we aren't ready yet, reschedule the call.
+  if (!messageHandlersReady) {
+    window.setTimeout(
+        nassh.External.dispatchMessage_.bind(
+            this, internal, request, sender, sendResponse),
+        100);
+    return true;
+  }
+
+  // Pass the internal setting down so the handler can easily detect.
+  sender.internal = internal;
 
   // Execute specified command.
-  if (!nassh.External.COMMANDS.hasOwnProperty(request.command)) {
+  if (typeof request != 'object') {
+    sendResponse({error: true, message: `invalid request: ${request}`});
+    return false;
+  } else if (!nassh.External.COMMANDS.has(request.command)) {
     sendResponse(
-        {error: true, message: `unsupported command ${request.command}`});
+        {error: true, message: `unsupported command '${request.command}'`});
     return false;
   }
+  console.log(`API: ${request.command}`);
   try {
-    nassh.External.COMMANDS[request.command].call(
+    nassh.External.COMMANDS.get(request.command).call(
         this, request, sender, sendResponse);
 
     // Return true to allow async sendResponse.
@@ -202,42 +324,44 @@ nassh.External.onMessageExternal_ = (request, sender, sendResponse) => {
   } catch (e) {
     console.error(e);
     sendResponse({error: true, message: e.message, stack: e.stack});
+    return false;
   }
 };
 
 /**
- * Invoked when internal code calls chrome.runtime.sendMessage.
+ * Invoked when external app/extension calls chrome.runtime.sendMessage.
  * https://developer.chrome.com/apps/runtime#event-onMessageExternal.
  *
- * @param {!nassh.External.OnMessageRequest} request
- * @param {{id:string}} sender chrome.runtime.MessageSender.
- * @param {function(!Object=)} sendResponse called to send response.
- * @return {boolean}
+ * @param {*} request
+ * @param {!MessageSender} sender chrome.runtime.MessageSender.
+ * @param {function(*)} sendResponse called to send response.
+ * @return {boolean} Whether sendResponse will be called asynchronously.
+ * @private
+ */
+nassh.External.onMessageExternal_ = (request, sender, sendResponse) => {
+  return nassh.External.dispatchMessage_.call(
+      this, false, /** @type {!nassh.External.OnMessageRequest} */ (request),
+      sender, /** @type {function(!Object=)} */ (sendResponse));
+};
+
+/**
+ * Invoked when internal code calls chrome.runtime.sendMessage.
+ * https://developer.chrome.com/apps/runtime#event-onMessage.
+ *
+ * @param {*} request
+ * @param {!MessageSender} sender chrome.runtime.MessageSender.
+ * @param {function(*): void} sendResponse called to send response.
+ * @return {boolean} Whether sendResponse will be called asynchronously.
  * @private
  */
 nassh.External.onMessage_ = (request, sender, sendResponse) => {
-  sender.internal = true;
-
-  // Execute specified command.
-  if (!nassh.External.COMMANDS.hasOwnProperty(request.command)) {
-    sendResponse(
-        {error: true, message: `unsupported command ${request.command}`});
-    return false;
-  }
-  try {
-    nassh.External.COMMANDS[request.command].call(
-        this, request, sender, sendResponse);
-
-    // Return true to allow async sendResponse.
-    return true;
-  } catch (e) {
-    console.error(e);
-    sendResponse({error: true, message: e.message, stack: e.stack});
-  }
+  return nassh.External.dispatchMessage_.call(
+      this, true, /** @type {!nassh.External.OnMessageRequest} */ (request),
+      sender, /** @type {function(!Object=)} */ (sendResponse));
 };
 
 // Initialize nassh.External.
-lib.registerInit('external api', (onInit) => {
+lib.registerInit('external api', () => {
   // Create hterm.Terminal.IO required for SFTP using a mock hterm.Terminal.
   // External API calls will not require user IO to enter password, etc.
   /** @private */
@@ -248,7 +372,7 @@ lib.registerInit('external api', (onInit) => {
   }));
 
   // Get handle on FileSystem, cleanup files, and register listener.
-  nassh.getFileSystem().then((fileSystem) => {
+  return nassh.getFileSystem().then((fileSystem) => {
     /** @private */
     nassh.External.fileSystem_ = fileSystem;
     return new Promise((deleteDone) => {
@@ -259,16 +383,15 @@ lib.registerInit('external api', (onInit) => {
           (f) => { f.removeRecursively(deleteDone, deleteDone); },
           deleteDone);
     }).then(() => {
-      // Register listener to receive messages.
-      chrome.runtime.onMessageExternal.addListener(
-          nassh.External.onMessageExternal_.bind(this));
-
-      // Register listener to receive messages.
-      chrome.runtime.onMessage.addListener(
-          nassh.External.onMessage_.bind(this));
-
-      // Init complete.
-      onInit();
+      // We can start processing messages now.
+      messageHandlersReady = true;
     });
   });
 });
+
+// Register listeners to receive messages.  We have to do it here so we can
+// handle messages when first launched (but before lib.registerInit finishes).
+chrome.runtime.onMessageExternal.addListener(
+    nassh.External.onMessageExternal_.bind(this));
+chrome.runtime.onMessage.addListener(
+    nassh.External.onMessage_.bind(this));

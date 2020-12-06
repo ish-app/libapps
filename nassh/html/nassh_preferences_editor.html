@@ -1,50 +1,64 @@
 <!DOCTYPE html>
 <html>
-  <head>
-    <meta charset='utf-8'/>
+<head>
+  <meta charset='utf-8'/>
 
-    <script src='../js/nassh_deps.concat.js'></script>
-    <script src='../js/nassh.js'></script>
-    <script src='../js/nassh_preference_manager.js'></script>
-    <script src='../js/nassh_preferences_editor.js'></script>
+  <script src='../js/nassh_deps.concat.js'></script>
+  <script src='../js/nassh.js'></script>
+  <script src='../js/nassh_preference_manager.js'></script>
+  <script src='../js/nassh_preferences_editor.js'></script>
+  <script src='../js/nassh_preferences_protocol_register.js'></script>
+  <script src='../js/nassh_preferences_ssh_files.js'></script>
 
-    <link rel='stylesheet' href='../third_party/chrome-bootstrap/chrome-bootstrap.css'></link>
-    <link rel='stylesheet' href='../css/nassh_preferences_editor.css'></link>
-  </head>
+  <link rel='stylesheet' href='../third_party/chrome-bootstrap/chrome-bootstrap.css'></link>
+  <link rel='stylesheet' href='../css/nassh_preferences_editor.css'></link>
+</head>
 
-  <body class="chrome-bootstrap">
-    <div class="options-container hflex">
+<body class='chrome-bootstrap'>
+  <div class='frame'>
 
-      <div class="navigation">
-        <h1><a href="#" i18n-content='manifest.name'></a></h1>
-        <ul class="menu">
-          <li class="selected">
-            <a href="#options" i18n-content='PREFERENCES_HEADER'>Preferences</a>
-          </li>
-        </ul>
-        <ul style="margin-left: 1em">
-          <li><img id='icon'/></li>
-          <li><a id='backup' href='#backup' i18n-content='BACKUP_PREFS'
-                 >Save Backup</a></li>
-          <li><a id='restore' href='#restore' i18n-content='RESTORE_PREFS'
-                 >Restore Backup</a></li>
-          <li><a id='licenses' href='licenses.html' i18n-content='LICENSES'
-                 target='_blank'>Licenses</a></li>
-        </ul>
-        <input class='restore' type='file'>
-      </div>
+    <div class='navigation'>
+      <h1 id='manifest-name'></h1>
+      <ul class='menu'>
+        <li class='selected'>
+          <a href='#options' i18n='{"_": "PREFERENCES_HEADER_TERMINAL"}'></a>
+          <ul id='options-settings-menu'></ul>
+        </li>
+        <li>
+          <a href='#ssh-files' i18n='{"_": "PREFERENCES_HEADER_SSH_FILES"}'></a>
+        </li>
+        <li>
+          <a href='#handlers' i18n='{"_": "PREFERENCES_HEADER_URI"}'></a>
+        </li>
+      </ul>
+      <ul style='margin-left: 1em'>
+        <li><img id='icon'/></li>
+        <li><a id='backup' href='#backup' i18n='{"_": "BACKUP_PREFS"}'
+               ></a></li>
+        <li><a id='restore' href='#restore' i18n='{"_": "RESTORE_PREFS"}'
+               ></a></li>
+        <li><a id='licenses' href='licenses.html' i18n='{"_": "LICENSES"}'
+               target='_blank'></a></li>
+        <li><a id='changelog' href='changelog.html' i18n='{"_": "CHANGELOG"}'
+               target='_blank'></a></li>
+        <li><a id='feedback' href='#feedback'
+               i18n='{"_": "SEND_FEEDBACK_LABEL"}' target='_blank'></a></li>
+      </ul>
+      <input class='restore' type='file'>
+    </div>
 
-      <div id="options">
+    <div class='mainview view'>
+      <div id='options' class='selected'>
         <header>
-          <h1 i18n-content='PREFERENCES_HEADER'></h1>
+          <h1 i18n='{"_": "PREFERENCES_HEADER_TERMINAL"}'></h1>
 
           <div>
-            <h3 i18n-content='TERMINAL_PREVIEW_LABEL'></h3>
+            <h3 i18n='{"_": "TERMINAL_PREVIEW_LABEL"}'></h3>
             <div id='terminal'></div>
           </div>
 
           <div>
-            <h3 i18n-content='TERMINAL_PROFILE_LABEL'></h3>
+            <h3 i18n='{"_": "TERMINAL_PROFILE_LABEL"}'></h3>
             <div id='current-profile'>
               <input type='text' id='profile'/>
               <button type='reset' id='reset'>Reset</button>
@@ -53,11 +67,75 @@
           </div>
         </header>
 
-        <div id="options-settings-section" class="vflex">
+        <div id='options-settings-section' class='content vflex'>
           <div id='settings'></div>
         </div>
       </div>
 
+      <div id='ssh-files'>
+        <header>
+          <h1 i18n='{"_": "PREFERENCES_HEADER_SSH_FILES"}'></h1>
+        </header>
+
+        <div class='content vflex'>
+          <section>
+            <h3>
+              <a href='../plugin/docs/ssh.1.html#VERIFYING_HOST_KEYS'
+                 target='_blank'>~/.ssh/known_hosts</a>
+            </h3>
+
+            <textarea id='ssh-files-known-hosts' rows=5></textarea>
+            <br/>
+            <button id='ssh-files-known-hosts-clear'
+                    i18n='{"_": "CLEAR_LABEL"}'></button>
+            <button id='ssh-files-known-hosts-save'
+                    i18n='{"_": "SAVE_LABEL"}'></button>
+          </section>
+
+          <section>
+            <h3>
+              <a href='../plugin/docs/ssh_config.5.html'
+                 target='_blank'>~/.ssh/config</a>
+            </h3>
+
+            <textarea id='ssh-files-config' rows=10></textarea>
+            <br/>
+            <button id='ssh-files-config-save'
+                    i18n='{"_": "SAVE_LABEL"}'></button>
+          </section>
+
+          <section>
+            <h3>
+              <a href='../plugin/docs/ssh_config.5.html#IdentityFile'
+                 target='_blank' i18n='{"_": "IDENTITY_LABEL"}'></a>
+            </h3>
+
+            <ul id='ssh-files-identities'></ul>
+          </section>
+        </div>
+      </div>
+
+      <div id='handlers'>
+        <header>
+          <h1 i18n='{"_": "PROTOCOL_REGISTER_TITLE"}'></h1>
+        </header>
+
+        <div id='handlers-settings-section' class='content vflex'>
+          <section>
+            <p i18n='{"_": "PROTOCOL_REGISTER_EXPLAIN"}'></p>
+            <button id='proto-register'
+                    i18n='{"_": "PROTOCOL_REGISTER_BUTTON"}'></button>
+          </section>
+
+          <section>
+            <p i18n='{"_": "PROTOCOL_REGISTER_EXPLAIN_SETTINGS"}'></p>
+            <button id='proto-open-settings'
+                    i18n='{"_": "PROTOCOL_REGISTER_SETTINGS_BUTTON"}'></button>
+          </section>
+        </div>
+      </div>
     </div>
-  </body>
+
+  </div>
+</body>
 </html>

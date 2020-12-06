@@ -13,7 +13,7 @@ hterm.Parser.identifiers = {};
  * Modifier key names used when defining key sequences.
  *
  * These are upper case so we can normalize the user input and be forgiving.
- * "CTRL-A" and "Ctrl-A" and "ctrl-a" are all accepted.
+ * "CTRL+A" and "Ctrl+A" and "ctrl+a" are all accepted.
  *
  * Note: Names here cannot overlap with hterm.Parser.identifiers.keyCodes.
  */
@@ -23,7 +23,7 @@ hterm.Parser.identifiers.modifierKeys = {
   // Common alias.
   CONTROL: 'ctrl',
   ALT: 'alt',
-  META: 'meta'
+  META: 'meta',
 };
 
 /**
@@ -32,11 +32,11 @@ hterm.Parser.identifiers.modifierKeys = {
  * Punctuation is mostly left out of this list because they can move around
  * based on keyboard locale and browser.
  *
- * In a key sequence like "Ctrl-ESC", the ESC comes from this list of
- * identifiers.  It is equivalent to "Ctrl-27" and "Ctrl-0x1b".
+ * In a key sequence like "Ctrl+ESC", the ESC comes from this list of
+ * identifiers.  It is equivalent to "Ctrl+27" and "Ctrl+0x1b".
  *
  * These are upper case so we can normalize the user input and be forgiving.
- * "Ctrl-ESC" and "Ctrl-Esc" an "Ctrl-esc" are all accepted.
+ * "Ctrl+ESC" and "Ctrl+Esc" an "Ctrl+esc" are all accepted.
  *
  * We also include common aliases for the same key.  "Esc" and "Escape" are the
  * same key.
@@ -84,6 +84,7 @@ hterm.Parser.identifiers.keyCodes = {
   T: 84,
   Y: 89,
   U: 85,
+  // eslint-disable-next-line id-blacklist
   I: 73,
   O: 79,
   P: 80,
@@ -173,7 +174,7 @@ hterm.Parser.identifiers.keyCodes = {
   FULL_SCREEN: 183,
   WINDOW_OVERVIEW: 182,
   BRIGHTNESS_UP: 216,
-  BRIGHTNESS_DOWN: 217
+  BRIGHTNESS_DOWN: 217,
 };
 
 /**

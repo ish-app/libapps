@@ -9,6 +9,11 @@
  * so we do it like this instead.
  */
 window.addEventListener('DOMContentLoaded', (event) => {
+  nassh.setupForWebApp();
+  lib.init().then(() => {
+    hterm.messageManager.processI18nAttributes(document);
+  });
+
   document.body.querySelectorAll('h2.package').forEach((ele) => {
     ele.onclick = toggle;
   });

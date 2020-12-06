@@ -25,8 +25,9 @@ nassh.ColumnList = function(div, items, columnCount = 2) {
 
   this.document_ = null;
 
-  if (div)
+  if (div) {
     this.decorate(div);
+  }
 };
 
 /**
@@ -43,9 +44,9 @@ nassh.ColumnList.prototype.decorate = function(div) {
   this.div_.addEventListener('keydown',
       /** @type {!EventListener} */ (this.onKeyDown_.bind(this)));
 
-  var baseId = this.div_.getAttribute('id');
+  let baseId = this.div_.getAttribute('id');
   if (!baseId) {
-    baseId =  lib.f.randomInt(1, 0xffff).toString(16);
+    baseId = lib.f.randomInt(1, 0xffff).toString(16);
     baseId = lib.f.zpad(baseId, 4);
     baseId = 'columnlist-' + baseId;
   }
@@ -59,8 +60,9 @@ nassh.ColumnList.prototype.decorate = function(div) {
  * Focus the ColumnList.
  */
 nassh.ColumnList.prototype.focus = function() {
-  if (!this.div_)
-    throw 'Not initialized.';
+  if (!this.div_) {
+    throw new Error('Not initialized.');
+  }
 
   this.div_.focus();
 };
@@ -71,10 +73,11 @@ nassh.ColumnList.prototype.focus = function() {
  * @param {...*} args
  */
 nassh.ColumnList.prototype.addEventListener = function(...args) {
-  if (!this.div_)
-    throw 'Not initialized.';
+  if (!this.div_) {
+    throw new Error('Not initialized.');
+  }
 
-  this.div_.addEventListener.apply(this.div_, arguments);
+  this.div_.addEventListener.apply(this.div_, args);
 };
 
 /**
@@ -83,8 +86,9 @@ nassh.ColumnList.prototype.addEventListener = function(...args) {
  * Coalesces multiple invocations during the timeout period.
  */
 nassh.ColumnList.prototype.scheduleRedraw = function() {
-  if (this.redrawTimeout_)
+  if (this.redrawTimeout_) {
     return;
+  }
 
   this.redrawTimeout_ = setTimeout(() => {
     this.redrawTimeout_ = null;
@@ -96,7 +100,7 @@ nassh.ColumnList.prototype.scheduleRedraw = function() {
  * Emoty out and redraw the list.
  */
 nassh.ColumnList.prototype.redraw = function() {
-  var div = this.div_;
+  const div = this.div_;
 
   while (div.firstChild) {
     div.removeChild(div.firstChild);
@@ -105,26 +109,27 @@ nassh.ColumnList.prototype.redraw = function() {
   div.setAttribute('tabindex', '0');
   div.setAttribute('role', 'listbox');
 
-  if (!this.items_.length)
+  if (!this.items_.length) {
     return;
+  }
 
-  var columnWidth = (1 / this.columnCount * 100) + '%';
+  const columnWidth = (1 / this.columnCount * 100) + '%';
 
-  var table = this.document_.createElement('table');
+  const table = this.document_.createElement('table');
   table.style.tableLayout = 'fixed';
   table.style.width = '100%';
   div.appendChild(table);
 
-  var tbody = this.document_.createElement('tbody');
+  const tbody = this.document_.createElement('tbody');
   table.appendChild(tbody);
 
-  var tr;
+  let tr;
 
-  for (var i = 0; i < this.items_.length; i++) {
-    var row = Math.floor(i / this.columnCount);
-    var column = i % this.columnCount;
+  for (let i = 0; i < this.items_.length; i++) {
+    const row = Math.floor(i / this.columnCount);
+    const column = i % this.columnCount;
 
-    var td = this.document_.createElement('td');
+    const td = this.document_.createElement('td');
     td.setAttribute('role', 'option');
     td.setAttribute('id', this.baseId_ + '-item-' + i);
     td.setAttribute('row', row);
@@ -132,7 +137,7 @@ nassh.ColumnList.prototype.redraw = function() {
     td.style.width = columnWidth;
     td.className = 'column-list-item';
 
-    var item = this.document_.createElement('div');
+    const item = this.document_.createElement('div');
     item.textContent = this.items_[i].textContent || 'no-name';
     item.addEventListener('click', this.onItemClick_.bind(this, td));
     item.addEventListener('dblclick', this.onItemClick_.bind(this, td));
@@ -149,7 +154,7 @@ nassh.ColumnList.prototype.redraw = function() {
   this.setActiveIndex(Math.min(this.activeIndex, this.items_.length - 1));
 
   while (this.afterRedraw_.length) {
-    var callback = this.afterRedraw_.pop();
+    const callback = this.afterRedraw_.pop();
     callback();
   }
 };
@@ -176,22 +181,24 @@ nassh.ColumnList.ActiveIndexChangedEvent;
  * @param {number} i
  */
 nassh.ColumnList.prototype.setActiveIndex = function(i) {
-  if (isNaN(i))
+  if (isNaN(i)) {
     throw new Error('Index is NaN');
+  }
 
-  var before = this.activeIndex;
+  const before = this.activeIndex;
 
   if (i != this.activeIndex) {
-    var n = this.getActiveNode_();
-    if (n)
+    const n = this.getActiveNode_();
+    if (n) {
       n.classList.remove('active');
+    }
 
     setTimeout(
         this.onActiveIndexChanged.bind(this, {before: before, now: i}), 0);
   }
 
   this.activeIndex = i;
-  var node = this.getActiveNode_();
+  const node = this.getActiveNode_();
   node.classList.add('active');
   this.div_.setAttribute('aria-activedescendant', node.getAttribute('id'));
 
@@ -216,7 +223,7 @@ nassh.ColumnList.prototype.getActiveNode_ = function() {
 nassh.ColumnList.prototype.getRowColByIndex_ = function(i) {
   return {
     row: parseInt(i / this.columnCount, 10),
-    column: i % this.columnCount
+    column: i % this.columnCount,
   };
 };
 
@@ -227,7 +234,7 @@ nassh.ColumnList.prototype.getRowColByIndex_ = function(i) {
  * @return {!Node}
  */
 nassh.ColumnList.prototype.getNodeByIndex_ = function(i) {
-  var rc = this.getRowColByIndex_(i);
+  const rc = this.getRowColByIndex_(i);
   return this.getNodeByRowCol_(rc.row, rc.column);
 };
 
@@ -263,8 +270,9 @@ nassh.ColumnList.prototype.getNodeByRowCol_ = function(row, column) {
  * @return {boolean}
  */
 nassh.ColumnList.prototype.onItemClick_ = function(srcNode, e) {
-  var i = this.getIndexByRowCol_(parseInt(srcNode.getAttribute('row'), 10),
-                                 parseInt(srcNode.getAttribute('column'), 10));
+  const i = this.getIndexByRowCol_(
+      parseInt(srcNode.getAttribute('row'), 10),
+      parseInt(srcNode.getAttribute('column'), 10));
   this.setActiveIndex(i);
 
   e.preventDefault();
@@ -278,10 +286,11 @@ nassh.ColumnList.prototype.onItemClick_ = function(srcNode, e) {
  * @return {number}
  */
 nassh.ColumnList.prototype.getColumnHeight_ = function(column) {
-  var tallestColumn = Math.ceil(this.items_.length / this.columnCount);
+  const tallestColumn = Math.ceil(this.items_.length / this.columnCount);
 
-  if (column + 1 <= Math.floor(this.columnCount / column + 1))
+  if (column + 1 <= Math.floor(this.columnCount / column + 1)) {
     return tallestColumn;
+  }
 
   return tallestColumn - 1;
 };
@@ -309,11 +318,12 @@ nassh.ColumnList.prototype.onKeyDown = function(e) { };
  * @param {!KeyboardEvent} e
  */
 nassh.ColumnList.prototype.onKeyDown_ = function(e) {
-  if (this.onKeyDown(e) === false)
+  if (this.onKeyDown(e) === false) {
     return;
+  }
 
-  var i = this.activeIndex;
-  var rc = this.getRowColByIndex_(i);
+  let i = this.activeIndex;
+  const rc = this.getRowColByIndex_(i);
 
   switch (e.keyCode) {
     case 38:  // UP
@@ -342,10 +352,11 @@ nassh.ColumnList.prototype.onKeyDown_ = function(e) {
         i = this.getIndexByRowCol_(rc.row + 1, rc.column);
         // If the next row is incomplete, warp to top of the next.
         if (i > this.items_.length - 1) {
-          if (rc.column >= this.columnCount - 1)
+          if (rc.column >= this.columnCount - 1) {
             i = 0;
-          else
+          } else {
             i = this.getIndexByRowCol_(0, rc.column + 1);
+          }
         }
       }
       break;

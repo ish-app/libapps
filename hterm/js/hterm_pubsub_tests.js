@@ -14,7 +14,7 @@ describe('hterm_pubsub_tests.js', () => {
  * Test that the appropriate methods are added to a hterm.PubSub target object.
  */
 it('methods', () => {
-    var obj = {};
+    const obj = {};
     hterm.PubSub.addBehavior(obj);
     assert.hasAllKeys(obj, ['subscribe', 'unsubscribe', 'publish']);
   });
@@ -23,14 +23,14 @@ it('methods', () => {
  * Test that subscribers are notified in the proper order.
  */
 it('publish-order', (done) => {
-    var callbackCount = 0;
+    let callbackCount = 0;
 
     function one() { assert.equal(1, ++callbackCount); }
     function two() { assert.equal(2, ++callbackCount); }
     function three() { assert.equal(3, ++callbackCount); }
     function last() { assert.equal(4, ++callbackCount); done(); }
 
-    var obj = /** @type {!hterm.PubSub} */ ({});
+    const obj = /** @type {!hterm.PubSub} */ ({});
     hterm.PubSub.addBehavior(obj);
 
     obj.subscribe('test', one);
@@ -44,14 +44,14 @@ it('publish-order', (done) => {
  * Test that a published parameter is handed off to all subscribers.
  */
 it('parameter', (done) => {
-    var expected = {};
+    const expected = {};
 
     function one(param) { assert.deepStrictEqual(expected, param); }
     function two(param) { assert.deepStrictEqual(expected, param); }
     function three(param) { assert.deepStrictEqual(expected, param); }
     function last(param) { assert.deepStrictEqual(expected, param); done(); }
 
-    var obj = /** @type {!hterm.PubSub} */ ({});
+    const obj = /** @type {!hterm.PubSub} */ ({});
     hterm.PubSub.addBehavior(obj);
 
     obj.subscribe('test', one);
@@ -65,11 +65,11 @@ it('parameter', (done) => {
  * Test that the final callback is invoked, even if nobody has subscribed.
  */
 it('forever-alone', (done) => {
-    var calledLast = false;
+    let calledLast = false;
 
     function last(param) { calledLast = true; }
 
-    var obj = /** @type {!hterm.PubSub} */ ({});
+    const obj = /** @type {!hterm.PubSub} */ ({});
     hterm.PubSub.addBehavior(obj);
 
     obj.publish('test', null, last);
@@ -91,18 +91,18 @@ it('forever-alone', (done) => {
 it('exception', function(done) {
     // We need to manually disable this.
     // https://github.com/mochajs/mocha/issues/1985
-    const oldUncaught = Mocha.Runner.prototype.uncaught;
-    Mocha.Runner.prototype.uncaught = () => {};
+    const oldOnerror = window.onerror;
+    window.onerror = () => true;
 
-    var calledFoo = false;
-    var calledBar = false;
-    var calledLast = false;
+    const calledFoo = false;
+    let calledBar = false;
+    let calledLast = false;
 
-    function foo() { throw 'EXPECTED_EXCEPTION'; }
+    function foo() { throw new Error('EXPECTED_EXCEPTION'); }
     function bar() { calledBar = true; }
     function last() { calledLast = true; }
 
-    var obj = /** @type {!hterm.PubSub} */ ({});
+    const obj = /** @type {!hterm.PubSub} */ ({});
     hterm.PubSub.addBehavior(obj);
 
     obj.subscribe('test', foo);
@@ -115,7 +115,7 @@ it('exception', function(done) {
         assert.isFalse(calledFoo);
         assert.isTrue(calledBar);
         assert.isTrue(calledLast);
-        Mocha.Runner.prototype.uncaught = oldUncaught;
+        window.onerror = oldOnerror;
         done();
       } else {
         setTimeout(check, 1);

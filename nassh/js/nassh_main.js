@@ -46,31 +46,45 @@ window.addEventListener('DOMContentLoaded', (event) => {
   const params = new URLSearchParams(document.location.search);
 
   // Allow users to bookmark links that open as a window.
-  if (params.get('openas') == 'window') {
-    // Delete the 'openas' string so we don't get into a loop.  We want to
-    // preserve the rest of the query string when opening the window.
-    params.delete('openas');
-    const url = new URL(document.location.toString());
-    url.search = params.toString();
-    openNewWindow(url.href).then(() => window.close);
-    return;
+  const openas = params.get('openas');
+  switch (openas) {
+    case 'window': {
+      // Delete the 'openas' string so we don't get into a loop.  We want to
+      // preserve the rest of the query string when opening the window.
+      params.delete('openas');
+      const url = new URL(document.location.toString());
+      url.search = params.toString();
+      openNewWindow(url.href).then(() => window.close);
+      return;
+    }
+
+    case 'fullscreen':
+    case 'maximized':
+      chrome.windows.getCurrent((win) => {
+        chrome.windows.update(win.id, {state: openas});
+      });
+      break;
   }
 
-  var execNaSSH = function() {
+  const execNaSSH = function() {
     const profileName = params.get('profile');
 
     hterm.zoomWarningMessage = nassh.msg('ZOOM_WARNING');
-    hterm.notifyCopyMessage = nassh.msg('NOTIFY_COPY');
 
-    var terminal = new hterm.Terminal(profileName);
+    const terminal = new hterm.Terminal(profileName);
+    // TODO(crbug.com/1063219) We need this to not prompt the user for clipboard
+    // permission.
+    terminal.alwaysUseLegacyPasting = true;
     terminal.decorate(lib.notNull(document.querySelector('#terminal')));
     const runNassh = function() {
+      terminal.onOpenOptionsPage = nassh.openOptionsPage;
       terminal.setCursorPosition(0, 0);
       terminal.setCursorVisible(true);
       terminal.runCommandClass(
           nassh.CommandInstance, 'nassh', [document.location.hash.substr(1)]);
     };
     terminal.onTerminalReady = function() {
+      nassh.loadWebFonts(terminal.getDocument());
       if (window.chrome && chrome.accessibilityFeatures &&
           chrome.accessibilityFeatures.spokenFeedback) {
         chrome.accessibilityFeatures.spokenFeedback.onChange.addListener(
@@ -96,9 +110,11 @@ window.addEventListener('DOMContentLoaded', (event) => {
          lib.f.openWindow('https://goo.gl/muppJj', '_blank');
        }},
       {name: nassh.msg('CLEAR_KNOWN_HOSTS_MENU_LABEL'),
-       action: function() { terminal.command.removeAllKnownHosts(); }},
-      {name: nassh.msg('OPTIONS_BUTTON_LABEL'),
+       action: function() { nassh.openOptionsPage('ssh-files'); }},
+      {name: nassh.msg('HTERM_OPTIONS_BUTTON_LABEL'),
        action: function() { nassh.openOptionsPage(); }},
+      {name: nassh.msg('SEND_FEEDBACK_LABEL'),
+       action: nassh.sendFeedback},
     ]);
 
     // Useful for console debugging.
@@ -109,5 +125,5 @@ window.addEventListener('DOMContentLoaded', (event) => {
   };
 
   nassh.disableTabDiscarding();
-  lib.init(execNaSSH, console.log.bind(console));
+  lib.init(console.log.bind(console)).then(execNaSSH);
 });

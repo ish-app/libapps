@@ -23,10 +23,27 @@
  * @constructor
  */
 lib.MessageManager = function(languages, useCrlf = false) {
-  this.languages_ = languages.map((el) => el.replace(/-/g, '_'));
-
-  if (this.languages_.indexOf('en') == -1)
-    this.languages_.push('en');
+  /**
+   * @private {!Array<string>}
+   * @const
+   */
+  this.languages_ = [];
+  let stop = false;
+  for (let i = 0; i < languages.length && !stop; i++) {
+    for (const lang of lib.i18n.resolveLanguage(languages[i])) {
+      // There is no point having any language with lower priorty than 'en'
+      // since 'en' always contains all messages.
+      if (lang == 'en') {
+        stop = true;
+        break;
+      }
+      if (!this.languages_.includes(lang)) {
+        this.languages_.push(lang);
+      }
+    }
+  }
+  // Always have 'en' as last fallback.
+  this.languages_.push('en');
 
   this.useCrlf = useCrlf;
 
@@ -56,8 +73,8 @@ lib.MessageManager.Messages;
  *     database.
  */
 lib.MessageManager.prototype.addMessages = function(defs) {
-  for (var key in defs) {
-    var def = defs[key];
+  for (const key in defs) {
+    const def = defs[key];
 
     if (!def.placeholders) {
       // Upper case key into this.messages_ since our translated
@@ -66,15 +83,16 @@ lib.MessageManager.prototype.addMessages = function(defs) {
     } else {
       // Replace "$NAME$" placeholders with "$1", etc.
       this.messages_[key.toUpperCase()] =
-          def.message.replace(/\$([a-z][^\s\$]+)\$/ig, function(m, name) {
-            return defs[key].placeholders[name.toLowerCase()].content;
+          def.message.replace(/\$([a-z][^\s$]+)\$/ig, function(m, name) {
+            return defs[key].placeholders[name.toUpperCase()].content;
           });
     }
   }
 };
 
 /**
- * Load the first available language message bundle.
+ * Load language message bundles.  Loads in reverse order so that higher
+ * priority languages overwrite lower priority.
  *
  * @param {string} pattern A url pattern containing a "$1" where the locale
  *     name should go.
@@ -84,15 +102,15 @@ lib.MessageManager.prototype.findAndLoadMessages = async function(pattern) {
     return;
   }
 
-  for (const lang of this.languages_) {
+  for (let i = this.languages_.length - 1; i >= 0; i--) {
+    const lang = this.languages_[i];
     const url = lib.i18n.replaceReferences(pattern, lang);
     try {
       await this.loadMessages(url);
-      return;
     } catch (e) {
       console.warn(
           `Error fetching ${lang} messages at ${url}`, e,
-          'Trying all languages:', this.languages_);
+          'Trying all languages in reverse order:', this.languages_);
     }
   }
 };
@@ -158,13 +176,15 @@ lib.MessageManager.prototype.get = function(msgname, args, fallback) {
  *
  * The real work happens in processI18nAttribute.
  *
- * @param {!Element} node The element whose nodes will be translated.
+ * @param {!HTMLDocument|!Element} node The element whose nodes will be
+ *     translated.
  */
 lib.MessageManager.prototype.processI18nAttributes = function(node) {
-  var nodes = node.querySelectorAll('[i18n]');
+  const nodes = node.querySelectorAll('[i18n]');
 
-  for (var i = 0; i < nodes.length; i++)
+  for (let i = 0; i < nodes.length; i++) {
     this.processI18nAttribute(nodes[i]);
+  }
 };
 
 /**
@@ -194,9 +214,10 @@ lib.MessageManager.prototype.processI18nAttribute = function(node) {
   // "UPPER_AND_UNDER" style.
   const thunk = (str) => str.replace(/-/g, '_').toUpperCase();
 
-  var i18n = node.getAttribute('i18n');
-  if (!i18n)
+  let i18n = node.getAttribute('i18n');
+  if (!i18n) {
     return;
+  }
 
   try {
     i18n = JSON.parse(i18n);
@@ -206,11 +227,11 @@ lib.MessageManager.prototype.processI18nAttribute = function(node) {
   }
 
   // Load all the messages specified in the i18n attributes.
-  for (var key in i18n) {
+  for (let key in i18n) {
     // The node attribute we'll be setting.
-    var attr = key;
+    const attr = key;
 
-    var msgname = i18n[key];
+    let msgname = i18n[key];
     // For "=foo", re-use the referenced message name.
     if (msgname.startsWith('=')) {
       key = msgname.substr(1);
@@ -218,14 +239,16 @@ lib.MessageManager.prototype.processI18nAttribute = function(node) {
     }
 
     // For "$foo", calculate the message name.
-    if (msgname.startsWith('$'))
+    if (msgname.startsWith('$')) {
       msgname = thunk(node.getAttribute(msgname.substr(1)) + '_' + key);
+    }
 
     // Finally load the message.
-    var msg = this.get(msgname);
-    if (attr == '_')
+    const msg = this.get(msgname);
+    if (attr == '_') {
       node.textContent = msg;
-    else
+    } else {
       node.setAttribute(attr, msg);
+    }
   }
 };

@@ -53,11 +53,6 @@ hterm.ContextMenu.prototype.regenerate_ = function() {
   if (!this.element_) {
     this.element_ = this.document_.createElement('menu');
     this.element_.id = 'hterm:context-menu';
-    this.element_.style.cssText = `
-        display: none;
-        border: solid 1px;
-        position: absolute;
-    `;
   } else {
     this.hide();
   }
@@ -119,8 +114,6 @@ hterm.ContextMenu.prototype.show = function(e, terminal) {
 
   // If we have the terminal, sync the style preferences over.
   if (terminal) {
-    this.element_.style.backgroundColor = terminal.getBackgroundColor();
-    this.element_.style.color = terminal.getForegroundColor();
     this.element_.style.fontSize = terminal.getFontSize();
     this.element_.style.fontFamily = terminal.getFontFamily();
   }

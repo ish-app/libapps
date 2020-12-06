@@ -2,9 +2,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-'use strict';
+import {definePrefs, loadPowerlineWebFonts, loadWebFont, normalizeCSSFontFamily,
+  normalizePrefsInPlace, watchBackgroundColor} from './terminal_common.js';
 
-const terminal = {};
+export const terminal = {};
+
+/** @type {!lib.PreferenceManager} */
+window.preferenceManager;
 
 /**
  * The Terminal command.
@@ -43,6 +47,32 @@ terminal.msg = function(name, args) {
 };
 
 /**
+ * Create a new window to the options page for customizing preferences.
+ */
+terminal.openOptionsPage = function() {
+  chrome.terminalPrivate.openOptionsPage(() => {});
+};
+
+/**
+ * Either send a ^N or open a new tabbed terminal window.
+ *
+ * @this {!hterm.Keyboard.KeyMap}
+ * @param {!KeyboardEvent} e The event to process.
+ * @param {!hterm.Keyboard.KeyDef} k
+ * @return {!hterm.Keyboard.KeyDefFunction|string} Key action or sequence.
+ */
+terminal.onCtrlN = function(e, k) {
+  if (e.shiftKey || this.keyboard.terminal.passCtrlN) {
+    return function(e, k) {
+      chrome.terminalPrivate.openWindow(() => {});
+      return hterm.Keyboard.KeyActions.CANCEL;
+    };
+  }
+
+  return '\x0e';
+};
+
+/**
  * Static initializer.
  *
  * This constructs a new hterm.Terminal instance and instructs it to run
@@ -53,33 +83,58 @@ terminal.msg = function(name, args) {
  */
 terminal.init = function(element) {
   const params = new URLSearchParams(document.location.search);
-  let term = new hterm.Terminal();
-
-  // If we want to execute something other than the default vmshell.
-  const commandName = params.get('command') || 'vmshell';
-  window.document.title = commandName;
+  const term = new hterm.Terminal();
 
   term.decorate(element);
   const runTerminal = function() {
+    term.keyboard.bindings.addBinding('Ctrl+Shift+P', function() {
+      terminal.openOptionsPage();
+      return hterm.Keyboard.KeyActions.CANCEL;
+    });
+
+    term.onOpenOptionsPage = terminal.openOptionsPage;
+    term.keyboard.keyMap.keyDefs[78].control = terminal.onCtrlN;
     term.setCursorPosition(0, 0);
     term.setCursorVisible(true);
     term.runCommandClass(
-        terminal.Command, commandName, params.getAll('args[]'));
+        terminal.Command, 'vmshell', params.getAll('args[]'));
 
     term.command.keyboard_ = term.keyboard;
   };
   term.onTerminalReady = function() {
-    if (window.chrome && chrome.accessibilityFeatures &&
-        chrome.accessibilityFeatures.spokenFeedback) {
-      chrome.accessibilityFeatures.spokenFeedback.onChange.addListener(
-          (details) => term.setAccessibilityEnabled(details.value));
-      chrome.accessibilityFeatures.spokenFeedback.get({}, (details) => {
-        term.setAccessibilityEnabled(details.value);
-        runTerminal();
-      });
-    } else {
+    const prefs = term.getPrefs();
+    definePrefs(prefs);
+    normalizePrefsInPlace(prefs);
+    watchBackgroundColor(prefs, /* updateBody= */ true);
+
+    loadPowerlineWebFonts(term.getDocument());
+    const onFontFamilyChanged = async (cssFontFamily) => {
+      const fontFamily = normalizeCSSFontFamily(cssFontFamily);
+      // If the user changes font quickly enough, we might have a pending
+      // loadWebFont() task, but it should be harmless. Potentially, we can
+      // implement a cancellable promise so that we can cancel it.
+      try {
+        await loadWebFont(term.getDocument(), fontFamily);
+      } catch (error) {
+        /* eslint-disable-next-line no-new */
+        new Notification(
+            terminal.msg('TERMINAL_FONT_UNAVAILABLE', [fontFamily]),
+            {
+              body: terminal.msg('TERMINAL_TRY_AGAIN_WITH_INTERNET'),
+              tag: 'TERMINAL_FONT_UNAVAILABLE',
+            },
+        );
+      }
+    };
+    onFontFamilyChanged(prefs.get('font-family'));
+    prefs.addObserver('font-family', onFontFamilyChanged);
+
+    chrome.terminalPrivate.onA11yStatusChanged.addListener(
+        (enabled) => term.setAccessibilityEnabled(enabled));
+    chrome.terminalPrivate.getA11yStatus((enabled) => {
+      term.setAccessibilityEnabled(enabled);
       runTerminal();
-    }
+    });
   };
 
   term.contextMenu.setItems([
@@ -87,12 +142,8 @@ terminal.init = function(element) {
      action: function() { term.wipeContents(); }},
     {name: terminal.msg('TERMINAL_RESET_MENU_LABEL'),
      action: function() { term.reset(); }},
-    {name: terminal.msg('FAQ_MENU_LABEL'),
-     action: function() {
-       lib.f.openWindow('https://goo.gl/muppJj', '_blank');
-     }},
-    {name: terminal.msg('OPTIONS_BUTTON_LABEL'),
-     action: function() { location.hash = '#options'; }},
+    {name: terminal.msg('TERMINAL_TITLE_SETTINGS'),
+     action: function() { terminal.openOptionsPage(); }},
   ]);
 
   return term;
@@ -153,6 +204,7 @@ terminal.Command.prototype.run = function() {
       return;
     }
 
+    window.onbeforeunload = this.onBeforeUnload_.bind(this);
     this.id_ = id;
     this.isFirstOutput_ = true;
 
@@ -162,8 +214,24 @@ terminal.Command.prototype.run = function() {
         this.io.terminal_.screenSize.height);
   };
 
-  chrome.terminalPrivate.openTerminalProcess(
-      this.commandName, this.argv_.args, pidInit);
+  // TODO(crbug.com/1056049): Remove openTerminalProcess once chrome supports
+  // openVmshellProcess on all releases.
+  if (chrome.terminalPrivate.openVmshellProcess) {
+    chrome.terminalPrivate.openVmshellProcess(this.argv_.args, pidInit);
+  } else {
+    chrome.terminalPrivate.openTerminalProcess(
+        this.commandName, this.argv_.args, pidInit);
+  }
+};
+
+/**
+ * Registers with window.onbeforeunload and runs when page is unloading.
+ *
+ * @param {?Event} e Before unload event.
+ */
+terminal.Command.prototype.onBeforeUnload_ = function(e) {
+  // Set e.returnValue to any string for chrome to display a warning.
+  e.returnValue = '';
 };
 
 /**
@@ -192,8 +260,9 @@ terminal.Command.prototype.close_ = function() {
 terminal.Command.prototype.onTerminalResize_ = function(width, height) {
   chrome.terminalPrivate.onTerminalResize(
       this.id_, Number(width), Number(height), function(success) {
-        if (!success)
+        if (!success) {
           console.warn('terminalPrivate.onTerminalResize failed');
+        }
       });
 };
 
@@ -204,12 +273,13 @@ terminal.Command.prototype.onTerminalResize_ = function(width, height) {
  */
 terminal.Command.prototype.exit = function(code) {
   this.close_();
+  window.onbeforeunload = null;
 
   if (code == 0) {
     this.io.pop();
-    if (this.argv_.onExit)
+    if (this.argv_.onExit) {
       this.argv_.onExit(code);
-    return;
+    }
   }
 };
 
@@ -217,22 +287,24 @@ terminal.Command.prototype.exit = function(code) {
  * Migrates settings from crosh.
  * TODO(crbug.com/1019021): Remove after M83.
  *
- * @param {function():void} callback Invoked when complete.
+ * @return {!Promise<void>} Resolves once settings have been migrated.
  */
-terminal.migrateSettings = function(callback) {
+terminal.migrateSettings = async function() {
   if (!chrome.terminalPrivate.getCroshSettings) {
-    callback();
     return;
   }
 
-  hterm.defaultStorage.getItem('crosh.settings.migrated', (migrated) => {
-    if (migrated) {
-      callback();
-      return;
-    }
-    chrome.terminalPrivate.getCroshSettings(settings => {
+  const migrated = await hterm.defaultStorage.getItem(
+      'crosh.settings.migrated');
+  if (migrated) {
+    return;
+  }
+
+  return new Promise((resolve) => {
+    chrome.terminalPrivate.getCroshSettings((settings) => {
       settings['crosh.settings.migrated'] = true;
-      hterm.defaultStorage.setItems(settings, callback);
+      hterm.defaultStorage.setItems(settings).then(resolve);
     });
   });
 };
+

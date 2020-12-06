@@ -2,35 +2,33 @@
 <html>
   <head>
     <meta charset='utf-8'/>
+    <meta id='meta-theme-color' name='theme-color' content='$i18n{themeColor}'>
 
     <script src='../js/nassh_deps.concat.js'></script>
-    <script src='../js/terminal.js'></script>
-    <script src='../js/terminal_menu.js'></script>
-    <script type="module" src='../js/terminal_main.js'></script>
+    <script type='module' src='../js/terminal_main.js'></script>
 
     <style>
       body {
-        position: absolute;
-        padding: 0;
-        margin: 0;
+        background-color: $i18n{themeColor};
         height: 100%;
-        width: 100%;
+        margin: 0;
         overflow: hidden;
-        background-color: black;
+        padding: 0;
+        position: absolute;
+        width: 100%;
       }
 
-      terminal-display-manager {
+      #terminal {
         display: block;
         position: relative;
         width: 100%;
         height: 100%;
       }
     </style>
-    <title>terminal</title>
+    <title>&lrm;</title>
   </head>
 
   <body>
-    <terminal-display-manager>
-    </terminal-display-manager>
+    <div id='terminal'></div>
   </body>
 </html>

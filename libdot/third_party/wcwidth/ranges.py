@@ -6,6 +6,8 @@
 
 """Helper for extracting ranges for wcwidth.
 
+In download mode, we'll automatically fetch the latest known release.
+
 In print mode, we'll display the new tables.  Useful for comparing against
 older releases and debugging this script.
 
@@ -20,16 +22,17 @@ from __future__ import print_function
 
 import argparse
 import re
-import os
+from pathlib import Path
 import sys
+import urllib.request
+import zipfile
 
 
 def load_proplist():
     """Return codepoints based on their various properties."""
     db = {}
 
-    with open('PropList.txt') as fp:
-        data = fp.read()
+    data = Path('PropList.txt').read_text(encoding='utf-8')
 
     for line in data.splitlines():
         line = line.split('#', 1)[0].strip()
@@ -93,8 +96,7 @@ def load_unicode_data():
         'Zs': set(),
     }
 
-    with open('UnicodeData.txt') as fp:
-        data = fp.read()
+    data = Path('UnicodeData.txt').read_text(encoding='utf-8')
 
     for line in data.splitlines():
         line = line.split('#', 1)[0].strip()
@@ -128,8 +130,7 @@ def load_east_asian():
         'W': set(),  # Wide.
     }
 
-    with open('EastAsianWidth.txt') as fp:
-        data = fp.read()
+    data = Path('EastAsianWidth.txt').read_text(encoding='utf-8')
 
     for line in data.splitlines():
         line = line.split('#', 1)[0].strip()
@@ -248,7 +249,7 @@ def js_dumps(ranges):
     for r in ranges:
         if i == 0:
             # Indent this new line.
-            ret += '    '
+            ret += '  '
         else:
             # Add a space after the previous element.
             ret += ' '
@@ -326,18 +327,63 @@ def gen_east_asian_ambiguous(db):
 def find_js(js):
     """Locate the JavaScript file to update."""
     if js is None:
-        js = os.path.join(os.path.dirname(os.path.realpath(__file__)),
-                          'lib_wc.js')
+        js = Path(__file__).resolve().parent / 'lib_wc.js'
 
     return js
+
+
+def download(version):
+    """Download the release archive for |version|."""
+    # This is the timeout used on each blocking operation, not the entire
+    # life of the connection.  So it's used for initial urlopen and for each
+    # read attempt (which may be partial reads).  5 minutes should be fine.
+    TIMEOUT = 5 * 60
+
+    if version == 'latest':
+        uri = 'https://www.unicode.org/Public/UNIDATA/UCD.zip'
+        output = Path.cwd() / f'UCD.zip'
+
+        if output.exists():
+            req = urllib.request.Request(uri, method='HEAD')
+            with urllib.request.urlopen(req, timeout=TIMEOUT) as f:
+                length = int(f.getheader('Content-Length'))
+            if length != output.stat().st_size:
+                print(f'Refreshing {output}')
+                output.unlink()
+    else:
+        uri = f'https://www.unicode.org/Public/zipped/{version}/UCD.zip'
+        output = Path.cwd() / f'UCD-{version}.zip'
+
+    # Fetch the archive if it doesn't exist.
+    if not output.exists():
+        print(f'Downloading {uri}')
+        tmpfile = output.with_suffix('.tmp')
+
+        with open(tmpfile, 'wb') as outfp:
+            with urllib.request.urlopen(uri, timeout=TIMEOUT) as infp:
+                while True:
+                    data = infp.read(1024 * 1024)
+                    if not data:
+                        break
+                    outfp.write(data)
+
+        tmpfile.rename(output)
+
+    print('Extracting files')
+    with zipfile.ZipFile(output) as archive:
+        archive.extract('EastAsianWidth.txt')
+        archive.extract('PropList.txt')
+        archive.extract('UnicodeData.txt')
 
 
 def get_parser():
     """Return an argparse parser for the CLI."""
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--js',
+    parser.add_argument('--version', default='latest',
+                        help='The Unicode version to use (%(default)s)')
+    parser.add_argument('--js', type=Path,
                         help='JavaScript file to update')
-    parser.add_argument('action', choices=('print', 'update'),
+    parser.add_argument('action', choices=('download', 'print', 'update'),
                         help='Operating mode')
     return parser
 
@@ -357,20 +403,20 @@ def main(argv):
         ('lib.wc.ambiguous', js_dumps(gen_east_asian_ambiguous(cjk_db))),
     )
 
-    if opts.action == 'print':
+    if opts.action == 'download':
+        download(opts.version)
+    elif opts.action == 'print':
         for name, text in tables:
             print(name + ' = ' + text)
     else:
         js = find_js(opts.js)
-        with open(js) as fp:
-            data = fp.read()
+        data = js.read_text(encoding='utf-8')
 
         for name, text in tables:
             data = re.sub(r'^%s = .*?^\];\n$' % name, name + ' = ' + text, data,
                           flags=re.M|re.S)
 
-        with open(js, 'w') as fp:
-            fp.write(data)
+        js.write_text(data, encoding='utf-8')
 
 
 if __name__ == '__main__':

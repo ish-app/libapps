@@ -38,13 +38,13 @@ nassh.InputBuffer = function() {
  * @param {string} data
  */
 nassh.InputBuffer.prototype.write = function(data) {
-  var wasAvailable = this.data_.length != 0;
+  const wasAvailable = this.data_.length != 0;
   this.data_ += data;
 
   // First, send data to the pending readers.
-  for (var i = 0; i < this.pendingReaders_.length; i++) {
-    var onRead = this.pendingReaders_[i].onRead;
-    var size = this.pendingReaders_[i].size;
+  for (let i = 0; i < this.pendingReaders_.length; i++) {
+    const onRead = this.pendingReaders_[i].onRead;
+    let size = this.pendingReaders_[i].size;
 
     if (size > this.data_.length) {
       size = this.data_.length;
@@ -54,7 +54,7 @@ nassh.InputBuffer.prototype.write = function(data) {
       break;
     }
 
-    var rv = this.data_.slice(0, size);
+    const rv = this.data_.slice(0, size);
     if (onRead(rv)) {
       this.data_ = this.data_.slice(size);
     }
@@ -82,7 +82,7 @@ nassh.InputBuffer.prototype.write = function(data) {
  * @param {function(string)} onRead
  */
 nassh.InputBuffer.prototype.read = function(size, onRead) {
-  var avail = this.data_.length;
+  const avail = this.data_.length;
 
   if (avail == 0) {
     // No data is available. Wait for data to be available and send it to the
@@ -95,7 +95,7 @@ nassh.InputBuffer.prototype.read = function(size, onRead) {
     size = avail;
   }
 
-  var rv = this.data_.slice(0, size);
+  const rv = this.data_.slice(0, size);
   if (onRead(rv)) {
     this.data_ = this.data_.slice(size);
   }
@@ -148,11 +148,13 @@ nassh.Stream.Tty.prototype.asyncOpen = function(settings, onOpen) {
  * @override
  */
 nassh.Stream.Tty.prototype.asyncRead = function(size, onRead) {
-  if (!this.open)
+  if (!this.open) {
     throw nassh.Stream.ERR_STREAM_CLOSED;
+  }
 
-  if (!this.allowRead_)
+  if (!this.allowRead_) {
     throw nassh.Stream.ERR_STREAM_CANT_READ;
+  }
 
   this.inputBuffer_.read(size, (data) => {
     if (!this.open) {
@@ -172,11 +174,13 @@ nassh.Stream.Tty.prototype.asyncRead = function(size, onRead) {
  * @override
  */
 nassh.Stream.Tty.prototype.asyncWrite = function(data, onSuccess) {
-  if (!this.open)
+  if (!this.open) {
     throw nassh.Stream.ERR_STREAM_CLOSED;
+  }
 
-  if (!this.allowWrite_)
+  if (!this.allowWrite_) {
     throw nassh.Stream.ERR_STREAM_CANT_WRITE;
+  }
 
   this.acknowledgeCount_ += data.byteLength;
 

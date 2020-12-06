@@ -9,25 +9,31 @@
 from __future__ import print_function
 
 import argparse
+import base64
+import hashlib
 import importlib.machinery
+import io
 import logging
 import logging.handlers
 import os
-import shutil
+from pathlib import Path
 import subprocess
 import sys
 import time
 import types
+from typing import Dict, List, Optional, Union
 import urllib.request
 
 
 # Require recent Python 3 versions as a sanity check.
-assert (sys.version_info.major, sys.version_info.minor) >= (3, 5), (
-    'Python 3.5 or newer is required')
+# NB: We cannot require newer versions than CrOS itself supports.
+assert (sys.version_info.major, sys.version_info.minor) >= (3, 6), (
+    'Python 3.6 or newer is required; found %s' % (sys.version,))
 
-BIN_DIR = os.path.dirname(os.path.realpath(__file__))
-DIR = os.path.dirname(BIN_DIR)
-LIBAPPS_DIR = os.path.dirname(DIR)
+
+BIN_DIR = Path(__file__).resolve().parent
+DIR = BIN_DIR.parent
+LIBAPPS_DIR = DIR.parent
 
 
 class ColoredFormatter(logging.Formatter):
@@ -61,8 +67,12 @@ def setup_logging(debug=False, quiet=0):
     fmt += '%(message)s'
 
     # 'Sat, 05 Oct 2013 18:58:50 -0400 (EST)'
+    datefmt = '%a, %d %b %Y %H:%M:%S %z'
     tzname = time.strftime('%Z', time.localtime())
-    datefmt = '%a, %d %b %Y %H:%M:%S ' + tzname
+    if tzname and ' ' not in tzname and len(tzname) <= 5:
+        # If the name is verbose, don't include it.  Some systems like to use
+        # "Eastern Daylight Time" which is much too chatty.
+        datefmt += f' ({tzname})'
 
     if debug:
         level = logging.DEBUG
@@ -87,31 +97,39 @@ def setup_logging(debug=False, quiet=0):
 class ArgumentParser(argparse.ArgumentParser):
     """Custom parser to hold a consistent set of options & runtime env."""
 
-    def __init__(self, **kwargs):
+    def __init__(self, short_options=True, **kwargs):
         """Initialize!"""
         super(ArgumentParser, self).__init__(**kwargs)
 
-        self.add_common_arguments()
+        self.add_common_arguments(short_options=short_options)
 
     def parse_args(self, args=None, namespace=None):
         """Parse all the |args| and save the results to |namespace|."""
+        # This will call our parse_known_args below, so don't use setup_logging.
         namespace = argparse.ArgumentParser.parse_args(
             self, args=args, namespace=namespace)
-        setup_logging(debug=namespace.debug, quiet=namespace.quiet)
         return namespace
 
-    def add_common_arguments(self):
+    def parse_known_args(self, args=None, namespace=None):
+        """Parse all the |args| and save the results to |namespace|."""
+        namespace, unknown_args = argparse.ArgumentParser.parse_known_args(
+            self, args=args, namespace=namespace)
+        setup_logging(debug=namespace.debug, quiet=namespace.quiet)
+        return (namespace, unknown_args)
+
+    def add_common_arguments(self, short_options=True):
         """Add our custom/consistent set of command line flags."""
-        self.add_argument('-d', '--debug', action='store_true',
+        getopts = lambda *args: args if short_options else args[1:]
+        self.add_argument(*getopts('-d', '--debug'), action='store_true',
                           help='Run with debug output.')
-        self.add_argument('-q', '--quiet', action='count', default=0,
+        self.add_argument(*getopts('-q', '--quiet'), action='count', default=0,
                           help='Use once to hide info messages, twice to hide '
                                'warnings, and thrice to hide errors.')
 
 
 def touch(path):
     """Touch (and truncate) |path|."""
-    open(path, 'w').close()
+    open(path, 'wb').close()
 
 
 def unlink(path):
@@ -138,14 +156,37 @@ def cmdstr(cmd):
 
     quoted = []
     for arg in cmd:
+        if isinstance(arg, Path):
+            arg = str(arg)
         if ' ' in arg:
             arg = '"%s"' % (arg,)
         quoted.append(arg)
     return ' '.join(quoted)
 
 
-def run(cmd, check=True, cwd=None, **kwargs):
-    """Run |cmd| inside of |cwd| and exit if it fails."""
+def run(cmd: List[str],
+        cmd_prefix: List[str] = None,
+        log_prefix: List[str] = None,
+        check: bool = True,
+        cwd: str = None,
+        extra_env: Dict[str, str] = None,
+        **kwargs):
+    """Run |cmd| inside of |cwd| and exit if it fails.
+
+
+    Args:
+      cmd: The command to run.
+      cmd_prefix: (Unlogged) prefix for the command to run.  Useful for passing
+          interpreters like `java` or `python` but omitting from default output.
+      log_prefix: Prefix for logging the command, but not running.  Useful for
+          wrapper scripts that get executed directly and use |cmd_prefix|.
+      check: Whether to exit if |cmd| execution fails.
+      cwd: The working directory to run |cmd| inside of.
+      extra_env: Extra environment settings to set before running.
+
+    Returns:
+      A subprocess.CompletedProcess instance.
+    """
     # Python 3.6 doesn't support capture_output.
     if sys.version_info < (3, 7):
         capture_output = kwargs.pop('capture_output', None)
@@ -154,12 +195,29 @@ def run(cmd, check=True, cwd=None, **kwargs):
             kwargs['stdout'] = subprocess.PIPE
             kwargs['stderr'] = subprocess.PIPE
 
+    # The |env| setting specifies the entire environment, so we need to manually
+    # merge our |extra_env| settings into it before passing it along.
+    if extra_env is not None:
+        env = kwargs.pop('env', os.environ)
+        env = env.copy()
+        env.update(extra_env)
+        kwargs['env'] = env
+
+    if not log_prefix:
+        log_prefix = []
+    log_cmd = log_prefix + cmd
+    if not cmd_prefix:
+        cmd_prefix = []
+    real_cmd = cmd_prefix + cmd
+
     if cwd is None:
         cwd = os.getcwd()
-    logging.info('Running: %s\n  (cwd = %s)', cmdstr(cmd), cwd)
-    result = subprocess.run(cmd, cwd=cwd, **kwargs)
+    logging.info('Running: %s\n  (cwd = %s)', cmdstr(log_cmd), cwd)
+    if cmd_prefix:
+        logging.debug('Real full command: %s', cmdstr(real_cmd))
+    result = subprocess.run(real_cmd, cwd=cwd, check=False, **kwargs)
     if check and result.returncode:
-        logging.error('Running %s failed!', cmd[0])
+        logging.error('Running %s failed!', log_cmd[0])
         if result.stdout is not None:
             logging.error('stdout:\n%s', result.stdout)
         if result.stderr is not None:
@@ -168,25 +226,131 @@ def run(cmd, check=True, cwd=None, **kwargs):
     return result
 
 
-def unpack(archive, cwd=None, files=()):
+def sha256(path: Union[Path, str]) -> str:
+    """Return sha256 hex digest of |path|."""
+    # The file shouldn't be too big to load into memory, so be lazy.
+    with open(path, 'rb') as fp:
+        data = fp.read()
+    m = hashlib.sha256()
+    m.update(data)
+    return m.hexdigest()
+
+
+def unpack(archive: Union[Path, str],
+           cwd: Optional[Path] = None,
+           files: Optional[List[Union[Path, str]]] = ()):
     """Unpack |archive| into |cwd|."""
+    archive = Path(archive)
     if cwd is None:
-        cwd = os.getcwd()
+        cwd = Path.cwd()
     if files:
         files = ['--'] + list(files)
     else:
         files = []
 
-    logging.info('Unpacking %s', os.path.basename(archive))
+    # Try to make symlink usage easier in Windows.
+    extra_env = {
+        'MSYS': 'winsymlinks:nativestrict',
+    }
+
+    logging.info('Unpacking %s', archive.name)
     # We use relpath here to help out tar on platforms where it doesn't like
     # paths with colons in them (e.g. Windows).  We have to construct the full
     # before running through relpath as relative archives will implicitly be
     # checked against os.getcwd rather than the explicit cwd.
-    src = os.path.relpath(os.path.join(cwd, archive), cwd)
-    run(['tar', '-xf', src] + files, cwd=cwd)
+    src = os.path.relpath(cwd / archive, cwd)
+    run(['tar', '--no-same-owner', '-xf', src] + files, cwd=cwd,
+        extra_env=extra_env)
 
 
-def fetch(uri, output):
+def pack(archive: Union[Path, str],
+         paths: List[Union[Path, str]],
+         cwd: Optional[Path] = None,
+         exclude: Optional[List[Union[Path, str]]] = ()):
+    """Create an |archive| with |paths| in |cwd|.
+
+    The output will use XZ compression.
+    """
+    archive = Path(archive)
+    if cwd is None:
+        cwd = Path.cwd()
+    if archive.suffix == '.xz':
+        archive = archive.with_suffix('')
+
+    # Make sure all the paths have sane permissions.
+    def walk(path):
+        if path.is_symlink():
+            return
+        elif path.is_dir():
+            # All dirs should be 755.
+            mode = path.stat().st_mode & 0o777
+            if mode != 0o755:
+                path.chmod(0o755)
+
+            for subpath in path.glob('*'):
+                walk(subpath)
+        elif path.is_file():
+            # All scripts should be 755 while other files should be 644.
+            mode = path.stat().st_mode & 0o777
+            if mode in (0o755, 0o644):
+                return
+            if mode & 0o111:
+                path.chmod(0o755)
+            else:
+                path.chmod(0o644)
+        else:
+            raise ValueError(f'{path}: unknown file type')
+
+    logging.info('Forcing sane permissions on inputs')
+    for path in paths:
+        walk(cwd / path)
+
+    logging.info('Creating %s tarball', archive.name)
+    # We use relpath here to help out tar on platforms where it doesn't like
+    # paths with colons in them (e.g. Windows).  We have to construct the full
+    # before running through relpath as relative archives will implicitly be
+    # checked against os.getcwd rather than the explicit cwd.
+    tar = os.path.relpath(cwd / archive, cwd)
+    run(['tar', '--owner=0', '--group=0', '-cf', tar] +
+        [f'--exclude={x}' for x in exclude] + ['--'] + paths, cwd=cwd)
+
+    logging.info('Compressing tarball')
+    run(['xz', '-f', '-T0', '-9', tar], cwd=cwd)
+
+
+def fetch_data(uri: str, output=None, verbose: bool = False, b64: bool = False):
+    """Fetch |uri| and write the results to |output| (or return BytesIO)."""
+    # This is the timeout used on each blocking operation, not the entire
+    # life of the connection.  So it's used for initial urlopen and for each
+    # read attempt (which may be partial reads).  5 minutes should be fine.
+    TIMEOUT = 5 * 60
+
+    if output is None:
+        output = io.BytesIO()
+
+    with urllib.request.urlopen(uri, timeout=TIMEOUT) as infp:
+        mb = 0
+        length = infp.length
+        while True:
+            data = infp.read(1024 * 1024)
+            if not data:
+                break
+            # Show a simple progress bar if the user is interactive.
+            if verbose:
+                mb += 1
+                print('~%i MiB downloaded' % (mb,), end='')
+                if length:
+                    percent = mb * 1024 * 1024 * 100 / length
+                    print(' (%.2f%%)' % (percent,), end='')
+                print('\r', end='', flush=True)
+            if b64:
+                data = base64.b64decode(data)
+            output.write(data)
+
+    return output
+
+
+def fetch(uri, output, b64=False):
     """Download |uri| and save it to |output|."""
     output = os.path.abspath(output)
     distdir, name = os.path.split(output)
@@ -213,23 +377,19 @@ def fetch(uri, output):
     # We use urllib rather than wget or curl to avoid external utils & libs.
     # This seems to be good enough for our needs.
     tmpfile = output + '.tmp'
-    with open(tmpfile, 'wb') as outfp:
-        with urllib.request.urlopen(uri) as infp:
-            mb = 0
-            length = infp.length
-            while True:
-                data = infp.read(1024 * 1024)
-                if not data:
-                    break
-                # Show a simple progress bar if the user is interactive.
-                if verbose:
-                    mb += 1
-                    print('~%i MiB downloaded' % (mb,), end='')
-                    if length:
-                        print(' (%.2f%%)' % (mb * 1024 * 1024 * 100 / length,),
-                              end='')
-                    print('\r', end='', flush=True)
-                outfp.write(data)
+    for _ in range(0, 5):
+        try:
+            with open(tmpfile, 'wb') as outfp:
+                fetch_data(uri, outfp, verbose=verbose, b64=b64)
+            break
+        except ConnectionError as e:
+            time.sleep(1)
+            logging.warning('Download failed; retrying: %s', e)
+    else:
+        logging.error('Unabled to download; giving up')
+        unlink(tmpfile)
+        sys.exit(1)
+
     # Clear the progress bar.
     if verbose:
         print(' ' * 80, end='\r')
@@ -242,53 +402,6 @@ def node_and_npm_setup():
     # We have to update modules first as it'll nuke the dir node lives under.
     node.modules_update()
     node.update()
-
-    # Make sure our tools show up first in $PATH to override the system.
-    path = os.getenv('PATH')
-    os.environ['PATH'] = '%s:%s' % (node.NODE_BIN_DIR, path)
-
-
-# A snapshot of Chrome that we update from time to time.
-# $ uribase='https://dl.google.com/linux/chrome/deb'
-# $ filename=$(
-#     curl -s "${uribase}/dists/stable/main/binary-amd64/Packages.gz" | \
-#         zcat | \
-#         awk '$1 == "Filename:" && $2 ~ /google-chrome-stable/ {print $NF}')
-# $ wget "${uribase}/${filename}"
-# $ gsutil cp -a public-read google-chrome-stable_*.deb \
-#       gs://chromeos-localmirror/secureshell/distfiles/
-CHROME_VERSION = 'google-chrome-stable_75.0.3770.142-1'
-
-
-def chrome_setup():
-    """Download our copy of Chrome for headless testing."""
-    puppeteer = os.path.join(node.NODE_MODULES_DIR, 'puppeteer')
-    download_dir = os.path.join(puppeteer, '.local-chromium')
-    chrome_dir = os.path.join(download_dir, CHROME_VERSION)
-    chrome_bin = os.path.join(chrome_dir, 'opt', 'google', 'chrome', 'chrome')
-    if os.path.exists(chrome_bin):
-        return chrome_bin
-
-    # Create a tempdir to unpack everything into.
-    tmpdir = chrome_dir + '.tmp'
-    shutil.rmtree(tmpdir, ignore_errors=True)
-    os.makedirs(tmpdir, exist_ok=True)
-
-    # Get the snapshot deb archive.
-    chrome_deb = os.path.join(tmpdir, 'deb')
-    uri = '%s/%s_amd64.deb' % (node.NODE_MODULES_BASE_URI, CHROME_VERSION)
-    fetch(uri, chrome_deb)
-
-    # Unpack the deb archive, then clean it all up.
-    run(['ar', 'x', 'deb', 'data.tar.xz'], cwd=tmpdir)
-    unpack('data.tar.xz', cwd=tmpdir)
-    unlink(chrome_deb)
-    unlink(os.path.join(tmpdir, 'data.tar.xz'))
-
-    # Finally move the tempdir to the saved location.
-    os.rename(tmpdir, chrome_dir)
-
-    return chrome_bin
 
 
 def load_module(name, path):
@@ -317,6 +430,8 @@ class HelperProgram:
     into the single libdot.py module.
     """
 
+    _BIN_DIR = BIN_DIR
+
     def __init__(self, name, path=None):
         """Initialize.
 
@@ -326,7 +441,7 @@ class HelperProgram:
         """
         self._name = name
         if path is None:
-            path = os.path.join(BIN_DIR, name)
+            path = os.path.join(self._BIN_DIR, name)
         self._path = path
         self._module_cache = None
 
@@ -343,8 +458,14 @@ class HelperProgram:
 
 
 # Wrappers around libdot/bin/ programs for other tools to access directly.
+closure_compiler = HelperProgram('closure-compiler')
 concat = HelperProgram('concat')
+cpplint = HelperProgram('cpplint')
+eslint = HelperProgram('eslint')
+headless_chrome = HelperProgram('headless-chrome')
 lint = HelperProgram('lint')
 load_tests = HelperProgram('load_tests')
+mdlint = HelperProgram('mdlint')
+minify_translations = HelperProgram('minify-translations')
 node = HelperProgram('node')
 pylint = HelperProgram('pylint')

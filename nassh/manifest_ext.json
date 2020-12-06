@@ -3,30 +3,53 @@
   "minimum_chrome_version": "65",
   "manifest_version": 2,
   "content_security_policy": "script-src 'self'; object-src 'self'",
-  "name": "Secure Shell Extension (tot)",
-  "version": "0.20",
+  "name": "__MSG_nassh_product_name__ (tot)",
+  "version": "0.33",
   "default_locale": "en",
   "icons": {
     "128": "images/dev/icon-128.png",
+    "48": "images/dev/icon-48.png",
     "32": "images/dev/icon-32.png",
+    "24": "images/dev/icon-24.png",
     "16": "images/dev/icon-16.png"
   },
   "description": "Terminal emulator and SSH and SFTP client.",
   "offline_enabled": true,
   "options_page": "html/nassh_preferences_editor.html",
+  "incognito": "split",
   "permissions": [
     "clipboardRead",
     "clipboardWrite",
     "idle",
     "notifications",
     "storage",
+    "terminalPrivate",
     "unlimitedStorage",
-    "accessibilityFeatures.read"
+    "fileSystemProvider",
+    "accessibilityFeatures.read",
+    "crashReportPrivate",
+    "metricsPrivate"
   ],
+  "sockets": {
+    "tcp": {
+      "connect": ["*:*"]
+    },
+    "tcpServer": {
+      "listen": ["*:*"]
+    },
+    "udp": {
+      "bind": ["*:*"],
+      "send": ["*:*"]
+    }
+  },
+  "file_system_provider_capabilities": {
+    "multiple_mounts": true,
+    "configurable": true,
+    "source": "network"
+  },
   "web_accessible_resources": [
     "html/nassh.html",
-    "html/nassh_google_relay.html",
-    "html/nassh_connect_dialog.html"
+    "html/nassh_google_relay.html"
   ],
   "background": {
     "persistent": false,
@@ -53,7 +76,9 @@
     "default_popup": "html/nassh_popup.html",
     "default_icon": {
       "128": "images/dev/icon-128.png",
+      "48": "images/dev/icon-48.png",
       "32": "images/dev/icon-32.png",
+      "24": "images/dev/icon-24.png",
       "16": "images/dev/icon-16.png"
     }
   }

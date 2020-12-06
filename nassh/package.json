@@ -1,6 +1,6 @@
 {
   "name": "nassh",
-  "version": "0.20.0",
+  "version": "0.33.0",
   "description": "Terminal emulator and SSH and SFTP client",
   "main": "js/nassh.js",
   "repository": {
@@ -30,11 +30,11 @@
   },
   "devDependencies": {
     "chai": "~4",
-    "eslint": "~6",
+    "eslint": "~7",
     "http-server": "~0",
     "license-checker": "~25",
-    "mocha": "~6",
-    "mocha-headless-chrome": "~2",
+    "mocha": "~8",
+    "mocha-headless-chrome": "~3",
     "rollup": ">=1.16",
     "rollup-plugin-node-resolve": ">=5",
     "rollup-plugin-terser": ">=5",
@@ -42,7 +42,7 @@
   },
   "dependencies": {
     "asn1js": "~2",
-    "lit-element": "^2.2.1",
+    "lit-element": "^2.3.1",
     "pkijs": "~2.1",
     "punycode": "~2"
   }

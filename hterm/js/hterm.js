@@ -8,7 +8,7 @@
  * @fileoverview Declares the hterm.* namespace and some basic shared utilities
  * that are too small to deserve dedicated files.
  */
-var hterm = {};
+const hterm = {};
 
 /**
  * The type of window hosting hterm.
@@ -36,18 +36,6 @@ hterm.os = null;
 hterm.zoomWarningMessage = 'ZOOM != 100%';
 
 /**
- * Brief overlay message displayed when text is copied to the clipboard.
- *
- * By default it is the unicode BLACK SCISSORS character, but you can
- * replace it with your own localized message.
- *
- * This is only displayed when the 'enable-clipboard-notice' preference
- * is enabled.
- */
-hterm.notifyCopyMessage = '\u2702';
-
-
-/**
  * Text shown in a desktop notification for the terminal
  * bell.  \u226a is a unicode EIGHTH NOTE, %(title) will
  * be replaced by the terminal title.
@@ -64,41 +52,43 @@ lib.registerInit(
      *
      * This is called during lib.init().
      *
-     * @param {function()} onInit The function lib.init() wants us to invoke
-     *     when initialization is complete.
+     * @return {!Promise<void>}
      */
-    function(onInit) {
-      function initOs(os) {
-        hterm.os = os;
-
-        onInit();
-      }
-
+    async () => {
       function initMessageManager() {
-        lib.i18n.getAcceptLanguages((languages) => {
-          if (!hterm.messageManager)
-            hterm.messageManager = new lib.MessageManager(languages);
-
-          // If OS detection fails, then we'll still set the value to something.
-          // The OS logic in hterm tends to be best effort anyways.
-          lib.f.getOs().then(initOs).catch(initOs);
-        });
+        return lib.i18n.getAcceptLanguages()
+          .then((languages) => {
+            if (!hterm.messageManager) {
+              hterm.messageManager = new lib.MessageManager(languages);
+            }
+          })
+          .then(() => {
+            // If OS detection fails, then we'll still set the value to
+            // something.  The OS logic in hterm tends to be best effort
+            // anyways.
+            const initOs = (os) => { hterm.os = os; };
+            return lib.f.getOs().then(initOs).catch(initOs);
+          });
       }
 
       function onWindow(window) {
         hterm.windowType = window.type;
-        initMessageManager();
+        return initMessageManager();
       }
 
-      function onTab(tab) {
+      function onTab(tab = undefined) {
         if (tab && window.chrome) {
-          chrome.windows.get(tab.windowId, null, onWindow);
+          return new Promise((resolve) => {
+            chrome.windows.get(tab.windowId, null, (win) => {
+              onWindow(win).then(resolve);
+            });
+          });
         } else {
           // TODO(rginda): This is where we end up for a v1 app's background
           // page. Maybe windowType = 'none' would be more appropriate, or
           // something.
           hterm.windowType = 'normal';
-          initMessageManager();
+          return initMessageManager();
         }
       }
 
@@ -112,24 +102,26 @@ lib.registerInit(
 
       // The chrome.tabs API is not supported in packaged apps, and detecting if
       // you're a packaged app is a little awkward.
-      var isPackagedApp = false;
+      let isPackagedApp = false;
       if (window.chrome && chrome.runtime && chrome.runtime.getManifest) {
-        var manifest = chrome.runtime.getManifest();
+        const manifest = chrome.runtime.getManifest();
         isPackagedApp = manifest.app && manifest.app.background;
       }
 
-      if (isPackagedApp) {
-        // Packaged apps are never displayed in browser tabs.
-        setTimeout(onWindow.bind(null, {type: 'popup'}), 0);
-      } else {
-        if (window.chrome && chrome.tabs) {
-          // The getCurrent method gets the tab that is "currently running", not
-          // the topmost or focused tab.
-          chrome.tabs.getCurrent(onTab);
+      return new Promise((resolve) => {
+        if (isPackagedApp) {
+          // Packaged apps are never displayed in browser tabs.
+          onWindow({type: 'popup'}).then(resolve);
         } else {
-          setTimeout(onWindow.bind(null, {type: 'normal'}), 0);
+          if (window.chrome && chrome.tabs) {
+            // The getCurrent method gets the tab that is "currently running",
+            // not the topmost or focused tab.
+            chrome.tabs.getCurrent(() => onTab().then(resolve));
+          } else {
+            onWindow({type: 'normal'}).then(resolve);
+          }
         }
-      }
+      });
     });
 
 /**
@@ -243,7 +235,9 @@ hterm.copySelectionToClipboard = function(document, str) {
     // https://bugzilla.mozilla.org/show_bug.cgi?id=1178676
     try {
       selection.selectAllChildren(copySource);
-    } catch (ex) {}
+    } catch (ex) {
+      // FF workaround.
+    }
 
     try {
       document.execCommand('copy');
@@ -275,26 +269,6 @@ hterm.copySelectionToClipboard = function(document, str) {
 };
 
 /**
- * Paste the system clipboard into the element with focus.
- *
- * Note: In Chrome/Firefox app/extension environments, you'll need the
- * "clipboardRead" permission.  In other environments, this might always
- * fail as the browser frequently blocks access for security reasons.
- *
- * @param {!Document} document The document to paste into.
- * @return {boolean} True if the paste succeeded.
- */
-hterm.pasteFromClipboard = function(document) {
-  try {
-    return document.execCommand('paste');
-  } catch (firefoxException) {
-    // Ignore this.  FF 40 and older would incorrectly throw an exception if
-    // there was an error instead of returning false.
-    return false;
-  }
-};
-
-/**
  * Return a formatted message in the current locale.
  *
  * @param {string} name The name of the message to return.
@@ -302,7 +276,7 @@ hterm.pasteFromClipboard = function(document) {
  * @param {string=} string The default message text.
  * @return {string} The localized message.
  */
-hterm.msg = function(name, args = [], string) {
+hterm.msg = function(name, args = [], string = '') {
   return hterm.messageManager.get('HTERM_' + name, args, string);
 };
 
@@ -316,23 +290,25 @@ hterm.msg = function(name, args = [], string) {
  * @return {!Notification}
  */
 hterm.notify = function(params) {
-  var def = (curr, fallback) => curr !== undefined ? curr : fallback;
-  if (params === undefined || params === null)
+  const def = (curr, fallback) => curr !== undefined ? curr : fallback;
+  if (params === undefined || params === null) {
     params = {};
+  }
 
   // Merge the user's choices with the default settings.  We don't take it
   // directly in case it was stuffed with excess junk.
-  var options = {
+  const options = {
       'body': params.body,
       'icon': def(params.icon, lib.resource.getDataUrl('hterm/images/icon-96')),
   };
 
-  var title = def(params.title, window.document.title);
-  if (!title)
+  let title = def(params.title, window.document.title);
+  if (!title) {
     title = 'hterm';
+  }
   title = lib.f.replaceVars(hterm.desktopNotificationTitle, {'title': title});
 
-  var n = new Notification(title, options);
+  const n = new Notification(title, options);
   n.onclick = function() {
     window.focus();
     n.close();
@@ -436,14 +412,14 @@ hterm.Size.prototype.toString = function() {
  *
  * @param {number} row The row of this record.
  * @param {number} column The column of this record.
- * @param {boolean=} opt_overflow Optional boolean indicating that the RowCol
+ * @param {boolean=} overflow Optional boolean indicating that the RowCol
  *     has overflowed.
  * @constructor
  */
-hterm.RowCol = function(row, column, opt_overflow) {
+hterm.RowCol = function(row, column, overflow = false) {
   this.row = row;
   this.column = column;
-  this.overflow = !!opt_overflow;
+  this.overflow = !!overflow;
 };
 
 /**
@@ -451,13 +427,13 @@ hterm.RowCol = function(row, column, opt_overflow) {
  *
  * @param {number} row The new row of this record.
  * @param {number} column The new column of this record.
- * @param {boolean=} opt_overflow Optional boolean indicating that the RowCol
+ * @param {boolean=} overflow Optional boolean indicating that the RowCol
  *     has overflowed.
  */
-hterm.RowCol.prototype.move = function(row, column, opt_overflow) {
+hterm.RowCol.prototype.move = function(row, column, overflow = false) {
   this.row = row;
   this.column = column;
-  this.overflow = !!opt_overflow;
+  this.overflow = !!overflow;
 };
 
 /**

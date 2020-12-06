@@ -11,30 +11,31 @@
 //    * granularity: 'sentence' does not understand decimals
 
 (function(global) {
-  if ('Intl' in global && 'Segmenter' in global.Intl)
+  if ('Intl' in global && 'Segmenter' in global.Intl) {
     return;
+  }
 
   global.Intl = global.Intl || {};
 
-  const GRANULARITIES = ['grapheme', 'word','sentence', 'line'];
+  const GRANULARITIES = ['grapheme', 'word', 'sentence', 'line'];
 
   // TODO: Implement https://www.unicode.org/reports/tr29/
   const RULES = {
     grapheme: {
-      grapheme: /^(.|\n)/
+      grapheme: /^(.|\n)/,
     },
     word: {
       letter: /^[a-z](?:'?[a-z])*/i,
-      number: /^\d+([,.]\d+)*/
+      number: /^\d+([,.]\d+)*/,
     },
     sentence: {
       terminator: /^[^.?!\r\n]+[.?!]+[\r\n]?/,
-      separator: /^[^.?!\r\n]+[\r\n]?/
+      separator: /^[^.?!\r\n]+[\r\n]?/,
     },
     line: {
       hard: /^\S*[\r\n]/,
-      soft: /^\S*\s*/
-    }
+      soft: /^\S*\s*/,
+    },
   };
 
   // Work around bug in v8BreakIterator where ICU's UWordBreak enum is
@@ -49,7 +50,7 @@
       letter: 200, // UBRK_WORD_LETTER
       kana: 300, // UBRK_WORD_KANA
       ideo: 400, // UBRK_WORD_IDEO
-      unknown: -1
+      unknown: -1,
     }[value] || 0;
 
 
@@ -62,13 +63,13 @@
       // Map ULineBreakTag rule status to string.
       return {
         0: 'terminator',
-        100: 'separator'
+        100: 'separator',
       }[ruleStatus] || value;
     case 'line':
       // Map ULineBreakTag rule status to string.
       return {
         0: 'soft',
-        100: 'hard'
+        100: 'hard',
       }[ruleStatus] || value;
     default:
       return value;
@@ -78,8 +79,9 @@
   function segment(locale, granularity, string) {
     const breaks = [];
     if ('v8BreakIterator' in global.Intl) {
-      if (granularity === 'grapheme')
+      if (granularity === 'grapheme') {
         granularity = 'character';
+      }
       const vbi = new global.Intl.v8BreakIterator(locale, {type: granularity});
       vbi.adoptText(string);
       let last = 0;
@@ -88,7 +90,7 @@
         breaks.push({
           pos: vbi.current(),
           segment: string.slice(last, pos),
-          breakType: fixBreakType(vbi.breakType(), granularity)
+          breakType: fixBreakType(vbi.breakType(), granularity),
         });
         last = pos;
         pos = vbi.next();
@@ -98,7 +100,7 @@
       let pos = 0;
       while (pos < string.length) {
         let found = false;
-        for (let rule of Object.keys(rules)) {
+        for (const rule of Object.keys(rules)) {
           const re = rules[rule];
           const m = string.slice(pos).match(re);
           if (m) {
@@ -106,7 +108,7 @@
             breaks.push({
               pos: pos,
               segment: m[0],
-              breakType: granularity === 'grapheme' ? undefined : rule
+              breakType: granularity === 'grapheme' ? undefined : rule,
             });
             found = true;
             break;
@@ -116,12 +118,11 @@
           breaks.push({
             pos: pos + 1,
             segment: string.slice(pos, ++pos),
-            breakType: 'none'
+            breakType: 'none',
           });
         }
       }
     }
-    breaks.initial = 0;
     return breaks;
   }
 
@@ -132,11 +133,14 @@
       this._breaks = breaks;
     }
 
-    [Symbol.iterator]() { return this; }
+    [Symbol.iterator]() {
+      return this;
+    }
 
     next() {
-      if (this._cur < this._breaks.length)
+      if (this._cur < this._breaks.length) {
         ++this._cur;
+      }
 
       if (this._cur >= this._breaks.length) {
         this._type = undefined;
@@ -148,23 +152,25 @@
         done: false,
         value: {
           segment: this._breaks[this._cur].segment,
-          breakType: this._breaks[this._cur].breakType
-        }
+          breakType: this._breaks[this._cur].breakType,
+        },
       };
     }
 
     following(index = undefined) {
-      if (!this._breaks.length)
+      if (!this._breaks.length) {
         return true;
+      }
       if (index === undefined) {
-        if (this._cur < this._breaks.length)
+        if (this._cur < this._breaks.length) {
           ++this._cur;
+        }
       } else {
         // TODO: binary search
         for (this._cur = 0;
              this._cur < this._breaks.length
              && this._breaks[this._cur].pos < index;
-             ++this._cur) {}
+             ++this._cur) { /* TODO */ }
       }
 
       this._type = this._cur < this._breaks.length
@@ -173,19 +179,22 @@
     }
 
     preceding(index = undefined) {
-      if (!this._breaks.length)
+      if (!this._breaks.length) {
         return true;
+      }
       if (index === undefined) {
-        if (this._cur >= this._breaks.length)
+        if (this._cur >= this._breaks.length) {
           --this._cur;
-        if (this._cur >= 0)
+        }
+        if (this._cur >= 0) {
           --this._cur;
+        }
       } else {
         // TODO: binary search
         for (this._cur = this._breaks.length - 1;
              this._cur >= 0
              && this._breaks[this._cur].pos >= index;
-             --this._cur) {}
+             --this._cur) { /* TODO */ }
       }
 
       this._type =
@@ -195,10 +204,12 @@
     }
 
     get position() {
-      if (this._cur < 0 || !this._breaks.length)
-        return this._breaks.initial;
-      if (this._cur >= this._breaks.length)
+      if (this._cur < 0 || !this._breaks.length) {
+        return 0;
+      }
+      if (this._cur >= this._breaks.length) {
         return this._breaks[this._breaks.length - 1].pos;
+      }
       return this._breaks[this._cur].pos;
     }
 
@@ -208,12 +219,11 @@
   }
 
   global.Intl.Segmenter = class Segmenter {
-    constructor(locale, options) {
+    constructor(locale, {localeMatcher, granularity = 'grapheme'} = {}) {
       this._locale = Array.isArray(locale)
-        ? locale.map(s => String(s)) : String(locale || navigator.language);
-      options = Object.assign({granularity: 'grapheme'}, options);
-      this._granularity = GRANULARITIES.includes(options.granularity)
-        ? options.granularity : 'grapheme';
+        ? locale.map((s) => String(s)) : String(locale || navigator.language);
+      this._granularity = GRANULARITIES.includes(granularity)
+        ? granularity : 'grapheme';
     }
 
     segment(string) {

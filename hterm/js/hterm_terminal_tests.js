@@ -31,7 +31,7 @@ before(function() {
 beforeEach(function(done) {
   const document = window.document;
 
-  var div = this.div = document.createElement('div');
+  const div = this.div = document.createElement('div');
   div.style.position = 'absolute';
   div.style.height = '100%';
   div.style.width = '100%';
@@ -41,6 +41,14 @@ beforeEach(function(done) {
   this.terminal = new hterm.Terminal();
 
   this.terminal.decorate(div);
+  // Set some fairly large padding and border which are hopefully more
+  // likely to reveal bugs.
+  // Update default value for prefs, and set initial value to be used prior
+  // to prefs loading.
+  this.terminal.getPrefs().definePreference('screen-padding-size', 20);
+  this.terminal.setScreenPaddingSize(20);
+  this.terminal.getPrefs().definePreference('screen-border-size', 13);
+  this.terminal.setScreenBorderSize(13);
   this.terminal.setHeight(this.visibleRowCount);
   this.terminal.setWidth(this.visibleColumnCount);
   this.terminal.onTerminalReady = () => {
@@ -75,19 +83,25 @@ const DISPLAY_IMAGE_TIMEOUT = 5000;
  * values that the Terminal was constructed with.
  */
 it('dimensions', function() {
-    var divSize = hterm.getClientSize(this.div);
-    var scrollPort = this.terminal.scrollPort_;
-    var innerWidth = Math.round(
-        divSize.width - scrollPort.currentScrollbarWidthPx);
+    const divSize = hterm.getClientSize(this.div);
+    const scrollPort = this.terminal.scrollPort_;
+    const rightPadding = Math.max(
+        scrollPort.screenPaddingSize, scrollPort.currentScrollbarWidthPx);
+    const innerWidth = divSize.width -
+                       scrollPort.screenPaddingSize - rightPadding -
+                       (2 * this.terminal.screenBorderSize_);
+    const innerHeight = divSize.height -
+                        (2 * scrollPort.screenPaddingSize) -
+                        (2 * this.terminal.screenBorderSize_);
 
     assert.equal(innerWidth, Math.round(scrollPort.getScreenWidth()));
-    assert.equal(Math.round(divSize.height),
+    assert.equal(Math.round(innerHeight),
                  Math.round(scrollPort.getScreenHeight()));
 
     assert.equal(Math.floor(innerWidth / scrollPort.characterSize.width),
                  this.visibleColumnCount);
     assert.equal(
-        Math.round(divSize.height / scrollPort.characterSize.height),
+        Math.round(innerHeight / scrollPort.characterSize.height),
         this.visibleRowCount);
 
     assert.equal(this.terminal.screen_.getWidth(), this.visibleColumnCount);
@@ -99,8 +113,8 @@ it('dimensions', function() {
  * that should stress the cursor positioning code.
  */
 it('plaintext-stress-cursor-ltr', function() {
-    for (var col = 0; col < this.visibleColumnCount; col++) {
-      for (var row = 0; row < this.visibleRowCount; row++) {
+    for (let col = 0; col < this.visibleColumnCount; col++) {
+      for (let row = 0; row < this.visibleRowCount; row++) {
         this.terminal.screen_.setCursorPosition(row, col);
         this.terminal.screen_.insertString('X');
       }
@@ -113,8 +127,8 @@ it('plaintext-stress-cursor-ltr', function() {
  * code.
  */
 it('plaintext-stress-cursor-rtl', function() {
-    for (var col = this.visibleColumnCount - 1; col >= 0; col--) {
-      for (var row = 0; row < this.visibleRowCount; row++) {
+    for (let col = this.visibleColumnCount - 1; col >= 0; col--) {
+      for (let row = 0; row < this.visibleRowCount; row++) {
         this.terminal.screen_.setCursorPosition(row, col);
         this.terminal.screen_.overwriteString('X');
       }
@@ -128,15 +142,15 @@ it('plaintext-stress-cursor-rtl', function() {
  * log is useful.
  */
 it('plaintext-stress-insert', function(done) {
-    var chunkSize = 1000;
-    var testCount = 10;
-    var self = this;
+    const chunkSize = 1000;
+    const testCount = 10;
 
-    function test(count) {
-      for (var i = count * chunkSize; i < (count + 1) * chunkSize; i++) {
-        if (i != 0)
-          self.terminal.newLine();
-        self.terminal.screen_.insertString(
+    const test = (count) => {
+      for (let i = count * chunkSize; i < (count + 1) * chunkSize; i++) {
+        if (i != 0) {
+          this.terminal.newLine();
+        }
+        this.terminal.screen_.insertString(
             'line ' + i + ': All work and no play makes jack a dull boy.');
       }
 
@@ -145,7 +159,7 @@ it('plaintext-stress-insert', function(done) {
       } else {
         setTimeout(test, 0, count + 1);
       }
-    }
+    };
 
     test(0);
   });
@@ -203,10 +217,10 @@ it('show-overlay-announce', function() {
   const liveElement = this.terminal.accessibilityReader_.assertiveLiveElement_;
 
   this.terminal.showOverlay('test');
-  assert.equal('test', liveElement.getAttribute('aria-label'));
+  assert.equal('test', liveElement.innerText);
 
   this.terminal.showOverlay('hello');
-  assert.equal('hello', liveElement.getAttribute('aria-label'));
+  assert.equal('hello', liveElement.innerText);
 });
 
 /**
@@ -304,7 +318,7 @@ it('scrollport-focus-cursor', function(done) {
  * turned on, and nothing is passed when reporting is off.
  */
 it('focus-reporting', function() {
-  var resultString = '';
+  let resultString = '';
   this.terminal.io.sendString = (str) => resultString = str;
 
   this.terminal.interpret('\x1b[?1004h');
@@ -553,9 +567,9 @@ it('display-img-max-dimensions', function(done) {
     const img = container.childNodes[0];
 
     // The image should take up the whole screen, but not more.
-    const body = this.terminal.document_.body;
-    assert.equal(img.clientHeight, body.clientHeight);
-    assert.equal(img.clientWidth, body.clientWidth);
+    const screenSize = this.terminal.scrollPort_.getScreenSize();
+    assert.equal(img.clientHeight, screenSize.height);
+    assert.equal(img.clientWidth, screenSize.width);
 
     done();
   };
@@ -690,6 +704,142 @@ it('mouse-wheel-arrow-keys-primary', function() {
   e = MockTerminalMouseEvent('wheel', {deltaY: 1, deltaMode: 1});
   terminal.onMouse_(e);
   assert.isUndefined(resultString);
+});
+
+/**
+ * Check mouse row and column.
+ */
+it('mouse-row-column', function() {
+  const terminal = this.terminal;
+  let e;
+
+  // Turn on mouse click reporting.
+  terminal.vt.setDECMode('1000', true);
+
+  let eventReported = false;
+  terminal.onMouse = (e) => {
+    eventReported = true;
+  };
+  const send = (type, x, y) => {
+    eventReported = false;
+    const e = MockTerminalMouseEvent(type, {clientX: x, clientY: y});
+    terminal.onMouse_(e);
+    return e;
+  };
+
+  const padding = terminal.scrollPort_.screenPaddingSize;
+  const charWidth = terminal.scrollPort_.characterSize.width;
+  const charHeight = terminal.scrollPort_.characterSize.height;
+  const screenWidth = terminal.screenSize.width;
+  const screenHeight = terminal.screenSize.height;
+
+  // Cell 10, 10.
+  const x10 = padding + 9.5 * charWidth;
+  const y10 = padding + 9.5 * charHeight;
+  e = send('mousedown', x10, y10);
+  assert.isTrue(eventReported);
+  assert.equal(e.terminalRow, 10);
+  assert.equal(e.terminalColumn, 10);
+
+  // Top padding, clamp to row 1.
+  e = send('mousedown', x10, 0);
+  assert.isTrue(eventReported);
+  assert.equal(e.terminalRow, 1);
+  assert.equal(e.terminalColumn, 10);
+
+  // Right padding, clamp to width.
+  e = send('mousedown', padding + (screenWidth * charWidth) + 1, y10);
+  assert.isTrue(eventReported);
+  assert.equal(e.terminalRow, 10);
+  assert.equal(e.terminalColumn, screenWidth);
+
+  // Scrollbar area, ignore mousedown.
+  e = send('mousedown', (2 * padding) + (screenWidth * charWidth) + 1, y10);
+  assert.isFalse(eventReported);
+  e = send('mousemove', (2 * padding) + (screenWidth * charWidth) + 1, y10);
+  assert.isTrue(eventReported);
+  assert.equal(e.terminalRow, 10);
+  assert.equal(e.terminalColumn, screenWidth);
+
+  // Bottom padding, clamp to height.
+  e = send('mousedown', x10, padding + (screenHeight * charHeight) + 1);
+  assert.isTrue(eventReported);
+  assert.equal(e.terminalRow, screenHeight);
+  assert.equal(e.terminalColumn, 10);
+
+  // Left padding, clamp to column 1.
+  e = send('mousedown', 0, y10);
+  assert.isTrue(eventReported);
+  assert.equal(e.terminalRow, 10);
+  assert.equal(e.terminalColumn, 1);
+});
+
+/**
+ * Check paste() is working correctly. Note that we do not test the legacy
+ * pasting using document.execCommand() because it is hard to simulate the
+ * behavior.
+ */
+it('paste', async function() {
+  if (!navigator.clipboard) {
+    // Skip this test.
+    return;
+  }
+
+  const terminal = this.terminal;
+  const oldReadText = navigator.clipboard.readText;
+  navigator.clipboard.readText = async () => 'hello world';
+  const oldOnPasteData = terminal.onPasteData_;
+  const onPasteDataPromise = new Promise((resolve) => {
+    terminal.onPasteData_ = (data) => {
+      terminal.onPasteData_ = oldOnPasteData;
+      resolve(data);
+    };
+  });
+
+  try {
+    assert.isNull(this.terminal.paste());
+    assert.equal((await onPasteDataPromise), 'hello world');
+  } finally {
+    navigator.clipboard.readText = oldReadText;
+  }
+});
+
+/**
+ * Check set and reset of color palette.
+ */
+it('set-and-reset-colors', async function() {
+  const terminal = this.terminal;
+
+  const assertColor = (i, value) => {
+    // Validate cached terminal.getColor and css var.
+    assert.equal(value, terminal.getColorPalette(i));
+    const style = getComputedStyle(this.terminal.document_.documentElement);
+    const p = style.getPropertyValue(`--hterm-color-${i}`);
+    assert.equal(value, `rgb(${p.trim().replace(/,/g, ', ')})`);
+  };
+
+  // The color entries we'll test.
+  const indices = [0, 7, 15, 31, 63, 127, 255];
+  // The unique color we'll test against.
+  const custom = 'rgb(1, 2, 3)';
+
+  // Change the colors.
+  indices.forEach((index) => {
+    assert.isTrue(lib.colors.colorPalette != custom);
+    assertColor(index, lib.colors.colorPalette[index]);
+    terminal.setColorPalette(index, custom);
+    assertColor(index, custom);
+  });
+
+  // Reset a single color.
+  terminal.resetColor(0);
+  assertColor(0, lib.colors.colorPalette[0]);
+
+  // Reset the palette and check the colors.
+  terminal.resetColorPalette();
+  indices.forEach((index) => {
+    assertColor(index, lib.colors.colorPalette[index]);
+  });
 });
 
 });

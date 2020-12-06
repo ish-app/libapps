@@ -8,7 +8,7 @@ nassh.sftp = {};
 
 /**
  * @typedef {{
- *     flags: (number|undefined),
+ *     flags: number,
  *     size: (number|undefined),
  *     uid: (number|undefined),
  *     gid: (number|undefined),
@@ -74,7 +74,7 @@ nassh.sftp.Client = function(basePath = '') {
 
   // The buffered packet data coming from the plugin.
   this.pendingMessageSize_ = null;
-  this.buffer_ = new Uint8Array(0);
+  this.buffer_ = nassh.buffer.new(/* autoack= */ true);
 
   // A map of pending packet requests.
   // Takes a requestId for a key and a Promise as a value.
@@ -143,7 +143,7 @@ nassh.sftp.Client.prototype.writeChunkSize =
  */
 nassh.sftp.Client.prototype.writeStreamData = function(data) {
   // Add this data chunk to the queued buffer.
-  this.buffer_ = lib.array.concatTyped(this.buffer_, new Uint8Array(data));
+  this.buffer_.write(data);
 
   // Loop over buffer until all available packets have been handled.
   while (this.parseBuffer_()) {
@@ -159,24 +159,23 @@ nassh.sftp.Client.prototype.writeStreamData = function(data) {
 nassh.sftp.Client.prototype.parseBuffer_ = function() {
   // See if we've scanned the message length yet (first 4 bytes).
   if (this.pendingMessageSize_ === null) {
-    if (this.buffer_.length < 4) {
+    if (this.buffer_.getUnreadCount() < 4) {
       return false;
     }
 
     // Pull out the 32-bit message length.
-    const dv = new DataView(this.buffer_.buffer, this.buffer_.byteOffset);
+    const bytes = this.buffer_.read(4);
+    const dv = new DataView(bytes.buffer, bytes.byteOffset);
     this.pendingMessageSize_ = dv.getUint32(0);
-    this.buffer_ = this.buffer_.subarray(4);
   }
 
   // See if we've got the entire packet yet.
-  if (this.buffer_.length < this.pendingMessageSize_) {
+  if (this.buffer_.getUnreadCount() < lib.notNull(this.pendingMessageSize_)) {
     return false;
   }
 
   // Pull out the packet from the buffer.
-  const data = this.buffer_.subarray(0, lib.notNull(this.pendingMessageSize_));
-  this.buffer_ = this.buffer_.subarray(this.pendingMessageSize_);
+  const data = this.buffer_.read(this.pendingMessageSize_);
   // Restart the message process.
   this.pendingMessageSize_ = null;
 
@@ -197,15 +196,15 @@ nassh.sftp.Client.prototype.parseBuffer_ = function() {
  * @return {boolean}
  */
 nassh.sftp.Client.prototype.onPacket = function(packet) {
-  var packetType = packet.getUint8();
+  const packetType = packet.getUint8();
 
   // Obtain the response packet's constructor and create it.
-  var ResponseType = nassh.sftp.packets.ResponsePackets[packetType]
-      || nassh.sftp.UnknownPacket;
-  var responsePacket = new ResponseType(packet);
+  const ResponseType = nassh.sftp.packets.ResponsePackets[packetType]
+      || nassh.sftp.packets.UnknownPacket;
+  const responsePacket = new ResponseType(packet);
 
   // get request id and execute the callback (if found)
-  var requestId = responsePacket.requestId;
+  const requestId = responsePacket.requestId;
   if (this.pendingRequests_.hasOwnProperty(requestId)) {
     this.pendingRequests_[requestId](responsePacket);
     delete this.pendingRequests_[requestId];
@@ -252,7 +251,7 @@ nassh.sftp.Client.prototype.sendRequest_ = function(type, data) {
   }
 
   // First construct the packet type portion of the packet header.
-  var requestId = this.requestId_++;
+  const requestId = this.requestId_++;
   const packetType = new nassh.sftp.Packet();
   if (typeof type == 'string') {
     // Handle extended packets.
@@ -273,7 +272,7 @@ nassh.sftp.Client.prototype.sendRequest_ = function(type, data) {
   packet.setData(packetType.toByteArray());
   packet.setData(data.toByteArray());
 
-  return new Promise(resolve => {
+  return new Promise((resolve) => {
     this.pendingRequests_[requestId] = resolve;
     this.sendToPlugin_('onRead', [0, packet.toArrayBuffer()]);
   });
@@ -333,16 +332,18 @@ nassh.sftp.Client.prototype.isSuccessResponse_ = function(responsePacket,
 nassh.sftp.Client.prototype.isNameResponse_ = function(responsePacket,
     requestType) {
   if (responsePacket instanceof nassh.sftp.packets.StatusPacket) {
-    if (responsePacket.code != nassh.sftp.packets.StatusCodes.EOF)
+    if (responsePacket.code != nassh.sftp.packets.StatusCodes.EOF) {
       throw new nassh.sftp.StatusError(responsePacket, requestType);
+    }
 
     // EOF
     return responsePacket;
   }
 
-  if (!(responsePacket instanceof nassh.sftp.packets.NamePacket))
+  if (!(responsePacket instanceof nassh.sftp.packets.NamePacket)) {
     throw new TypeError('Received unexpected response to '
                         + requestType + ' packet: ' + responsePacket);
+  }
 
   return responsePacket;
 };
@@ -352,7 +353,7 @@ nassh.sftp.Client.prototype.isNameResponse_ = function(responsePacket,
  * Sends a SFTP init packet.
  */
 nassh.sftp.Client.prototype.init = function() {
-  var packet = new nassh.sftp.Packet();
+  const packet = new nassh.sftp.Packet();
   packet.setUint32(5); // length, 5 bytes for type and version fields
   packet.setUint8(nassh.sftp.packets.RequestPackets.INIT);
   packet.setUint32(this.protocolClientVersion);
@@ -392,7 +393,7 @@ nassh.sftp.Client.prototype.onInit = function() {};
  *     nassh.sftp.StatusError)
  */
 nassh.sftp.Client.prototype.fileStatus = function(path) {
-  var packet = new nassh.sftp.Packet();
+  const packet = new nassh.sftp.Packet();
   packet.setUtf8String(this.basePath_ + path);
 
   return this.sendRequest_(nassh.sftp.packets.RequestPackets.STAT, packet)
@@ -413,7 +414,7 @@ nassh.sftp.Client.prototype.fileStatus = function(path) {
  *     nassh.sftp.StatusError)
  */
 nassh.sftp.Client.prototype.linkStatus = function(path) {
-  var packet = new nassh.sftp.Packet();
+  const packet = new nassh.sftp.Packet();
   packet.setUtf8String(this.basePath_ + path);
 
   return this.sendRequest_(nassh.sftp.packets.RequestPackets.LSTAT, packet)
@@ -434,7 +435,7 @@ nassh.sftp.Client.prototype.linkStatus = function(path) {
  *     nassh.sftp.StatusError)
  */
 nassh.sftp.Client.prototype.fileHandleStatus = function(handle) {
-  var packet = new nassh.sftp.Packet();
+  const packet = new nassh.sftp.Packet();
   packet.setString(handle);
 
   return this.sendRequest_(nassh.sftp.packets.RequestPackets.FSTAT, packet)
@@ -456,12 +457,12 @@ nassh.sftp.Client.prototype.fileHandleStatus = function(handle) {
  *     nassh.sftp.StatusError)
  */
 nassh.sftp.Client.prototype.setFileStatus = function(path, attrs) {
-  var packet = new nassh.sftp.Packet();
+  const packet = new nassh.sftp.Packet();
   packet.setUtf8String(this.basePath_ + path);
   nassh.sftp.packets.setFileAttrs(packet, attrs);
 
   return this.sendRequest_(nassh.sftp.packets.RequestPackets.SETSTAT, packet)
-    .then(response => this.isSuccessResponse_(response, 'SETSTAT'));
+    .then((response) => this.isSuccessResponse_(response, 'SETSTAT'));
 };
 
 /**
@@ -475,12 +476,12 @@ nassh.sftp.Client.prototype.setFileStatus = function(path, attrs) {
  *     nassh.sftp.StatusError)
  */
 nassh.sftp.Client.prototype.setFileHandleStatus = function(handle, attrs) {
-  var packet = new nassh.sftp.Packet();
+  const packet = new nassh.sftp.Packet();
   packet.setString(handle);
   nassh.sftp.packets.setFileAttrs(packet, attrs);
 
   return this.sendRequest_(nassh.sftp.packets.RequestPackets.FSETSTAT, packet)
-    .then(response => this.isSuccessResponse_(response, 'FSETSTAT'));
+    .then((response) => this.isSuccessResponse_(response, 'FSETSTAT'));
 };
 
 
@@ -492,7 +493,7 @@ nassh.sftp.Client.prototype.setFileHandleStatus = function(handle, attrs) {
  *    directory handle, or rejects (usually with an nassh.sftp.StatusError)
  */
 nassh.sftp.Client.prototype.openDirectory = function(path) {
-  var packet = new nassh.sftp.Packet();
+  const packet = new nassh.sftp.Packet();
   packet.setUtf8String(this.basePath_ + path);
 
   return this.sendRequest_(nassh.sftp.packets.RequestPackets.OPENDIR, packet)
@@ -500,7 +501,7 @@ nassh.sftp.Client.prototype.openDirectory = function(path) {
         return this.isExpectedResponse_(
             response, nassh.sftp.packets.HandlePacket, 'OPENDIR');
       })
-      .then(response => response.handle);
+      .then((response) => response.handle);
 };
 
 
@@ -513,11 +514,11 @@ nassh.sftp.Client.prototype.openDirectory = function(path) {
  *     nassh.sftp.StatusError)
  */
 nassh.sftp.Client.prototype.readDirectory = function(handle) {
-  var packet = new nassh.sftp.Packet();
+  const packet = new nassh.sftp.Packet();
   packet.setString(handle);
 
   return this.sendRequest_(nassh.sftp.packets.RequestPackets.READDIR, packet)
-    .then(response => this.isNameResponse_(response, 'READDIR'));
+    .then((response) => this.isNameResponse_(response, 'READDIR'));
 };
 
 /**
@@ -590,7 +591,8 @@ nassh.sftp.Client.prototype.scanDirectory = function(handle, filter) {
  * @return {!Promise<!nassh.sftp.packets.StatusPacket>} A Promise that resolves
  *     or rejects with a nassh.sftp.StatusError.
  */
-nassh.sftp.Client.prototype.removeDirectory = function(path, recursive=false) {
+nassh.sftp.Client.prototype.removeDirectory = function(
+    path, recursive = false) {
   // Low level directory remove packet.  Only works if the dir is already empty.
   const rmdir = (path) => {
     const packet = new nassh.sftp.Packet();
@@ -647,7 +649,7 @@ nassh.sftp.Client.prototype.removeDirectory = function(path, recursive=false) {
  *     remote file handle, or rejects (usually with an nassh.sftp.StatusError)
  */
 nassh.sftp.Client.prototype.openFile = function(path, pflags) {
-  var packet = new nassh.sftp.Packet();
+  const packet = new nassh.sftp.Packet();
   packet.setUtf8String(this.basePath_ + path);
   packet.setUint32(pflags); // open flags
   packet.setUint32(0); // default attr values
@@ -674,13 +676,13 @@ nassh.sftp.Client.prototype.openFile = function(path, pflags) {
  *    file data, or rejects (usually with an nassh.sftp.StatusError)
  */
 nassh.sftp.Client.prototype.readChunk = function(handle, offset, len) {
-  var packet = new nassh.sftp.Packet();
+  const packet = new nassh.sftp.Packet();
   packet.setString(handle);
-  packet.setUint64(offset); //offset
+  packet.setUint64(offset); // offset
   packet.setUint32(len); // max bytes per packet
 
   return this.sendRequest_(nassh.sftp.packets.RequestPackets.READ, packet)
-    .then(response => {
+    .then((response) => {
       if (response instanceof nassh.sftp.packets.StatusPacket) {
         if (response.code != nassh.sftp.packets.StatusCodes.EOF) {
           throw new nassh.sftp.StatusError(response, 'READ');
@@ -709,13 +711,13 @@ nassh.sftp.Client.prototype.readChunk = function(handle, offset, len) {
  * the fragments.
  *
  * @param {string} handle The handle of the remote file.
- * @param {function(string)} callback The function called on every chunk.
+ * @param {function(!ArrayBuffer)} callback The function called on every chunk.
  * @param {number=} offset The offset to start reading from.
  * @param {number=} length The maximum number of bytes to read.
  * @return {!Promise}
  */
 nassh.sftp.Client.prototype.readChunks = function(
-    handle, callback, offset = 0, length) {
+    handle, callback, offset = 0, length = undefined) {
   // How many bytes we've read so far.
   let bytesRead = 0;
 
@@ -763,7 +765,7 @@ nassh.sftp.Client.prototype.readChunks = function(
     if (canceled) {
       return;
     }
-    let ret = doRead();
+    const ret = doRead();
 
     // Let the caller process this chunk.
     if (callback(chunk) === false) {
@@ -785,13 +787,13 @@ nassh.sftp.Client.prototype.readChunks = function(
  * automatically by calling the user's callback.
  *
  * @param {string} path The handle of the remote file.
- * @param {function(string)} callback The function called on every chunk.
+ * @param {function(!ArrayBuffer)} callback The function called on every chunk.
  * @param {number=} offset The offset to start reading from.
  * @param {number=} length The maximum number of bytes to read.
  * @return {!Promise}
  */
 nassh.sftp.Client.prototype.readFile = function(
-      path, callback, offset = 0, length) {
+      path, callback, offset = 0, length = undefined) {
   return this.openFile(path, nassh.sftp.packets.OpenFlags.READ)
     .then((handle) => {
       return this.readChunks(handle, callback, offset, length)
@@ -807,11 +809,11 @@ nassh.sftp.Client.prototype.readFile = function(
  *     or rejects with a nassh.sftp.StatusError
  */
 nassh.sftp.Client.prototype.closeFile = function(handle) {
-  var packet = new nassh.sftp.Packet();
+  const packet = new nassh.sftp.Packet();
   packet.setString(handle);
 
   return this.sendRequest_(nassh.sftp.packets.RequestPackets.CLOSE, packet)
-    .then(response => this.isSuccessResponse_(response, 'CLOSE'));
+    .then((response) => this.isSuccessResponse_(response, 'CLOSE'));
 };
 
 /**
@@ -828,8 +830,8 @@ nassh.sftp.Client.prototype.closeFile = function(handle) {
  * @return {!Promise<!nassh.sftp.packets.StatusPacket>} A Promise that resolves
  *     or rejects with a nassh.sftp.StatusError
  */
-nassh.sftp.Client.prototype.copyData =
-    function(readHandle, writeHandle, length=0, readOffset=0, writeOffset=0) {
+nassh.sftp.Client.prototype.copyData = function(
+    readHandle, writeHandle, length = 0, readOffset = 0, writeOffset = 0) {
   const packet = new nassh.sftp.Packet();
   packet.setString(readHandle);
   packet.setUint64(readOffset);
@@ -849,11 +851,11 @@ nassh.sftp.Client.prototype.copyData =
  *     or rejects with a nassh.sftp.StatusError
  */
 nassh.sftp.Client.prototype.removeFile = function(path) {
-  var packet = new nassh.sftp.Packet();
+  const packet = new nassh.sftp.Packet();
   packet.setUtf8String(this.basePath_ + path);
 
   return this.sendRequest_(nassh.sftp.packets.RequestPackets.REMOVE, packet)
-    .then(response => this.isSuccessResponse_(response, 'REMOVE'));
+    .then((response) => this.isSuccessResponse_(response, 'REMOVE'));
 };
 
 
@@ -866,7 +868,7 @@ nassh.sftp.Client.prototype.removeFile = function(path) {
  *     or rejects with a nassh.sftp.StatusError
  */
 nassh.sftp.Client.prototype.renameFile = function(sourcePath, targetPath) {
-  var packet = new nassh.sftp.Packet();
+  const packet = new nassh.sftp.Packet();
 
   let type;
   if (this.protocolServerExtensions['posix-rename@openssh.com'] == '1') {
@@ -878,7 +880,7 @@ nassh.sftp.Client.prototype.renameFile = function(sourcePath, targetPath) {
   packet.setUtf8String(this.basePath_ + targetPath);
 
   return this.sendRequest_(type, packet)
-    .then(response => this.isSuccessResponse_(response, 'RENAME'));
+    .then((response) => this.isSuccessResponse_(response, 'RENAME'));
 };
 
 /**
@@ -897,14 +899,14 @@ nassh.sftp.Client.prototype.writeChunk = function(handle, offset, data) {
   // Accept any typed array form.
   data = new Uint8Array(data);
 
-  var packet = new nassh.sftp.Packet();
+  const packet = new nassh.sftp.Packet();
   packet.setString(handle);
   packet.setUint64(offset);
   packet.setUint32(data.length);
   packet.setData(data);
 
   return this.sendRequest_(nassh.sftp.packets.RequestPackets.WRITE, packet)
-    .then(response => this.isSuccessResponse_(response, 'WRITE'));
+    .then((response) => this.isSuccessResponse_(response, 'WRITE'));
 };
 
 
@@ -917,12 +919,12 @@ nassh.sftp.Client.prototype.writeChunk = function(handle, offset, data) {
  *     nassh.sftp.StatusError)
  */
 nassh.sftp.Client.prototype.makeDirectory = function(path) {
-  var packet = new nassh.sftp.Packet();
+  const packet = new nassh.sftp.Packet();
   packet.setUtf8String(this.basePath_ + path);
   packet.setUint32(0); // flags, 0b0000, no modified attributes
 
   return this.sendRequest_(nassh.sftp.packets.RequestPackets.MKDIR, packet)
-    .then(response => this.isSuccessResponse_(response, 'MKDIR'));
+    .then((response) => this.isSuccessResponse_(response, 'MKDIR'));
 };
 
 
@@ -934,11 +936,11 @@ nassh.sftp.Client.prototype.makeDirectory = function(path) {
  *     with the remote path, or rejects (usually with an nassh.sftp.StatusError)
  */
 nassh.sftp.Client.prototype.realPath = function(path) {
-  var packet = new nassh.sftp.Packet();
+  const packet = new nassh.sftp.Packet();
   packet.setUtf8String(this.basePath_ + path);
 
   return this.sendRequest_(nassh.sftp.packets.RequestPackets.REALPATH, packet)
-    .then(response => this.isNameResponse_(response, 'REALPATH'));
+    .then((response) => this.isNameResponse_(response, 'REALPATH'));
 };
 
 
@@ -950,11 +952,11 @@ nassh.sftp.Client.prototype.realPath = function(path) {
  *     with the remote path, or rejects (usually with an nassh.sftp.StatusError)
  */
 nassh.sftp.Client.prototype.readLink = function(path) {
-  var packet = new nassh.sftp.Packet();
+  const packet = new nassh.sftp.Packet();
   packet.setUtf8String(this.basePath_ + path);
 
   return this.sendRequest_(nassh.sftp.packets.RequestPackets.READLINK, packet)
-    .then(response => this.isNameResponse_(response, 'READLINK'));
+    .then((response) => this.isNameResponse_(response, 'READLINK'));
 };
 
 
@@ -970,12 +972,12 @@ nassh.sftp.Client.prototype.readLink = function(path) {
  *     with the remote path, or rejects (usually with an nassh.sftp.StatusError)
  */
 nassh.sftp.Client.prototype.symLink = function(target, path) {
-  var packet = new nassh.sftp.Packet();
+  const packet = new nassh.sftp.Packet();
   packet.setUtf8String(target);
   packet.setUtf8String(this.basePath_ + path);
 
   return this.sendRequest_(nassh.sftp.packets.RequestPackets.SYMLINK, packet)
-    .then(response => this.isSuccessResponse_(response, 'SYMLINK'));
+    .then((response) => this.isSuccessResponse_(response, 'SYMLINK'));
 };
 
 /**

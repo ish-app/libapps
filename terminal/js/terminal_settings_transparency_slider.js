@@ -45,10 +45,9 @@ export class TransparencySliderElement extends LitElement {
           background-position: 0px 0, 5px 5px;
           background-size: 10px 10px, 10px 10px;
           border-radius: 4px;
-          box-shadow: 1px 1px 2px rgba(0,0,0,0.3);
           cursor: pointer;
           display: block;
-          height: 12px;
+          height: 16px;
           position: relative;
           width: 200px;
         }
@@ -63,16 +62,17 @@ export class TransparencySliderElement extends LitElement {
         #picker {
           border-radius: 100%;
           border: 2px solid white;
-          box-shadow: 1px 1px 2px;
+          border: 4px solid white;
+          box-shadow: 0 0 0 1px #5F6368;
           box-sizing: border-box;
           cursor: pointer;
-          height: 24px;
+          height: 32px;
           left: 50%;
           pointer-events: none;
           position: absolute;
           top: 50%;
           transform: translate(-50%, -50%);
-          width: 24px;
+          width: 32px;
           z-index: 2;
         }
     `;
@@ -103,22 +103,41 @@ export class TransparencySliderElement extends LitElement {
   connectedCallback() {
     super.connectedCallback();
 
-    this.addEventListener('click', this.onClick_);
+    this.addEventListener('pointerdown', this.onPointerDown_);
+    this.addEventListener('pointerup', this.onPointerUp_);
   }
 
   /** @override */
   disconnectedCallback() {
-    this.removeEventListener('click', this.onClick_);
+    this.removeEventListener('pointerdown', this.onPointerDown_);
+    this.removeEventListener('pointerup', this.onPointerUp_);
 
     super.disconnectedCallback();
   }
 
   /** @param {!Event} event */
-  onClick_(event) {
-    const xPercent = lib.f.clamp(event.offsetX / this.clientWidth, 0, 1);
+  onPointerDown_(event) {
+    this.addEventListener('pointermove', this.onPointerMove_);
+    this.setPointerCapture(event.pointerId);
+    this.update_(event);
+  }
 
-    this.transparency = xPercent;
+  /** @param {!Event} event */
+  onPointerMove_(event) {
+    this.update_(event);
+  }
 
+  /** @param {!Event} event */
+  onPointerUp_(event) {
+    this.removeEventListener('pointermove', this.onPointerMove_);
+    this.releasePointerCapture(event.pointerId);
+    this.update_(event);
+  }
+
+  /** @param {!Event} event */
+  update_(event) {
+    this.transparency = lib.f.clamp(
+        event.offsetX / this.clientWidth, 0, 1);
     this.dispatchEvent(new CustomEvent('updated', {bubbles: true}));
   }
 }

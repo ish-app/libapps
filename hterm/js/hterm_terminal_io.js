@@ -42,19 +42,17 @@ hterm.Terminal.IO = function(terminal) {
 /**
  * Show the terminal overlay for a given amount of time.
  *
- * The terminal overlay appears in inverse video in a large font, centered
- * over the terminal.  You should probably keep the overlay message brief,
- * since it's in a large font and you probably aren't going to check the size
- * of the terminal first.
+ * The terminal overlay appears in inverse video, centered over the terminal.
  *
  * @param {string} message The text (not HTML) message to display in the
  *     overlay.
- * @param {number=} opt_timeout The amount of time to wait before fading out
+ * @param {number=} timeout The amount of time to wait before fading out
  *     the overlay.  Defaults to 1.5 seconds.  Pass null to have the overlay
  *     stay up forever (or until the next overlay).
  */
-hterm.Terminal.IO.prototype.showOverlay = function(message, opt_timeout) {
-  this.terminal_.showOverlay(message, opt_timeout);
+hterm.Terminal.IO.prototype.showOverlay = function(
+    message, timeout = undefined) {
+  this.terminal_.showOverlay(message, timeout);
 };
 
 /**
@@ -74,11 +72,11 @@ hterm.Terminal.IO.prototype.hideOverlay = function() {
  * The user should also be able to move/resize the frame.
  *
  * @param {string} url The URL to load in the frame.
- * @param {!Object=} opt_options Optional frame options.  Not implemented.
+ * @param {!Object=} options Optional frame options.  Not implemented.
  * @return {!hterm.Frame}
  */
-hterm.Terminal.IO.prototype.createFrame = function(url, opt_options) {
-  return new hterm.Frame(this.terminal_, url, opt_options);
+hterm.Terminal.IO.prototype.createFrame = function(url, options = undefined) {
+  return new hterm.Frame(this.terminal_, url, options);
 };
 
 /**
@@ -100,7 +98,7 @@ hterm.Terminal.IO.prototype.setTerminalProfile = function(profileName) {
  * @return {!hterm.Terminal.IO} The new foreground IO instance.
  */
 hterm.Terminal.IO.prototype.push = function() {
-  var io = new hterm.Terminal.IO(this.terminal_);
+  const io = new hterm.Terminal.IO(this.terminal_);
   io.keyboardCaptured_ = this.keyboardCaptured_;
 
   io.columnCount = this.columnCount;
@@ -166,7 +164,7 @@ hterm.Terminal.IO.prototype.onVTKeystroke = function(string) {
  * @param {number} height The new terminal height.
  */
 hterm.Terminal.IO.prototype.onTerminalResize_ = function(width, height) {
-  var obj = this;
+  let obj = this;
   while (obj) {
     obj.columnCount = width;
     obj.rowCount = height;

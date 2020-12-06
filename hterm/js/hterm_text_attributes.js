@@ -40,8 +40,10 @@ hterm.TextAttributes = function(document) {
   /** @type {symbol|string} */
   this.underlineColor = this.DEFAULT_COLOR;
 
-  this.defaultForeground = 'rgb(255, 255, 255)';
-  this.defaultBackground = 'rgb(0, 0, 0)';
+  /** @const */
+  this.defaultForeground = 'rgb(var(--hterm-foreground-color))';
+  /** @const */
+  this.defaultBackground = 'rgb(var(--hterm-background-color))';
 
   // Any attributes added here that do not default to falsey (e.g. undefined or
   // null) require a bit more care.  createContainer has to always attach the
@@ -63,8 +65,12 @@ hterm.TextAttributes = function(document) {
   /** @type {?string} */
   this.uriId = null;
 
-  this.colorPalette = null;
-  this.resetColorPalette();
+  /**
+   * Colors set different to defaults in lib.colors.colorPalette.
+   *
+   * @type {!Array<string>}
+   */
+  this.colorPaletteOverrides = [];
 };
 
 /**
@@ -107,21 +113,21 @@ hterm.TextAttributes.prototype.setDocument = function(document) {
  * @return {!hterm.TextAttributes} A deep copy of this object.
  */
 hterm.TextAttributes.prototype.clone = function() {
-  var rv = new hterm.TextAttributes();
+  const rv = new hterm.TextAttributes();
 
-  for (var key in this) {
+  for (const key in this) {
     rv[key] = this[key];
   }
 
-  rv.colorPalette = this.colorPalette.concat();
+  rv.colorPaletteOverrides = this.colorPaletteOverrides.concat();
   return rv;
 };
 
 /**
  * Reset the current set of attributes.
  *
- * This does not affect the palette.  Use resetColorPalette() for that.
- * It also doesn't affect the tile data, it's not meant to.
+ * This does not affect the palette.  Use terminal.resetColorPalette() for
+ * that.  It also doesn't affect the tile data, it's not meant to.
  */
 hterm.TextAttributes.prototype.reset = function() {
   this.foregroundSource = this.SRC_DEFAULT;
@@ -142,28 +148,6 @@ hterm.TextAttributes.prototype.reset = function() {
   this.asciiNode = true;
   this.uri = null;
   this.uriId = null;
-};
-
-/**
- * Reset the color palette to the default state.
- */
-hterm.TextAttributes.prototype.resetColorPalette = function() {
-  this.colorPalette = lib.colors.colorPalette.concat();
-  this.syncColors();
-};
-
-/**
- * Reset the color.
- *
- * @param {number|string} index The color index in the palette to reset.
- */
-hterm.TextAttributes.prototype.resetColor = function(index) {
-  index = parseInt(index, 10);
-  if (isNaN(index) || index >= this.colorPalette.length)
-    return;
-
-  this.colorPalette[index] = lib.colors.stockColorPalette[index];
-  this.syncColors();
 };
 
 /**
@@ -199,38 +183,42 @@ hterm.TextAttributes.prototype.isDefault = function() {
  * Each vt_tiledata tile is also represented by a span with a single
  * character, with CSS classes '.tile' and '.tile_<glyph number>'.
  *
- * @param {string=} opt_textContent Optional text content for the new container.
+ * @param {string=} textContent Optional text content for the new container.
  * @return {!Node} An HTML span or text nodes styled to match the current
  *     attributes.
  */
-hterm.TextAttributes.prototype.createContainer = function(
-    opt_textContent = '') {
+hterm.TextAttributes.prototype.createContainer = function(textContent = '') {
   if (this.isDefault()) {
     // Only attach attributes where we need an explicit default for the
     // matchContainer logic below.
-    const node = this.document_.createTextNode(opt_textContent);
+    const node = this.document_.createTextNode(textContent);
     node.asciiNode = true;
     return node;
   }
 
-  var span = this.document_.createElement('span');
-  var style = span.style;
-  var classes = [];
+  const span = this.document_.createElement('span');
+  const style = span.style;
+  const classes = [];
 
-  if (this.foreground != this.DEFAULT_COLOR)
+  if (this.foreground != this.DEFAULT_COLOR) {
     style.color = this.foreground.toString();
+  }
 
-  if (this.background != this.DEFAULT_COLOR)
+  if (this.background != this.DEFAULT_COLOR) {
     style.backgroundColor = this.background.toString();
+  }
 
-  if (this.enableBold && this.bold)
+  if (this.enableBold && this.bold) {
     style.fontWeight = 'bold';
+  }
 
-  if (this.faint)
+  if (this.faint) {
     span.faint = true;
+  }
 
-  if (this.italic)
+  if (this.italic) {
     style.fontStyle = 'italic';
+  }
 
   if (this.blink) {
     classes.push('blink-node');
@@ -243,14 +231,16 @@ hterm.TextAttributes.prototype.createContainer = function(
     textDecorationLine += ' underline';
     style.textDecorationStyle = this.underline;
   }
-  if (this.underlineColor != this.DEFAULT_COLOR)
+  if (this.underlineColor != this.DEFAULT_COLOR) {
     style.textDecorationColor = this.underlineColor;
+  }
   if (this.strikethrough) {
     textDecorationLine += ' line-through';
     span.strikethrough = true;
   }
-  if (textDecorationLine)
+  if (textDecorationLine) {
     style.textDecorationLine = textDecorationLine;
+  }
 
   if (this.wcNode) {
     classes.push('wc-node');
@@ -264,8 +254,9 @@ hterm.TextAttributes.prototype.createContainer = function(
     span.tileNode = true;
   }
 
-  if (opt_textContent)
-    span.textContent = opt_textContent;
+  if (textContent) {
+    span.textContent = textContent;
+  }
 
   if (this.uri) {
     classes.push('uri-node');
@@ -274,8 +265,9 @@ hterm.TextAttributes.prototype.createContainer = function(
     span.addEventListener('click', hterm.openUrl.bind(this, this.uri));
   }
 
-  if (classes.length)
+  if (classes.length) {
     span.className = classes.join(' ');
+  }
 
   return span;
 };
@@ -294,10 +286,11 @@ hterm.TextAttributes.prototype.createContainer = function(
  *     this attributes instance.
  */
 hterm.TextAttributes.prototype.matchesContainer = function(obj) {
-  if (typeof obj == 'string' || obj.nodeType == Node.TEXT_NODE)
+  if (typeof obj == 'string' || obj.nodeType == Node.TEXT_NODE) {
     return this.isDefault();
+  }
 
-  var style = obj.style;
+  const style = obj.style;
 
   // We don't want to put multiple characters in a wcNode or a tile.
   // See the comments in createContainer.
@@ -319,21 +312,6 @@ hterm.TextAttributes.prototype.matchesContainer = function(obj) {
           this.italic == !!style.fontStyle &&
           this.underline == obj.underline &&
           !!this.strikethrough == !!obj.strikethrough);
-};
-
-/**
- * Set default foreground & background colors.
- *
- * @param {?string} foreground The terminal foreground color for use as
- *     inverse text background.
- * @param {?string} background The terminal background color for use as
- *     inverse text foreground.
- */
-hterm.TextAttributes.prototype.setDefaults = function(foreground, background) {
-  this.defaultForeground = foreground;
-  this.defaultBackground = background;
-
-  this.syncColors();
 };
 
 /**
@@ -376,7 +354,7 @@ hterm.TextAttributes.prototype.syncColors = function() {
     if (source == this.SRC_DEFAULT) {
       return this.DEFAULT_COLOR;
     } else if (typeof source == 'number' && Number.isInteger(source)) {
-      return this.colorPalette[source];
+      return `rgb(var(--hterm-color-${source}))`;
     } else {
       return source.toString();
     }
@@ -385,9 +363,15 @@ hterm.TextAttributes.prototype.syncColors = function() {
   this.foreground = colorFromSource(this.foregroundSource);
 
   if (this.faint) {
-    const colorToMakeFaint =
-        getDefaultColor(this.foreground, this.defaultForeground);
-    this.foreground = lib.colors.mix(colorToMakeFaint, 'rgb(0, 0, 0)', 0.3333);
+    if (this.foreground == this.DEFAULT_COLOR) {
+      this.foreground = 'rgba(var(--hterm-foreground-color), 0.67)';
+    } else if (typeof this.foregroundSource == 'number' &&
+        Number.isInteger(this.foregroundSource)) {
+      this.foreground =
+          `rgba(var(--hterm-color-${this.foregroundSource}), 0.67)`;
+    } else {
+      this.foreground = lib.colors.setAlpha(this.foreground.toString(), 0.67);
+    }
   }
 
   this.background = colorFromSource(this.backgroundSource);
@@ -401,8 +385,9 @@ hterm.TextAttributes.prototype.syncColors = function() {
   }
 
   // Process invisible settings last to keep it simple.
-  if (this.invisible)
+  if (this.invisible) {
     this.foreground = this.background;
+  }
 
   this.underlineColor = colorFromSource(this.underlineSource);
 };
@@ -418,17 +403,20 @@ hterm.TextAttributes.prototype.syncColors = function() {
  * @return {boolean} True if the containers have the same style.
  */
 hterm.TextAttributes.containersMatch = function(obj1, obj2) {
-  if (typeof obj1 == 'string')
+  if (typeof obj1 == 'string') {
     return hterm.TextAttributes.containerIsDefault(obj2);
+  }
 
-  if (obj1.nodeType != obj2.nodeType)
+  if (obj1.nodeType != obj2.nodeType) {
     return false;
+  }
 
-  if (obj1.nodeType == Node.TEXT_NODE)
+  if (obj1.nodeType == Node.TEXT_NODE) {
     return true;
+  }
 
-  var style1 = obj1.style;
-  var style2 = obj2.style;
+  const style1 = obj1.style;
+  const style2 = obj2.style;
 
   return (style1.color == style2.color &&
           style1.backgroundColor == style2.backgroundColor &&
@@ -450,7 +438,7 @@ hterm.TextAttributes.containersMatch = function(obj1, obj2) {
  * @return {boolean} True if the object is unstyled.
  */
 hterm.TextAttributes.containerIsDefault = function(obj) {
-  return typeof obj == 'string'  || obj.nodeType == Node.TEXT_NODE;
+  return typeof obj == 'string' || obj.nodeType == Node.TEXT_NODE;
 };
 
 /**

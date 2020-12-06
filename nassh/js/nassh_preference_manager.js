@@ -9,11 +9,11 @@
  *
  * This is currently just an ordered list of known connection profiles.
  *
- * @param {!Storage=} storage
+ * @param {!lib.Storage=} storage
  * @constructor
  * @extends {lib.PreferenceManager}
  */
-nassh.PreferenceManager = function(storage) {
+nassh.PreferenceManager = function(storage = undefined) {
   if (!storage) {
     storage = nassh.defaultStorage;
   }
@@ -40,36 +40,6 @@ nassh.PreferenceManager.prototype =
     Object.create(lib.PreferenceManager.prototype);
 /** @override */
 nassh.PreferenceManager.constructor = nassh.PreferenceManager;
-
-/**
- * Entry point when loading the nassh preferences.
- *
- * @param {function()=} callback Callback when the storage is loaded.
- * @override
- */
-nassh.PreferenceManager.prototype.readStorage = function(callback) {
-  // Handle renaming the "relay-options" field to "nassh-options".
-  // We can probably delete this migration by Dec 2019.
-  const onRead = () => {
-    const profiles = this.get('profile-ids');
-    profiles.forEach((id) => {
-      const profile = this.getProfile(id);
-      const oldName = `${profile.prefix}relay-options`;
-      profile.storage.getItems([oldName], (items) => {
-        if (oldName in items) {
-          profile.set('nassh-options', items[oldName]);
-          profile.storage.removeItem(oldName);
-        }
-      });
-    });
-
-    if (callback) {
-      callback();
-    }
-  };
-
-  lib.PreferenceManager.prototype.readStorage.call(this, onRead);
-};
 
 /** @return {!nassh.PreferenceManager} */
 nassh.PreferenceManager.prototype.createProfile = function() {
@@ -105,8 +75,7 @@ nassh.ProfilePreferenceManager = function(parent, id) {
 
   this.id = id;
 
-  this.definePreferences
-  ([
+  this.definePreferences([
     /**
      * The free-form description of this connection profile.
      */
@@ -155,15 +124,122 @@ nassh.ProfilePreferenceManager = function(parent, id) {
      * The base path used when mounting via SFTP.
      */
     ['mount-path', ''],
-
-    /**
-     * The appid to which to pass auth-agent requests.
-     */
-    ['auth-agent-appid', null],
-   ]);
+  ]);
 };
 
 nassh.ProfilePreferenceManager.prototype =
     Object.create(lib.PreferenceManager.prototype);
 /** @override */
 nassh.ProfilePreferenceManager.constructor = nassh.ProfilePreferenceManager;
+
+/**
+ * Settings that are not synced between systems.
+ *
+ * Most code should use nassh.PreferenceManager instead which syncs user
+ * settings between systems.
+ *
+ * @param {!lib.Storage=} storage
+ * @constructor
+ * @extends {lib.PreferenceManager}
+ */
+nassh.LocalPreferenceManager = function(storage = undefined) {
+  if (!storage) {
+    storage = new lib.Storage.Local();
+  }
+  lib.PreferenceManager.call(this, storage, '/nassh/');
+
+  this.definePreferences([
+    /* The last profile the user selected. */
+    ['connectDialog/lastProfileId', ''],
+  ]);
+
+  this.defineChildren('profile-ids', function(parent, id) {
+    return new nassh.ProfileLocalPreferenceManager(parent, id);
+  });
+};
+
+nassh.LocalPreferenceManager.prototype =
+    Object.create(lib.PreferenceManager.prototype);
+/** @override */
+nassh.LocalPreferenceManager.constructor = nassh.LocalPreferenceManager;
+
+/**
+ * Sync remote & local profiles to simplify code.
+ *
+ * @param {!nassh.PreferenceManager} remotePrefs The remote set of profiles to
+ *     sync against.
+ */
+nassh.LocalPreferenceManager.prototype.syncProfiles = function(remotePrefs) {
+  const localIds = new Set(
+      /** @type {!Array<string>} */ (this.get('profile-ids')));
+  const remoteIds = new Set(
+      /** @type {!Array<string>} */ (remotePrefs.get('profile-ids')));
+
+  // Delete any local prefs that no longer exist.
+  localIds.forEach((id) => {
+    if (!remoteIds.has(id)) {
+      this.removeProfile(id);
+    }
+  });
+
+  // Initialize local perfs that have shown up from the remote.
+  remoteIds.forEach((id) => {
+    if (!localIds.has(id)) {
+      this.createProfile(id);
+    }
+  });
+};
+
+/**
+ * Create a new profile child.
+ *
+ * @param {string=} id The specific profile id to use.
+ * @return {!nassh.LocalPreferenceManager}
+ */
+nassh.LocalPreferenceManager.prototype.createProfile = function(
+    id = undefined) {
+  return /** @type {!nassh.LocalPreferenceManager} */ (
+      this.createChild('profile-ids', undefined, id));
+};
+
+/** @param {string} id */
+nassh.LocalPreferenceManager.prototype.removeProfile = function(id) {
+  this.removeChild('profile-ids', id);
+};
+
+/**
+ * @param {string} id
+ * @return {!nassh.LocalPreferenceManager}
+ */
+nassh.LocalPreferenceManager.prototype.getProfile = function(id) {
+  return /** @type {!nassh.LocalPreferenceManager} */ (
+      this.getChild('profile-ids', id));
+};
+
+/**
+ * lib.PreferenceManager subclass managing per-connection preferences.
+ *
+ * @param {!lib.PreferenceManager} parent
+ * @param {string} id
+ * @constructor
+ * @extends {lib.PreferenceManager}
+ */
+nassh.ProfileLocalPreferenceManager = function(parent, id) {
+  lib.PreferenceManager.call(this, parent.storage, `/nassh/profiles/${id}`);
+
+  this.id = id;
+
+  this.definePreferences([
+    ['win/top', '0'],
+    ['win/left', '0'],
+    ['win/height', '600'],
+    ['win/width', '900'],
+    ['win/state', 'normal'],
+  ]);
+};
+
+nassh.ProfileLocalPreferenceManager.prototype =
+    Object.create(lib.PreferenceManager.prototype);
+/** @override */
+nassh.ProfileLocalPreferenceManager.constructor =
+    nassh.ProfileLocalPreferenceManager;

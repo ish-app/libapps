@@ -46,7 +46,7 @@ it('splitCommandLine', () => {
     ['-x "--" ls "a b c"', ['-x', '--', 'ls', 'a b c'], ''],
 
     // Our parser doesn't handle more complicated quoting (yet?).
-    //['-o"foo bar" -o "foo bar"', ['-ofoo bar', '-o', 'foo bar'], ''],
+    // ['-o"foo bar" -o "foo bar"', ['-ofoo bar', '-o', 'foo bar'], ''],
   ];
 
   data.forEach((dataSet) => {
@@ -90,9 +90,32 @@ describe('parseURI', () => {
 
     // Relay host extensions.
     ['u@h@relay', {'username': 'u', 'hostname': 'h', 'relayHostname': 'relay'}],
+    ['u@h:20@relay',
+     {'username': 'u', 'hostname': 'h', 'port': '20',
+      'relayHostname': 'relay'}],
     ['u@h@relay:2234',
      {'username': 'u', 'hostname': 'h', 'relayHostname': 'relay',
       'relayPort': '2234'}],
+    ['u@h:20@relay:2234',
+     {'username': 'u', 'hostname': 'h', 'port': '20', 'relayHostname': 'relay',
+      'relayPort': '2234'}],
+
+    // Relay hosts using IPv6.
+    ['u@h@[::1]', {'username': 'u', 'hostname': 'h', 'relayHostname': '::1'}],
+    ['u@h:20@[::1]',
+     {'username': 'u', 'hostname': 'h', 'port': '20', 'relayHostname': '::1'}],
+    ['u@h@[::1%eth0]',
+     {'username': 'u', 'hostname': 'h', 'relayHostname': '::1%eth0'}],
+    ['u@h:20@[::1]:2234',
+     {'username': 'u', 'hostname': 'h', 'port': '20', 'relayHostname': '::1',
+      'relayPort': '2234'}],
+
+    // Both using IPv6.
+    ['u@[::1]@[::1]',
+     {'username': 'u', 'hostname': '::1', 'relayHostname': '::1'}],
+    ['u@[::1]:20@[::1]:40',
+     {'username': 'u', 'hostname': '::1', 'port': '20', 'relayHostname': '::1',
+      'relayPort': '40'}],
 
     // Accpetable escaped forms.
     ['u%40g@h', {'username': 'u@g', 'hostname': 'h'}],
@@ -152,7 +175,7 @@ describe('parseURI', () => {
     it(uri, () => {
       const rv = nassh.CommandInstance.parseURI(uri, true, true);
       if (rv === null) {
-        assert.isNull(rv);
+        assert.isNull(fields);
       } else {
         const expected = Object.assign({'uri': uri}, defaultFields, fields);
         assert.deepStrictEqual(rv, expected);
@@ -220,7 +243,7 @@ it('tokenizeOptions', () => {
       // Check options w/values.
       '--config=google ' +
       // Check off options.
-      '--no-use-xhr '
+      '--no-use-xhr ',
   );
   assert.equal('object', typeof rv);
   assert.isTrue(rv['--report-ack-latency']);
@@ -253,7 +276,7 @@ describe('proxy-host-addresses', () => {
       let rv = nassh.CommandInstance.tokenizeOptions(`--proxy-host=${host}`);
       assert.equal(rv['--proxy-host'], host);
       // Then verify the post processing phase.
-      rv = nassh.CommandInstance.postProcessOptions(rv, host);
+      rv = nassh.CommandInstance.postProcessOptions(rv, host, '');
       assert.equal(rv['--proxy-host'], expected);
     });
   });
@@ -266,33 +289,38 @@ describe('default-proxy-host', () => {
   const tests = [
     // Proxy host unrelated to Google.
     ['--proxy-host=proxy.example.com', 'example.com',
-     undefined, 'proxy.example.com'],
+     undefined, 'proxy.example.com', 'root'],
 
     // Default Google settings.
     ['--config=google', 'example.com',
-     '443', 'ssh-relay.corp.google.com'],
+     '443', 'ssh-relay.corp.google.com', 'root'],
 
     // Default cloudtop Google settings.
     ['--config=google', 'example.c.googlers.com',
-     '443', 'sup-ssh-relay.corp.google.com'],
+     '443', 'sup-ssh-relay.corp.google.com', 'root'],
 
     // Default internal GCE settings.
     ['--config=google', 'example.internal.gcpnode.com',
-     '443', 'sup-ssh-relay.corp.google.com'],
+     '443', 'sup-ssh-relay.corp.google.com', 'root'],
     ['--config=google', 'example.proxy.gcpnode.com',
-     '443', 'sup-ssh-relay.corp.google.com'],
+     '443', 'sup-ssh-relay.corp.google.com', 'root'],
 
     // Explicit proxy settings override defaults.
     ['--config=google --proxy-host=example.com', 'example.c.googlers.com',
-     '443', 'example.com'],
+     '443', 'example.com', 'root'],
+
+    // Username settings.
+    ['--config=google --proxy-host=example.com --proxy-user=user',
+     'example.c.googlers.com', '443', 'example.com', 'user'],
   ];
 
-  tests.forEach(([options, host, port, relay]) => {
+  tests.forEach(([options, host, port, relay, user]) => {
     it(`default relay for '${options}' & '${host}'`, () => {
       let rv = nassh.CommandInstance.tokenizeOptions(options);
-      rv = nassh.CommandInstance.postProcessOptions(rv, host);
+      rv = nassh.CommandInstance.postProcessOptions(rv, host, 'root');
       assert.equal(port, rv['--proxy-port']);
       assert.equal(relay, rv['--proxy-host']);
+      assert.equal(user, rv['--proxy-user']);
     });
   });
 });
@@ -316,7 +344,7 @@ describe('default-ssh-agent', () => {
   tests.forEach(([host, expected]) => {
     it(`forwarding for ${host}`, () => {
       let rv = nassh.CommandInstance.tokenizeOptions('--config=google');
-      rv = nassh.CommandInstance.postProcessOptions(rv, host);
+      rv = nassh.CommandInstance.postProcessOptions(rv, host, '');
       assert.equal(rv['auth-agent-forward'], expected);
     });
   });

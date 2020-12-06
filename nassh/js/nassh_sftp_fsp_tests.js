@@ -134,7 +134,9 @@ it('fsp-instance-check', function() {
   assert.isFalse(ret);
 
   // Valid ids should pass.
-  nassh.sftp.fsp.sftpInstances['1234'] = {};
+  nassh.sftp.fsp.sftpInstances['1234'] = {
+    sftpClient: /** @type {!nassh.sftp.Client} */ ({}),
+  };
   ret = nassh.sftp.fsp.checkInstanceExists('1234', assert.fail);
   assert.isTrue(ret);
 });
@@ -144,24 +146,28 @@ it('fsp-instance-check', function() {
  */
 it('fsp-sanitize-metadata', function() {
   // Reduced mock for nassh.sftp.packets.getFileAttrs like fileStatus returns.
-  const fileStat = {
+  const /** @type {!nassh.sftp.FileAttrs} */ fileStat = {
+    flags: 0,
     size: 1024,
     isDirectory: false,
     lastModified: 100,
   };
-  const dirStat = {
+  const /** @type {!nassh.sftp.FileAttrs} */ dirStat = {
+    flags: 0,
     size: 0,
     isDirectory: true,
     lastModified: 200,
   };
   // Mock for directory entry like readDirectory returns.
-  const fileEntry = Object.assign({filename: 'foo.txt'}, fileStat);
-  const dirEntry = Object.assign({filename: 'dir'}, dirStat);
+  const fileEntry = /** @type {!nassh.sftp.File} */ (
+      Object.assign({filename: 'foo.txt'}, fileStat));
+  const dirEntry = /** @type {!nassh.sftp.File} */ (
+      Object.assign({filename: 'dir'}, dirStat));
 
   let ret;
 
   // Nothing is requested so nothing is returned or even checked.
-  ret = nassh.sftp.fsp.sanitizeMetadata({}, {});
+  ret = nassh.sftp.fsp.sanitizeMetadata({flags: 0}, {});
   assert.deepStrictEqual([], Object.keys(ret));
 
   // Check each field by itself.
@@ -308,17 +314,17 @@ it('fsp-onReadDirectory-found', function(done) {
     assert.equal('./dir', path);
     return 'handle';
   };
-  let entries = [
+  const entries = [
     {filename: '.', isDirectory: true},
     {filename: '..', isDirectory: true},
     {filename: 'foo.txt', isDirectory: false},
     {filename: 'dir', isDirectory: true},
   ];
   this.client.scanDirectory.return = (handle, filter) => {
-    let filtered = [];
+    const filtered = [];
     assert.equal('handle', handle);
     entries.forEach((entry) => {
-      let ret = filter(entry);
+      const ret = filter(entry);
       if (ret === false) {
         return;
       } else if (ret !== true) {
@@ -372,7 +378,7 @@ it('fsp-onReadDirectory-symlinks', function(done) {
     const promises = [];
     assert.equal('handle', handle);
     entries.forEach((entry) => {
-      let ret = filter(entry);
+      const ret = filter(entry);
       if (ret === false) {
         return;
       } else if (ret instanceof Promise) {
@@ -861,6 +867,7 @@ it('fsp-onUnmount-exit', function() {
   // Create a dummy instance mock that has an exit method.
   let exitStatus;
   nassh.sftp.fsp.sftpInstances['id'] = {
+    sftpClient: /** @type {!nassh.sftp.Client} */ ({}),
     exit: (status) => exitStatus = status,
   };
 

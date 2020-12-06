@@ -54,7 +54,7 @@ nasftp.ProgressBar.prototype.PERCENTAGE = Symbol('Percentage');
  *
  * @param {number=} pos The new byte count.
  */
-nasftp.ProgressBar.prototype.update = function(pos) {
+nasftp.ProgressBar.prototype.update = function(pos = 0) {
   if (this.mode_ == this.RANDOM) {
     this.io_.print(`${String.fromCodePoint(this.pos_)}\r`);
     // Pick a new random code point.
@@ -72,7 +72,7 @@ nasftp.ProgressBar.prototype.update = function(pos) {
  *
  * @param {boolean=} summarize Whether to display a statistics summary.
  */
-nasftp.ProgressBar.prototype.finish = function(summarize=false) {
+nasftp.ProgressBar.prototype.finish = function(summarize = false) {
   this.endTime_ = performance.now();
   this.terminal_.eraseLine();
   this.terminal_.setCursorColumn(0);
@@ -150,16 +150,16 @@ nasftp.Cli = function(commandInstance) {
 
   // Set up keyboard shortcuts.
   this.terminal.keyboard.bindings.addBindings({
-    'Ctrl-C': this.onCtrlCKey_.bind(this),
-    'Ctrl-D': this.onCtrlDKey_.bind(this),
-    'Ctrl-H': this.onBackspaceKey_.bind(this),
-    'Ctrl-I': this.onTabKey_.bind(this),
+    'Ctrl+C': this.onCtrlCKey_.bind(this),
+    'Ctrl+D': this.onCtrlDKey_.bind(this),
+    'Ctrl+H': this.onBackspaceKey_.bind(this),
+    'Ctrl+I': this.onTabKey_.bind(this),
     // Open the brower's downloads page.
-    'Ctrl-J': hterm.Keyboard.KeyActions.PASS,
-    'Ctrl-L': this.onCtrlLKey_.bind(this),
-    'Ctrl-U': this.onCtrlUKey_.bind(this),
-    'Ctrl-W': this.onCtrlWKey_.bind(this),
-    'Ctrl-220': this.onCtrlBackslashKey_.bind(this),
+    'Ctrl+J': hterm.Keyboard.KeyActions.PASS,
+    'Ctrl+L': this.onCtrlLKey_.bind(this),
+    'Ctrl+U': this.onCtrlUKey_.bind(this),
+    'Ctrl+W': this.onCtrlWKey_.bind(this),
+    'Ctrl+220': this.onCtrlBackslashKey_.bind(this),
     'Backspace': this.onBackspaceKey_.bind(this),
     'Delete': hterm.Keyboard.KeyActions.CANCEL,
     'Tab': this.onTabKey_.bind(this),
@@ -188,7 +188,7 @@ nasftp.Cli = function(commandInstance) {
  * @param {string=} string The string to filter.
  * @return {string} The escaped string for printing.
  */
-nasftp.Cli.prototype.escapeString_ = function(string='') {
+nasftp.Cli.prototype.escapeString_ = function(string = '') {
   const map = (ch) => {
     const cp = ch.codePointAt(0);
     return String.fromCodePoint(cp == 0x7f ? 0x2421 : cp + 0x2400);
@@ -225,7 +225,7 @@ nasftp.Cli.format_ = function(number) {
  *
  * @param {string=} string The string to filter and display.
  */
-nasftp.Cli.prototype.rawprint_ = function(string='') {
+nasftp.Cli.prototype.rawprint_ = function(string = '') {
   this.io.print(this.escapeString_(string));
 };
 
@@ -257,10 +257,10 @@ nasftp.Cli.prototype.dispatchCommand_ = function(userArgs) {
   const cmd = args.shift();
   args.cmd = cmd;
 
-  const handler = this.commands_[cmd];
-  if (!handler) {
+  if (!this.commands_.hasOwnProperty(cmd)) {
     return Promise.reject(cmd);
   }
+  const handler = this.commands_[cmd];
 
   const showCrash = (e) => {
     this.showError_(nassh.msg('NASFTP_ERROR_INTERNAL', [e]));
@@ -272,24 +272,7 @@ nasftp.Cli.prototype.dispatchCommand_ = function(userArgs) {
     return handler.call(this, args)
       .catch((response) => {
         if (response instanceof nassh.sftp.StatusError) {
-          let msgId;
-          const msgArgs = [args.cmd];
-          switch (response.code) {
-            case nassh.sftp.packets.StatusCodes.EOF:
-              msgId = 'NASFTP_ERROR_END_OF_FILE';
-              break;
-            case nassh.sftp.packets.StatusCodes.NO_SUCH_FILE:
-              msgId = 'NASFTP_ERROR_FILE_NOT_FOUND';
-              break;
-            case nassh.sftp.packets.StatusCodes.PERMISSION_DENIED:
-              msgId = 'NASFTP_ERROR_PERMISSION_DENIED';
-              break;
-            default:
-              msgId = 'NASFTP_ERROR_SERVER_ERROR';
-              msgArgs.push(response.message);
-              break;
-          }
-          this.showError_(nassh.msg(msgId, msgArgs));
+          this.showSftpStatusError_(response, args.cmd);
         } else if (response !== undefined) {
           showCrash(response);
         }
@@ -320,14 +303,25 @@ nasftp.Cli.prototype.onInputChar_ = function(ch) {
     let data = this.stdin_.replace(/^\s*/, '');
     data = data.replace(/\s*$/, '');
 
-    return this.dispatchCommand_(data)
-      .catch((cmd) => {
-        // Don't warn when the user just hits enter w/out a command.
-        if (cmd) {
-          this.showError_(nassh.msg('NASFTP_ERROR_UNKNOWN_CMD', [cmd]));
+    return new Promise((resolve) => {
+      /**
+       * Finish up the command processing.
+       *
+       * @param {!Event=} e When called by unhandledrejection,
+       *     the event with the uncaught promise that we need to handle.
+       */
+      const finishCommand = (e) => {
+        window.removeEventListener('unhandledrejection', finishCommand);
+        resolve();
+
+        if (e) {
+          if (e.reason instanceof nassh.sftp.StatusError) {
+            this.showSftpStatusError_(e.reason, data);
+          } else {
+            this.showError_(nassh.msg('NASFTP_ERROR_INTERNAL', [e.reason]));
+          }
         }
-      })
-      .finally(() => {
+
         // Add non-empty entries into the history.
         if (this.stdin_.length) {
           this.history_.unshift(this.stdin_);
@@ -350,7 +344,22 @@ nasftp.Cli.prototype.onInputChar_ = function(ch) {
           this.buffered_ = '';
         }
         this.userInterrupted_ = false;
-      });
+      };
+
+      // If the subcommand uses an async handler that rejects or crashes,
+      // catch it and recover gracefully.
+      window.addEventListener('unhandledrejection', finishCommand);
+
+      // Dispatch the command and wait for it to finish.
+      return this.dispatchCommand_(data)
+        .catch((cmd) => {
+          // Don't warn when the user just hits enter w/out a command.
+          if (cmd) {
+            this.showError_(nassh.msg('NASFTP_ERROR_UNKNOWN_CMD', [cmd]));
+          }
+        })
+        .finally(finishCommand);
+    });
   } else {
     // Eat various unprintable chars.  Queue the rest into stdin.
     if (ch.codePointAt(0) >= 0x20) {
@@ -405,7 +414,7 @@ nasftp.Cli.prototype.onInput_ = function(string) {
 };
 
 /**
- * Callback for handling interrupt requests (Ctrl-C).
+ * Callback for handling interrupt requests (Ctrl+C).
  *
  * @return {!hterm.Keyboard.KeyActions}
  */
@@ -426,7 +435,7 @@ nasftp.Cli.prototype.onCtrlCKey_ = function() {
 };
 
 /**
- * Callback for handling end-of-input requests (Ctrl-D).
+ * Callback for handling end-of-input requests (Ctrl+D).
  *
  * @return {!hterm.Keyboard.KeyActions}
  */
@@ -445,7 +454,7 @@ nasftp.Cli.prototype.onCtrlDKey_ = function() {
 };
 
 /**
- * Callback for handling clear screen requests (Ctrl-L).
+ * Callback for handling clear screen requests (Ctrl+L).
  *
  * @return {!hterm.Keyboard.KeyActions}
  */
@@ -463,7 +472,7 @@ nasftp.Cli.prototype.onCtrlLKey_ = function() {
 };
 
 /**
- * Callback for handling clear line requests (Ctrl-U).
+ * Callback for handling clear line requests (Ctrl+U).
  *
  * @return {!hterm.Keyboard.KeyActions}
  */
@@ -482,7 +491,7 @@ nasftp.Cli.prototype.onCtrlUKey_ = function() {
 };
 
 /**
- * Callback for handling delete word requests (Ctrl-W).
+ * Callback for handling delete word requests (Ctrl+W).
  *
  * @return {!hterm.Keyboard.KeyActions}
  */
@@ -505,7 +514,7 @@ nasftp.Cli.prototype.onCtrlWKey_ = function() {
 };
 
 /**
- * Callback for handling quit requests (Ctrl-\).
+ * Callback for handling quit requests (Ctrl+\).
  *
  * @return {!hterm.Keyboard.KeyActions}
  */
@@ -669,18 +678,28 @@ nasftp.Cli.prototype.onDownArrowKey_ = function() {
  * Color settings for the interface.
  */
 nasftp.Cli.colorMap_ = {
-  'reset': '\x1b[0m',
-  'prompt': '\x1b[30;1m',
-  'error': '\x1b[31;1m',
-  'warning': '\x1b[33;1m',
+  'reset': {},
+  'bold': {bold: true},
+  'prompt': {bold: true, fg: 30},
+  'error': {bold: true, fg: 31},
+  'warning': {bold: true, fg: 33},
   // File types.
-  'dir': '\x1b[34;1m',
-  'sym': '\x1b[36;1m',
-  'fifo': '\x1b[40;33m',
-  'socket': '\x1b[35;1m',
-  'char': '\x1b[40;33;1m',
-  'block': '\x1b[40;33;1m',
+  'dir': {bold: true, fg: 34},
+  'sym': {bold: true, fg: 36},
+  'fifo': {bold: true, fg: 33, bg: 40},
+  'socket': {bold: true, fg: 35},
+  'char': {bold: true, fg: 33, bg: 40},
+  'block': {bold: true, fg: 33, bg: 40},
 };
+
+/**
+ * Cache the SGR sequences.
+ */
+lib.registerInit('nasftp color cache', () => {
+  Object.entries(nasftp.Cli.colorMap_).forEach(([key, setting]) => {
+    nasftp.Cli.colorMap_[key] = nassh.sgrSequence(setting);
+  });
+});
 
 /**
  * Helper to show the CLI prompt to the user.
@@ -697,13 +716,13 @@ nasftp.Cli.prototype.showPrompt_ = function() {
   } else if (this.prompt_ == '') {
     prompt = defaultPrompt.replace(
         'nasftp',
-        '\x1b[1m' +
-        '\x1b[38:2:51:105:232mn' +
-        '\x1b[38:2:213:15:37ma' +
-        '\x1b[38:2:238:178:17ms' +
-        '\x1b[38:2:51:105:232mf' +
-        '\x1b[38:2:0:153:37mt' +
-        '\x1b[38:2:213:15:37mp' +
+        '%(bold)' +
+        nassh.sgrSequence({fg: '38:2:51:105:232'}) + 'n' +
+        nassh.sgrSequence({fg: '38:2:213:15:37'}) + 'a' +
+        nassh.sgrSequence({fg: '38:2:238:178:17'}) + 's' +
+        nassh.sgrSequence({fg: '38:2:51:105:232'}) + 'f' +
+        nassh.sgrSequence({fg: '38:2:0:153:37'}) + 't' +
+        nassh.sgrSequence({fg: '38:2:213:15:37'}) + 'p' +
         '%(reset)');
   }
 
@@ -724,6 +743,33 @@ nasftp.Cli.prototype.showError_ = function(msg) {
 };
 
 /**
+ * Helper to decode SFTP status errors for the user.
+ *
+ * @param {!nassh.sftp.StatusError} response The status error packet.
+ * @param {string} cmd The current command we're processing.
+ */
+nasftp.Cli.prototype.showSftpStatusError_ = function(response, cmd) {
+  let msgId;
+  const msgArgs = [cmd];
+  switch (response.code) {
+    case nassh.sftp.packets.StatusCodes.EOF:
+      msgId = 'NASFTP_ERROR_END_OF_FILE';
+      break;
+    case nassh.sftp.packets.StatusCodes.NO_SUCH_FILE:
+      msgId = 'NASFTP_ERROR_FILE_NOT_FOUND';
+      break;
+    case nassh.sftp.packets.StatusCodes.PERMISSION_DENIED:
+      msgId = 'NASFTP_ERROR_PERMISSION_DENIED';
+      break;
+    default:
+      msgId = 'NASFTP_ERROR_SERVER_ERROR';
+      msgArgs.push(response.message);
+      break;
+  }
+  this.showError_(nassh.msg(msgId, msgArgs));
+};
+
+/**
  * Helper to parse user numbers.
  *
  * @param {string} cmd The command whose args we are parsing.
@@ -734,17 +780,47 @@ nasftp.Cli.prototype.showError_ = function(msg) {
  * @return {?number} The parsed number, or false if the value is invalid.
  */
 nasftp.Cli.prototype.parseInt_ = function(
-    cmd, argName, argValue, defaultValue = 0, radix) {
+    cmd, argName, argValue, defaultValue = 0, radix = undefined) {
   if (argValue === undefined) {
     return defaultValue;
   }
 
-  const ret = parseInt(argValue, radix);
+  let ret = parseInt(argValue, radix);
   if (!isFinite(ret)) {
     this.showError_(nassh.msg('NASFTP_ERROR_INVALID_NUMBER', [
       cmd, argName, argValue,
     ]));
     return null;
+  }
+
+  // Handle optional size units.
+  const knownSuffix = 'KMGTPEZY';
+  let scale = 1;
+  let offset;
+  if (argValue.endsWith('iB')) {
+    scale = 1024;
+    offset = 3;
+  } else if (argValue.endsWith('B')) {
+    scale = 1000;
+    offset = 2;
+  } else if (knownSuffix.includes(argValue[argValue.length - 1])) {
+    scale = 1024;
+    offset = 1;
+  }
+  if (offset !== undefined) {
+    const sfx = argValue[argValue.length - offset];
+    if (!knownSuffix.includes(sfx)) {
+      this.showError_(nassh.msg('NASFTP_ERROR_INVALID_NUMBER', [
+        cmd, argName, argValue,
+      ]));
+      return null;
+    }
+    for (const s of knownSuffix) {
+      ret *= scale;
+      if (s === sfx) {
+        break;
+      }
+    }
   }
 
   return ret;
@@ -791,6 +867,17 @@ nasftp.Cli.prototype.parseOpts_ = function(args, optstring) {
   }
 
   return opts;
+};
+
+/**
+ * Create an absolute path that respects the user's cwd setting.
+ *
+ * @param {string} path The path (relative or absolute) to convert.
+ * @return {string} The absolute path.
+ */
+nasftp.Cli.prototype.basename = function(path) {
+  const ary = path.replace(/\/+$/, '').split('/');
+  return ary[ary.length - 1];
 };
 
 /**
@@ -1286,13 +1373,8 @@ nasftp.Cli.commandGet_ = function(args) {
   const doc = this.terminal.getDocument();
   const a = doc.createElement('a');
 
-  const basename = (path) => {
-    const ary = path.replace(/\/+$/, '').split('/');
-    return ary[ary.length - 1];
-  };
-
   const src = args.shift();
-  const dst = args.length == 0 ? basename(src) : args.shift();
+  const dst = args.length == 0 ? this.basename(src) : args.shift();
   a.download = dst;
 
   this.io.println(nassh.msg('NASFTP_CMD_GET_DOWNLOAD_FILE', [
@@ -1336,24 +1418,36 @@ nasftp.Cli.addCommand_(['get'], 1, 2, '', '<remote name> [local name]',
                        nasftp.Cli.commandGet_);
 
 /**
- * User command to show all registered commands.
+ * User command to show help for registered commands.
  *
  * @this {nasftp.Cli}
- * @param {!Array<string>} _args The command arguments.
+ * @param {!Array<string>} args The command arguments.
  * @return {!Promise<void>}
  */
-nasftp.Cli.commandHelp_ = function(_args) {
+nasftp.Cli.commandHelp_ = function(args) {
   const lhs = (command) => {
     return nassh.msg('NASFTP_CMD_HELP_LHS', [command.command, command.usage]);
   };
   let pad = 0;
 
-  for (const command in this.commands_) {
+  // If the user didn't request specific commands, show all of them.
+  if (args.length == 0) {
+    args = Object.keys(this.commands_);
+  }
+
+  // Calculate the length of commands to align the final output.
+  for (const command of args) {
+    if (!this.commands_.hasOwnProperty(command)) {
+      this.showError_(nassh.msg('NASFTP_ERROR_UNKNOWN_CMD', [command]));
+      return Promise.resolve();
+    }
+
     const obj = this.commands_[command];
     pad = Math.max(pad, lhs(obj).length);
   }
 
-  for (const command in this.commands_) {
+  // Display each command now.
+  for (const command of args) {
     // Omit internal commands.
     if (command.startsWith('_')) {
       continue;
@@ -1367,7 +1461,7 @@ nasftp.Cli.commandHelp_ = function(_args) {
 
   return Promise.resolve();
 };
-nasftp.Cli.addCommand_(['help', '?'], 0, 0, '', '',
+nasftp.Cli.addCommand_(['help', '?'], 0, null, '', '[commands]',
                        nasftp.Cli.commandHelp_);
 
 /**
@@ -1428,15 +1522,16 @@ nasftp.Cli.commandList_ = function(args, opts) {
           if (response.code == nassh.sftp.packets.StatusCodes.NO_SUCH_FILE) {
             return this.client.linkStatus(path)
               .then((attrs) => {
+                const basename = this.basename(path);
                 const mode =
                     nassh.sftp.packets.bitsToUnixModeLine(attrs.permissions);
                 const date =
                     nassh.sftp.packets.epochToLocal(attrs.lastModified);
                 const longFilename =
                     `${mode}  ${attrs.uid} ${attrs.gid}  ${attrs.size}  ` +
-                    `${date.toDateString()}  ${path}`;
+                    `${date.toDateString()}  ${basename}`;
                 return [Object.assign({
-                  filename: path,
+                  filename: basename,
                   longFilename: longFilename,
                 }, attrs)];
               });
@@ -1652,6 +1747,7 @@ nasftp.Cli.addCommand_(['prompt'], 0, 1, '', '[prompt]',
  */
 nasftp.Cli.commandPut_ = function(args, opts) {
   // Translate short options into something more readable.
+  opts.resume = opts.a || args.cmd === 'reput';
   opts.fsync = opts.f;
 
   const doc = this.terminal.getDocument();
@@ -1702,21 +1798,38 @@ nasftp.Cli.commandPut_ = function(args, opts) {
         const spinner = new nasftp.ProgressBar(this.terminal, file.size);
 
         // Next promise waits for the file to be processed (read+uploaded).
-        return new Promise((resolveOneFile) => {
-          // Read the next chunk from the file and add it to the queue.
+        return new Promise(async (resolveOneFile) => {
+          const path = this.makePath_(name);
+          let offset = 0;
 
-          // Clobber whatever file might already exist.
-          const flags = nassh.sftp.packets.OpenFlags.WRITE |
-              nassh.sftp.packets.OpenFlags.CREAT |
-              nassh.sftp.packets.OpenFlags.TRUNC;
+          // Figure out whether to resume or clobber the file.
+          let flags = nassh.sftp.packets.OpenFlags.WRITE;
+          let resume = opts.resume;
+          if (resume) {
+            try {
+              const attrs = await this.client.fileStatus(path);
+              offset = attrs.size;
+              flags |= nassh.sftp.packets.OpenFlags.APPEND;
+            } catch (e) {
+              // File doesn't exist, so disable resuming.
+              if (e instanceof nassh.sftp.StatusError) {
+                resume = false;
+              } else {
+                throw e;
+              }
+            }
+          }
+          if (!resume) {
+            flags |= nassh.sftp.packets.OpenFlags.CREAT |
+                nassh.sftp.packets.OpenFlags.TRUNC;
+          }
 
           // Start by opening the remote path.
           let openHandle;
-          return this.client.openFile(this.makePath_(name), flags)
+          return this.client.openFile(path, flags)
             .then((handle) => {
               openHandle = handle;
 
-              let offset = 0;
               const readThenWrite = () => {
                 spinner.update(offset);
                 if (this.userInterrupted_) {
@@ -1766,7 +1879,7 @@ nasftp.Cli.commandPut_ = function(args, opts) {
   })
   .finally(() => doc.body.removeChild(input));
 };
-nasftp.Cli.addCommand_(['put'], 0, 1, 'f', '[remote name]',
+nasftp.Cli.addCommand_(['put', 'reput'], 0, 1, 'af', '[remote name]',
                        nasftp.Cli.commandPut_);
 
 /**
@@ -1794,7 +1907,7 @@ nasftp.Cli.addCommand_(['pwd'], 0, 0, '', '',
  */
 nasftp.Cli.commandQuit_ = function(_args) {
   this.terminal.keyboard.bindings.clear();
-  this.commandInstance_.exit(0, /*noReconnect=*/false);
+  this.commandInstance_.exit(0, /* noReconnect= */ false);
   return Promise.resolve();
 };
 nasftp.Cli.addCommand_(['exit', 'quit', 'bye'], 0, 0, '', '',
@@ -1870,7 +1983,7 @@ nasftp.Cli.commandRemove_ = function(args, opts) {
       });
   }), Promise.resolve());
 };
-nasftp.Cli.addCommand_(['del', 'rm'], 1, null, 'rRfv', '<paths...>',
+nasftp.Cli.addCommand_(['rm', 'del'], 1, null, 'rRfv', '<paths...>',
                        nasftp.Cli.commandRemove_);
 
 /**
@@ -1970,21 +2083,47 @@ nasftp.Cli.addCommand_(['stat', 'lstat'], 1, null, '', '<paths...>',
  *
  * @this {nasftp.Cli}
  * @param {!Array<string>} args The command arguments.
+ * @param {!Object} opts The set of seen options.
  * @return {!Promise<void>}
  */
-nasftp.Cli.commandTruncate_ = function(args) {
+nasftp.Cli.commandTruncate_ = function(args, opts) {
+  // Peel off the first positional argument if using the -s option.
+  let size = 0;
+  if (opts.s) {
+    size = this.parseInt_(args.cmd, 'size', args.shift());
+  }
+
   // Create a chain of promises by processing each path in serial.
   return args.reduce((chain, path) => chain.then(() => {
     // Clobber whatever file might already exist.
     const flags = nassh.sftp.packets.OpenFlags.CREAT |
-        nassh.sftp.packets.OpenFlags.TRUNC;
+      (size ? nassh.sftp.packets.OpenFlags.WRITE :
+              nassh.sftp.packets.OpenFlags.TRUNC);
 
     // Final promise series sends open(trunc)+close packets.
+    let writeHandle;
     return this.client.openFile(this.makePath_(path), flags)
-      .then((handle) => this.client.closeFile(handle));
+      .then((handle) => {
+        writeHandle = handle;
+
+        // If truncating to a specific non-zero size, set the file size here.
+        // Otherwise, the open itself truncated down to 0 bytes already.
+        if (size) {
+          const attrs = {
+            flags: nassh.sftp.packets.FileXferAttrs.SIZE,
+            size,
+          };
+          return this.client.setFileHandleStatus(handle, attrs);
+        }
+      })
+      .finally(() => {
+        if (writeHandle !== undefined) {
+          return this.client.closeFile(writeHandle);
+        }
+      });
   }), Promise.resolve());
 };
-nasftp.Cli.addCommand_(['truncate'], 1, null, '', '<paths...>',
+nasftp.Cli.addCommand_(['truncate'], 1, null, 's', '[-s <size>] <paths...>',
                        nasftp.Cli.commandTruncate_);
 
 /**
@@ -2051,6 +2190,8 @@ nasftp.Cli.commandTestCli_ = function(_args) {
   const oldCwd = this.cwd;
   return wrap('version')
     .then(() => wrap('help'))
+    .then(() => wrap('help', 'cd', 'version'))
+    .then(() => wrap('help', 'xxxxxxx'))
     .then(() => wrap('color'))
     .then(() => wrap('color'))
     .then(() => wrap('chdir', '/tmp'))
@@ -2066,6 +2207,7 @@ nasftp.Cli.commandTestCli_ = function(_args) {
     .then(() => wrap('mkdir', 'subdir', 'subdir2', 'subdir3', 'emptydir'))
     .then(() => wrap('rmdir', 'emptydir'))
     .then(() => wrap('truncate', 'x', 'subdir/x1', 'subdir/üñïçödë'))
+    .then(() => wrap('truncate', '-s', '10KB', 'x'))
     .then(() => wrap('ln', 'x', 'hard'))
     .then(() => wrap('ln', '-s', 'x', 'soft'))
     .then(() => wrap('symlink', 'x', 'sym'))
@@ -2150,7 +2292,7 @@ nasftp.Cli.commandTestFsp_ = function(_args) {
     this.client.writeChunkSize = 200;
 
     // Helpers for displaying pass/fail status.
-    const pass = (test, msg='-') => this.rawprintln_(`PASS: ${test}: ${msg}`);
+    const pass = (test, msg = '-') => this.rawprintln_(`PASS: ${test}: ${msg}`);
     const failed = (test, msg) => this.rawprintln_(`FAIL: ${test}: ${msg}`);
 
     /**
@@ -2333,7 +2475,7 @@ nasftp.Cli.commandTestFsp_ = function(_args) {
       .then(([chunks, offset, length]) => {
         // Turn the UTF-8 data into a JS string.
         const decoder = new TextDecoder();
-        let data = chunks.reduce(
+        const data = chunks.reduce(
             (acc, chunk) => acc + decoder.decode(chunk, {stream: true}), '');
 
         // The length is in terms of UTF-8 codeunits, not characters.

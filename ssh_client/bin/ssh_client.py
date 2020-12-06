@@ -11,17 +11,18 @@ from __future__ import print_function
 import logging
 import multiprocessing
 import os
+from pathlib import Path
 import re
 import shutil
 import sys
 
 
-BIN_DIR = os.path.dirname(os.path.realpath(__file__))
-DIR = os.path.dirname(BIN_DIR)
-LIBAPPS_DIR = os.path.dirname(DIR)
+BIN_DIR = Path(__file__).resolve().parent
+DIR = BIN_DIR.parent
+LIBAPPS_DIR = DIR.parent
 
 
-sys.path.insert(0, os.path.join(LIBAPPS_DIR, 'libdot', 'bin'))
+sys.path.insert(0, str(LIBAPPS_DIR / 'libdot' / 'bin'))
 
 import libdot  # pylint: disable=wrong-import-position
 
@@ -117,7 +118,7 @@ def parse_metadata(metadata):
     ret = {}
     re_field = re.compile(r'^(name|version): "(.*)"')
 
-    with open(metadata, 'r') as f:
+    with open(metadata, 'r', encoding='utf-8') as f:
         for line in f:
             line = line.strip()
 
@@ -184,7 +185,7 @@ def _toolchain_pnacl_env():
         'CHOST': 'nacl',
         'NACL_ARCH': 'pnacl',
         'NACL_SDK_ROOT': nacl_sdk_root,
-        'PATH': '%s:%s' % (bin_dir, os.environ['PATH']),
+        'PATH': os.path.sep.join((bin_dir, os.environ['PATH'])),
         'CC': compiler_prefix + 'clang',
         'CXX': compiler_prefix + 'clang++',
         'AR': compiler_prefix + 'ar',
@@ -369,7 +370,7 @@ def build_package(module, default_toolchain):
     metadata['toolchain'] = toolchain
 
     os.environ['HOME'] = HOME
-    os.environ['PATH'] = '%s:%s' % (BUILD_BINDIR, os.environ['PATH'])
+    os.environ['PATH'] = os.pathsep.join((BUILD_BINDIR, os.environ['PATH']))
 
     # Run all the source phases now to build it.
     common_module = sys.modules[__name__]

@@ -1,6 +1,6 @@
 {
   "name": "libdot",
-  "version": "4.0.0",
+  "version": "7.0.0",
   "description": "Grab bag of JS utility libraries",
   "main": "js/libdot.js",
   "unpkg": "js/libdot.min.js",
@@ -27,9 +27,9 @@
   },
   "devDependencies": {
     "chai": "~4",
-    "eslint": "~6",
-    "mocha": "~6",
-    "mocha-headless-chrome": "~2",
+    "eslint": "~7",
+    "mocha": "~8",
+    "mocha-headless-chrome": "~3",
     "terser": "~4"
   }
 }

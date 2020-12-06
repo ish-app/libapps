@@ -15,7 +15,7 @@ describe('lib_i18n_tests.js', () => {
  */
 it('getAcceptLanguages', (done) => {
   // Just make sure we're called with an array of some sort.
-  lib.i18n.getAcceptLanguages((langs) => {
+  lib.i18n.getAcceptLanguages().then((langs) => {
     assert.isTrue(Array.isArray(langs));
     done();
   });
@@ -45,6 +45,36 @@ it('replaceReferences', () => {
 
   // Too few substitutions.
   assert.equal('foXbar', lib.i18n.replaceReferences('fo$1ba$2r', ['X']));
+});
+
+/**
+ * Check resolution of languages.
+ */
+it('resolveLanguage', () => {
+  [
+    ['es-RR', ['es_419']],
+    ['es-ES', ['es']],
+    ['es', ['es']],
+    ['pt-RR', ['pt_PT']],
+    ['pt-BR', ['pt_BR']],
+    ['pt', ['pt_BR']],
+    ['zh-TW', ['zh_TW']],
+    ['zh-HK', ['zh_TW']],
+    ['zh-MO', ['zh_TW']],
+    ['zh-RR', ['zh_CN']],
+    ['zh', ['zh_CN']],
+    ['en-AU', ['en_GB']],
+    ['en-CA', ['en_GB']],
+    ['en-IN', ['en_GB']],
+    ['en-NZ', ['en_GB']],
+    ['en-ZA', ['en_GB']],
+    ['en-US', ['en']],
+    ['en-RR', ['en']],
+    ['en', ['en']],
+    ['de-DE', ['de_DE', 'de']],
+    ['ll-RR', ['ll_RR', 'll']],
+  ].forEach(([input, exp]) =>
+      assert.deepEqual(exp, lib.i18n.resolveLanguage(input)));
 });
 
 });

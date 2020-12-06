@@ -41,6 +41,9 @@ nassh.Stream.RelaySshfeWS = function(fd) {
   // Callback function when asyncWrite is used.
   this.onWriteSuccess_ = null;
 
+  // The total byte count we've written during this session.
+  this.writeCount_ = 0;
+
   // Data we've read so we can ack it to the server.
   this.readCount_ = 0;
 
@@ -75,7 +78,10 @@ nassh.Stream.RelaySshfeWS.prototype.asyncOpen = function(settings, onComplete) {
   let sshFeChallenge = null;
   let sshFeSignature = null;
 
-  this.getChallenge_()
+  // Use Promise.resolve to put all of getChallenge into a promise in case any
+  // of its setup logic throws an exception (for our catch below).
+  Promise.resolve()
+    .then(() => this.getChallenge_())
     .then((challenge) => {
       sshFeChallenge = challenge;
       return this.signChallenge_(challenge);
@@ -134,10 +140,18 @@ nassh.Stream.RelaySshfeWS.prototype.getChallenge_ = function() {
 };
 
 /**
+ * @typedef {{
+ *     data: !Array
+ * }}
+ */
+nassh.Stream.RelaySshfeWS.AgentResponse;
+
+/**
  * Send a message to the ssh agent.
  *
- * @param {!Object} data The object to send to the agent.
- * @return {!Promise} A promise to resolve with the agent's response.
+ * @param {!Array} data The object to send to the agent.
+ * @return {!Promise<!nassh.Stream.RelaySshfeWS.AgentResponse>} A promise to
+ *    resolve with the agent's response.
  */
 nassh.Stream.RelaySshfeWS.prototype.sendAgentMessage_ = function(data) {
   // The Chrome message API uses callbacks, so wrap in a Promise ourselves.
@@ -189,7 +203,8 @@ nassh.Stream.RelaySshfeWS.prototype.signChallenge_ = function(challenge) {
 
     // Receive SSH_AGENTC_PUBLIC_KEY_RESPONSE.
     const response = nassh.agent.messages.read(
-        new nassh.agent.Message(result.data[0], result.data.slice(1)));
+        new nassh.agent.Message(
+            result.data[0], new Uint8Array(result.data.slice(1))));
 
     // Construct a SSH_AGENTC_SIGN_REQUEST.
     const request = nassh.agent.messages.write(
@@ -365,6 +380,14 @@ nassh.Stream.RelaySshfeWS.prototype.sendWrite_ = function() {
     return;
   }
 
+  // If we've queued too much already, go back to sleep.
+  // NB: This check is fuzzy at best, so we don't need to include the size of
+  // the data we're about to write below into the calculation.
+  if (this.socket_.bufferedAmount >= this.maxWebSocketBufferLength) {
+    setTimeout(this.sendWrite_.bind(this));
+    return;
+  }
+
   const readBuffer = this.writeBuffer_.subarray(0, this.maxMessageLength);
   const size = readBuffer.length;
   const buf = new ArrayBuffer(size + 4);
@@ -378,10 +401,11 @@ nassh.Stream.RelaySshfeWS.prototype.sendWrite_ = function() {
 
   this.socket_.send(buf);
   this.writeBuffer_ = this.writeBuffer_.subarray(size);
+  this.writeCount_ += size;
 
   if (this.onWriteSuccess_ !== null) {
     // Notify nassh that we are ready to consume more data.
-    this.onWriteSuccess_(size);
+    this.onWriteSuccess_(this.writeCount_);
   }
 
   if (this.writeBuffer_.length) {

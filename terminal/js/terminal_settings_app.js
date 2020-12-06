@@ -8,66 +8,50 @@
  * @suppress {moduleLoad}
  */
 
-import {css, html, LitElement} from './lit_element.js';
+import {css, html, LitElement, unsafeCSS} from './lit_element.js';
+import {SUPPORTED_FONT_SIZES} from './terminal_common.js';
+import {stylesVars} from './terminal_settings_styles.js';
+import './terminal_settings_ansi_colors.js';
 import './terminal_settings_app.js';
 import './terminal_settings_category_selector.js';
 import './terminal_settings_checkbox.js';
 import './terminal_settings_colorpicker.js';
 import './terminal_settings_dropdown.js';
-import './terminal_settings_hue_slider.js';
-import './terminal_settings_saturation_lightness_picker.js';
+import './terminal_settings_fonts.js';
+import './terminal_settings_textfield.js';
 import './terminal_settings_theme.js';
 import './terminal_settings_transparency_slider.js';
 
-const THEME_FONT_FAMILY = "'DejaVu Sans Mono', 'Noto Sans Mono', " +
-                          "'Everson Mono', FreeMono, Menlo, Terminal, " +
-                          "monospace";
-
-const BELL_SOUND_CONVERTER = {
-  toChecked: value => !!value,
-  fromChecked: checked => checked ? 'lib-resource:hterm/audio/bell' : '',
+export const BELL_SOUND_CONVERTER = {
+  toChecked: (value) => !!value,
+  fromChecked: (checked) => checked ? 'lib-resource:hterm/audio/bell' : '',
 };
 
 /**
- * @param {null|string} mode
- * @return {string}
+ * Open in new window svg icon.
+ *
+ * @type {string}
  */
-function altGrModeToText(mode) {
-  switch (mode) {
-    case null:
-      return "Auto";
-    case 'none':
-      return 'Disable';
-    default:
-      return mode;
-  }
-}
-
-// TODO(lxj@google.com): These are hand picked monospace fonts available on
-// Chrome OS. We might want to find a better way instead of hard coding.
-const FONT_FAMILY_OPTIONS = [
-    'Cousine',
-    'monospace',
-    'Noto Sans Mono',
-    'Noto Sans Mono CJK HK',
-    'Noto Sans Mono CJK JP',
-    'Noto Sans Mono CJK KR',
-    'Noto Sans Mono CJK SC',
-    'Noto Sans Mono CJK TC',
-];
+const OPEN_IN_NEW =
+    '<svg width="20px" height="20px" viewBox="0 0 24 24" ' +
+    'fill="rgb(95,99,104)" xmlns="http://www.w3.org/2000/svg">' +
+    '<path d="M0 0h24v24H0V0z" fill="none"/>' +
+    '<path d="M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 ' +
+    '2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"/>' +
+    '</svg>';
 
 export class TerminalSettingsApp extends LitElement {
   /** @override */
   static get properties() {
     return {
-      activeCategory_: { type: String },
+      activeCategory_: {type: String},
     };
   }
 
   constructor() {
     super();
 
-    this.activeCategory_ = "appearance";
+    this.activeCategory_ = 'appearance';
   }
 
   /** @override */
@@ -79,16 +63,15 @@ export class TerminalSettingsApp extends LitElement {
 
   /** @override */
   static get styles() {
-    return css`
+    return [stylesVars, css`
       :host {
         bottom: 0;
         color: rgb(95, 99, 104);
         display: flex;
         flex-wrap: nowrap;
         font-family: 'Roboto';
-        font-size: small;
+        font-size: 13px;
         left: 0;
-        line-height: 2.65em;
         margin: 0;
         padding: 0;
         position: absolute;
@@ -96,13 +79,37 @@ export class TerminalSettingsApp extends LitElement {
         top: 0;
       }
 
+      h1 {
+        font-size: 16px;
+        font-weight: 500;
+        line-height: 20px;
+        margin: 18px 0 23px 0;
+        padding-left: 24px;
+      }
+
+      h4 {
+        color: #212121;
+        font-weight: 400;
+        line-height: 24px;
+        margin: 12px 0;
+      }
+
+      #left-panel {
+        min-width: 192px;
+      }
+
       terminal-settings-category-option {
         cursor: pointer;
+        outline: none;
       }
 
       terminal-settings-category-option > h2 {
-        border-radius: 0 20px 20px 0;
-        padding: 0 40px 0 20px;
+        border-radius: 0 16px 16px 0;
+        font-size: 13px;
+        font-weight: 500;
+        line-height: 32px;
+        margin: 8px 0;
+        padding: 0 24px 0 32px;
         user-select: none;
       }
 
@@ -111,19 +118,33 @@ export class TerminalSettingsApp extends LitElement {
       }
 
       terminal-settings-category-option[active] > h2 {
-        background-color: rgb(210, 227, 252);
+        background-color: var(--active-bg);
         color: rgb(26, 115, 232);
       }
 
       .terminal-settings-category {
         display: none;
         flex-grow: 1;
-        margin: 0 40px;
         overflow: auto;
+        padding: 4px 40px;
+      }
+
+      .terminal-settings-category > section {
+        margin-bottom: 20px;
+        width: 100%;
       }
 
       .terminal-settings-category[active-category] {
         display: block;
+      }
+
+      .terminal-settings-category h3 {
+        color: rgb(95, 99, 104);
+        font-size: 13px;
+        font-weight: 500;
+        line-height: 20px;
+        margin: 0;
+        padding: 14px 20px;
       }
 
       .section-body {
@@ -133,108 +154,98 @@ export class TerminalSettingsApp extends LitElement {
 
       .setting-container {
         align-items: center;
-        border-bottom: 1px solid lightgrey;
+        border-bottom: 1px solid rgba(0, 0, 0, 0.14);
         display: flex;
         flex-wrap: nowrap;
-        justify-content: space-between;
-        margin: 0;
-        padding: 0 20px;
+        margin: 0 0 0 32px;
+        padding: 0;
       }
 
-      .theme-setting-container {
-        display: block;
-        padding-bottom: 15px;
+      .setting-container>h4:first-child {
+        flex-grow: 1;
       }
 
-      .theme-picker > terminal-settings-theme {
-        box-shadow: 3px 3px 2px rgba(0, 0, 0, 0.2);
-        display: inline-block;
-        height: 140px;
-        margin: 5px;
-        width: 140px;
+      terminal-settings-ansi-colors {
+        margin-right: -6px;
+        padding: 6px 0;
       }
-    `;
+
+      terminal-settings-fonts {
+        margin-right: 6px;
+        min-width: 170px;
+      }
+
+      terminal-settings-dropdown[preference='font-size'] {
+        min-width: 80px;
+      }
+
+      .about-link {
+        background: no-repeat right
+          url('data:image/svg+xml;utf8,${unsafeCSS(OPEN_IN_NEW)}');
+        cursor: pointer;
+      }
+
+      @media(max-width: 680px) {
+        #left-panel {
+          min-width: 168px;
+        }
+
+        .terminal-settings-category {
+          padding: 4px 16px;
+        }
+      }
+    `];
   }
 
   /** @override */
   render() {
     const msg = hterm.messageManager.get.bind(hterm.messageManager);
 
+    const cursorShapeOptions =
+        window.PreferenceManager.defaultPreferences['cursor-shape'].type.map(
+            (value) => ({
+              value,
+              label: msg(`TERMINAL_SETTINGS_DROPDOWN_CURSOR_SHAPE_${value}`),
+            }),
+        );
+
     return html`
-        <!-- TODO(juwa@google.com): Add translations -->
-        <terminal-settings-category-selector
-            @category-change="${this.onCategoryChange_}">
-          <terminal-settings-category-option for="appearance">
-            <h2 slot="title">${msg('TERMINAL_TITLE_PREF_APPEARANCE')}</h2>
-          </terminal-settings-category-option>
-          <terminal-settings-category-option for="mousekeyboard">
-            <h2 slot="title">${msg('TERMINAL_TITLE_PREF_KEYBOARD_MOUSE')}</h2>
-          </terminal-settings-category-option>
-          <terminal-settings-category-option for="behavior">
-            <h2 slot="title">${msg('TERMINAL_TITLE_PREF_BEHAVIOR')}</h2>
-          </terminal-settings-category-option>
-        </terminal-settings-category-selector>
+        <div id="left-panel">
+          <h1>${msg('PREFERENCES_HEADER_TERMINAL')}</h1>
+          <terminal-settings-category-selector
+              @category-change="${this.onCategoryChange_}">
+            <terminal-settings-category-option role="link" for="appearance">
+              <h2 slot="title">${msg('TERMINAL_TITLE_PREF_APPEARANCE')}</h2>
+            </terminal-settings-category-option>
+            <terminal-settings-category-option role="link" for="mousekeyboard">
+              <h2 slot="title">${msg('TERMINAL_TITLE_PREF_KEYBOARD_MOUSE')}</h2>
+            </terminal-settings-category-option>
+            <terminal-settings-category-option role="link" for="behavior">
+              <h2 slot="title">${msg('TERMINAL_TITLE_PREF_BEHAVIOR')}</h2>
+            </terminal-settings-category-option>
+            <terminal-settings-category-option role="link" for="about">
+              <h2 slot="title">${msg('TERMINAL_SETTINGS_ABOUT_LABEL')}</h2>
+            </terminal-settings-category-option>
+          </terminal-settings-category-selector>
+        </div>
 
         <section class="terminal-settings-category"
-            ?active-category="${this.activeCategory_ === "appearance"}">
+            ?active-category="${this.activeCategory_ === 'appearance'}">
+          <section>
+            <h3>${msg('TERMINAL_TITLE_THEME')}</h3>
+            <terminal-settings-theme />
+          </section>
+
           <section>
             <h3>${msg('TERMINAL_TITLE_PREF_BACKGROUND')}</h3>
 
             <ul class="section-body">
-              <li class="setting-container theme-setting-container">
-                <h4>Pick a theme, or fully customize your Terminal</h4>
-                <div class="theme-picker">
-                  <terminal-settings-theme
-                      name="Small dark mode"
-                      backgroundcolor="#444444"
-                      fontcolor="#0cd44b"
-                      fontsize="15"
-                      fontfamily="${THEME_FONT_FAMILY}">
-                  </terminal-settings-theme>
-                  <terminal-settings-theme
-                      name="Big dark mode"
-                      backgroundcolor="#444444"
-                      fontcolor="#0cd44b"
-                      fontsize="20"
-                      fontfamily="${THEME_FONT_FAMILY}">
-                  </terminal-settings-theme>
-                  <terminal-settings-theme
-                      name="Small light mode"
-                      backgroundcolor="#dddddd"
-                      fontcolor="#7d0f5b"
-                      fontsize="15"
-                      fontfamily="${THEME_FONT_FAMILY}">
-                  </terminal-settings-theme>
-                  <terminal-settings-theme
-                      name="Big light mode"
-                      backgroundcolor="#dddddd"
-                      fontcolor="#7d0f5b"
-                      fontsize="20"
-                      fontfamily="${THEME_FONT_FAMILY}">
-                  </terminal-settings-theme>
-                </div>
-              </li>
-              <li class="setting-container">
+              <li class="setting-container"
+                  title="${msg('HTERM_PREF_BACKGROUND_COLOR')}">
                 <h4>${msg('TERMINAL_NAME_PREF_COLOR')}</h4>
-                <terminal-settings-colorpicker preference="background-color">
+                <terminal-settings-colorpicker preference="background-color"
+                    disableTransparency>
                 </terminal-settings-colorpicker>
-              </li>
-              <li class="setting-container">
-                <h4>${msg('TERMINAL_NAME_PREF_IMAGE')}</h4>
-                <!-- TODO(juwa@google.com): Add element -->
-                <input type="checkbox" />
-              </li>
-              <!-- TODO(juwa@google.com): Hide image options if no image
-                  selected -->
-              <li class="setting-container">
-                <h4>${msg('HTERM_NAME_PREF_BACKGROUND_POSITION')}</h4>
-                <!-- TODO(juwa@google.com): Add element -->
-                <select></select>
-              </li>
-              <li class="setting-container">
-                <h4>Background image blending</h4>
-                <!-- TODO(juwa@google.com): Add element -->
-                <input type="range" />
               </li>
             </ul>
           </section>
@@ -243,32 +254,37 @@ export class TerminalSettingsApp extends LitElement {
             <h3>${msg('TERMINAL_TITLE_PREF_TEXT')}</h3>
 
             <ul class="section-body">
-              <!-- TODO(lxj@google.com): merge options font family and font
-                  size -->
               <li class="setting-container">
-                <h4>${msg('HTERM_NAME_PREF_FONT_FAMILY')}</h4>
-                <terminal-settings-dropdown preference="font-family"
-                  .options=${FONT_FAMILY_OPTIONS}>
-                </terminal-settings-dropdown>
-              </li>
-              <li class="setting-container">
-                <h4>${msg('HTERM_NAME_PREF_FONT_SIZE')}</h4>
-                <!-- TODO(lxj@google.com): Options' value is taken from the UX
-                    mock. We might want a wider range of choices. -->
+                <h4>${msg('TERMINAL_NAME_PREF_FONT')}</h4>
+                <terminal-settings-fonts
+                    title="${msg('HTERM_PREF_FONT_FAMILY')}">
+                </terminal-settings-fonts
+                <!-- TODO(lxj@google.com): We should allow user to input a
+                    text size not in the list. -->
                 <terminal-settings-dropdown preference="font-size"
-                  .options=${[6, 8, 10, 12, 14, 16, 18]}>
+                    title="${msg('HTERM_PREF_FONT_SIZE')}"
+                    .options="${SUPPORTED_FONT_SIZES.map((value) => ({value}))}"
+                >
                 </terminal-settings-dropdown>
               </li>
-              <li class="setting-container">
+              <li class="setting-container"
+                  title="${msg('HTERM_PREF_FOREGROUND_COLOR')}">
                 <h4>${msg('TERMINAL_NAME_PREF_COLOR')}</h4>
                 <terminal-settings-colorpicker preference="foreground-color">
                 </terminal-settings-colorpicker>
               </li>
-              <li class="setting-container">
-                <h4>Anti-alias</h4>
-                <!-- TODO(juwa@google.com): Add element -->
+              <li class="setting-container"
+                  title="${msg('HTERM_PREF_FONT_SMOOTHING')}">
+                <h4>${msg('TERMINAL_NAME_PREF_ANTI_ALIAS')}</h4>
                 <terminal-settings-checkbox preference="font-smoothing">
                 </terminal-settings-checkbox>
+              </li>
+              <li class="setting-container"
+                  title="${msg('TERMINAL_PREF_ANSI_COLORS')}">
+                <h4>${msg('TERMINAL_NAME_PREF_ANSI_COLORS')}</h4>
+                <terminal-settings-ansi-colors
+                    preference="color-palette-overrides">
+                </terminal-settings-ansi-colors>
               </li>
             </ul>
           </section>
@@ -277,17 +293,21 @@ export class TerminalSettingsApp extends LitElement {
             <h3>${msg('TERMINAL_TITLE_PREF_CURSOR')}</h3>
 
             <ul class="section-body">
-              <li class="setting-container">
+              <li class="setting-container"
+                  title="${msg('HTERM_PREF_CURSOR_SHAPE')}">
                 <h4>${msg('TERMINAL_NAME_PREF_SHAPE')}</h4>
-                <terminal-settings-dropdown preference="cursor-shape">
+                <terminal-settings-dropdown preference="cursor-shape"
+                    .options="${cursorShapeOptions}">
                 </terminal-settings-dropdown>
               </li>
-              <li class="setting-container">
+              <li class="setting-container"
+                  title="${msg('HTERM_PREF_CURSOR_COLOR')}">
                 <h4>${msg('TERMINAL_NAME_PREF_COLOR')}</h4>
                 <terminal-settings-colorpicker preference="cursor-color">
                 </terminal-settings-colorpicker>
               </li>
-              <li class="setting-container">
+              <li class="setting-container"
+                  title="${msg('HTERM_PREF_CURSOR_BLINK')}">
                 <h4>${msg('TERMINAL_NAME_PREF_BLINKING')}</h4>
                 <terminal-settings-checkbox preference="cursor-blink">
                 </terminal-settings-checkbox>
@@ -299,7 +319,8 @@ export class TerminalSettingsApp extends LitElement {
             <h3>${msg('TERMINAL_TITLE_PREF_SCROLLBAR')}</h3>
 
             <ul class="section-body">
-              <li class="setting-container">
+              <li class="setting-container"
+                  title="${msg('HTERM_PREF_SCROLLBAR_VISIBLE')}">
                 <h4>${msg('TERMINAL_NAME_PREF_VISIBLE')}</h4>
                 <terminal-settings-checkbox preference="scrollbar-visible">
                 </terminal-settings-checkbox>
@@ -309,79 +330,65 @@ export class TerminalSettingsApp extends LitElement {
         </section>
 
         <section class="terminal-settings-category"
-            ?active-category="${this.activeCategory_ === "mousekeyboard"}">
+            ?active-category="${this.activeCategory_ === 'mousekeyboard'}">
           <section>
             <h3>${msg('HTERM_TITLE_PREF_KEYBOARD')}</h3>
 
             <ul class="section-body">
-              <li class="setting-container">
+              <li class="setting-container"
+                  title="${msg('HTERM_PREF_KEYBINDINGS_OS_DEFAULTS')}">
+                <h4>${msg('HTERM_NAME_PREF_KEYBINDINGS_OS_DEFAULTS')}</h4>
+                <terminal-settings-checkbox
+                    preference="keybindings-os-defaults">
+                </terminal-settings-checkbox>
+              </li>
+              <li class="setting-container"
+                  title="${msg('HTERM_PREF_PASS_CTRL_N')}">
+                <h4>${msg('HTERM_NAME_PREF_PASS_CTRL_N')}</h4>
+                <terminal-settings-checkbox preference="pass-ctrl-n">
+                </terminal-settings-checkbox>
+              </li>
+              <li class="setting-container"
+                  title="${msg('HTERM_PREF_PASS_CTRL_T')}">
+                <h4>${msg('HTERM_NAME_PREF_PASS_CTRL_T')}</h4>
+                <terminal-settings-checkbox preference="pass-ctrl-t">
+                </terminal-settings-checkbox>
+              </li>
+              <li class="setting-container"
+                  title="${msg('HTERM_PREF_PASS_CTRL_W')}">
+                <h4>${msg('HTERM_NAME_PREF_PASS_CTRL_W')}</h4>
+                <terminal-settings-checkbox preference="pass-ctrl-w">
+                </terminal-settings-checkbox>
+              </li>
+              <li class="setting-container"
+                  title="${msg('HTERM_PREF_PASS_CTRL_TAB')}">
+                <h4>${msg('HTERM_NAME_PREF_PASS_CTRL_TAB')}</h4>
+                <terminal-settings-checkbox preference="pass-ctrl-tab">
+                </terminal-settings-checkbox>
+              </li>
+              <li class="setting-container"
+                  title="${msg('HTERM_PREF_PASS_CTRL_NUMBER')}">
+                <h4>${msg('HTERM_NAME_PREF_PASS_CTRL_NUMBER')}</h4>
+                <terminal-settings-checkbox preference="pass-ctrl-number">
+                </terminal-settings-checkbox>
+              </li>
+              <li class="setting-container"
+                  title="${msg('HTERM_PREF_CTRL_PLUS_MINUS_ZERO_ZOOM')}">
                 <h4>${msg('HTERM_NAME_PREF_CTRL_PLUS_MINUS_ZERO_ZOOM')}</h4>
                 <terminal-settings-checkbox
                     preference="ctrl-plus-minus-zero-zoom">
                 </terminal-settings-checkbox>
               </li>
-              <li class="setting-container">
+              <li class="setting-container"
+                  title="${msg('HTERM_PREF_CTRL_C_COPY')}">
                 <h4>${msg('HTERM_NAME_PREF_CTRL_C_COPY')}</h4>
                 <terminal-settings-checkbox preference="ctrl-c-copy">
                 </terminal-settings-checkbox>
               </li>
-              <li class="setting-container">
+              <li class="setting-container"
+                  title="${msg('HTERM_PREF_CTRL_V_PASTE')}">
                 <h4>${msg('HTERM_NAME_PREF_CTRL_V_PASTE')}</h4>
                 <terminal-settings-checkbox preference="ctrl-v-paste">
-                </terminal-settings-checkbox>
-              </li>
-              <li class="setting-container">
-                <h4>${msg('HTERM_NAME_PREF_HIDE_MOUSE_WHILE_TYPING')}</h4>
-                <!-- TODO(juwa@google.com): Add element -->
-                <select></select>
-              </li>
-              <li class="setting-container">
-                <h4>${msg('HTERM_NAME_PREF_ALT_GR_MODE')}</h4>
-                <terminal-settings-dropdown
-                    preference="alt-gr-mode"
-                    .toText=${altGrModeToText}>
-                </terminal-settings-dropdown>
-              </li>
-              <li class="setting-container">
-                <h4>
-                  ${msg('HTERM_NAME_PREF_ALT_BACKSPACE_IS_META_BACKSPACE')}
-                </h4>
-                <terminal-settings-checkbox
-                    preference="alt-backspace-is-meta-backspace">
-                </terminal-settings-checkbox>
-              </li>
-              <li class="setting-container">
-                <h4>${msg('HTERM_NAME_PREF_ALT_IS_META')}</h4>
-                <terminal-settings-checkbox preference="alt-is-meta">
-                </terminal-settings-checkbox>
-              </li>
-              <li class="setting-container">
-                <h4>${msg('HTERM_NAME_PREF_ALT_SENDS_WHAT')}</h4>
-                <terminal-settings-dropdown preference="alt-sends-what">
-                </terminal-settings-dropdown>
-              </li>
-              <li class="setting-container">
-                <h4>${msg('HTERM_NAME_PREF_BACKSPACE_SENDS_BACKSPACE')}</h4>
-                <terminal-settings-checkbox
-                    preference="backspace-sends-backspace">
-                </terminal-settings-checkbox>
-              </li>
-              <li class="setting-container">
-                <h4>
-                  ${msg('HTERM_NAME_PREF_EAST_ASIAN_AMBIGUOUS_AS_TWO_COLUMN')}
-                </h4>
-                <terminal-settings-checkbox
-                    preference="east-asian-ambiguous-as-two-column">
-                </terminal-settings-checkbox>
-              </li>
-              <li class="setting-container">
-                <h4>${msg('HTERM_NAME_PREF_ENABLE_8_BIT_CONTROL')}</h4>
-                <terminal-settings-checkbox preference="enable-8-bit-control">
-                </terminal-settings-checkbox>
-              </li>
-              <li class="setting-container">
-                <h4>${msg('HTERM_NAME_PREF_HOME_KEYS_SCROLL')}</h4>
-                <terminal-settings-checkbox preference="home-keys-scroll">
                 </terminal-settings-checkbox>
               </li>
             </ul>
@@ -390,22 +397,16 @@ export class TerminalSettingsApp extends LitElement {
             <h3>${msg('TERMINAL_TITLE_PREF_MOUSE')}</h3>
 
             <ul class="section-body">
-              <li class="setting-container">
+              <li class="setting-container"
+                  title="${msg('HTERM_PREF_SCROLL_ON_KEYSTROKE')}">
                 <h4>${msg('HTERM_NAME_PREF_SCROLL_ON_KEYSTROKE')}</h4>
                 <terminal-settings-checkbox preference="scroll-on-keystroke">
                 </terminal-settings-checkbox>
               </li>
-              <li class="setting-container">
+              <li class="setting-container"
+                  title="${msg('HTERM_PREF_SCROLL_ON_OUTPUT')}">
                 <h4>${msg('HTERM_NAME_PREF_SCROLL_ON_OUTPUT')}</h4>
                 <terminal-settings-checkbox preference="scroll-on-output">
-                </terminal-settings-checkbox>
-              </li>
-              <li class="setting-container">
-                <h4>
-                  ${msg('HTERM_NAME_PREF_SCROLL_WHEEL_MAY_SEND_ARROW_KEYS')}
-                </h4>
-                <terminal-settings-checkbox
-                    preference="scroll-wheel-may-send-arrow-keys">
                 </terminal-settings-checkbox>
               </li>
             </ul>
@@ -414,27 +415,24 @@ export class TerminalSettingsApp extends LitElement {
             <h3>${msg('HTERM_TITLE_PREF_COPYPASTE')}</h3>
 
             <ul class="section-body">
-              <li class="setting-container">
+              <li class="setting-container"
+                  title="${msg('HTERM_PREF_COPY_ON_SELECT')}">
                 <h4>${msg('HTERM_NAME_PREF_COPY_ON_SELECT')}</h4>
                 <terminal-settings-checkbox preference="copy-on-select">
                 </terminal-settings-checkbox>
               </li>
-              <li class="setting-container">
+              <li class="setting-container"
+                  title="${msg('HTERM_PREF_ENABLE_CLIPBOARD_NOTICE')}">
                 <h4>${msg('HTERM_NAME_PREF_ENABLE_CLIPBOARD_NOTICE')}</h4>
                 <terminal-settings-checkbox
                     preference="enable-clipboard-notice">
                 </terminal-settings-checkbox>
               </li>
-              <li class="setting-container">
+              <li class="setting-container"
+                  title="${msg('HTERM_PREF_MOUSE_RIGHT_CLICK_PASTE')}">
                 <h4>${msg('HTERM_NAME_PREF_MOUSE_RIGHT_CLICK_PASTE')}</h4>
                 <terminal-settings-checkbox
                     preference="mouse-right-click-paste">
-                </terminal-settings-checkbox>
-              </li>
-              <li class="setting-container">
-                <h4>${msg('HTERM_NAME_PREF_CLEAR_SELECTION_AFTER_COPY')}</h4>
-                <terminal-settings-checkbox
-                    preference="clear-selection-after-copy">
                 </terminal-settings-checkbox>
               </li>
             </ul>
@@ -442,49 +440,49 @@ export class TerminalSettingsApp extends LitElement {
         </section>
 
         <section class="terminal-settings-category"
-            ?active-category="${this.activeCategory_ === "behavior"}">
+            ?active-category="${this.activeCategory_ === 'behavior'}">
             <h3>${msg('TERMINAL_TITLE_PREF_BEHAVIOR')}</h3>
 
             <ul class="section-body">
-              <li class="setting-container">
+              <li class="setting-container"
+                  title="${msg('TERMINAL_PREF_BELL')}">
                 <h4>${msg('TERMINAL_NAME_PREF_BELL')}</h4>
                 <terminal-settings-checkbox
                     preference="audible-bell-sound"
                     .converter=${BELL_SOUND_CONVERTER}>
                 </terminal-settings-checkbox>
               </li>
-              <li class="setting-container">
+              <li class="setting-container"
+                  title="${msg('HTERM_PREF_ENABLE_RESIZE_STATUS')}">
+                <h4>${msg('HTERM_NAME_PREF_ENABLE_RESIZE_STATUS')}</h4>
+                <terminal-settings-checkbox preference="enable-resize-status">
+                </terminal-settings-checkbox>
+              </li>
+              <li class="setting-container"
+                  title="${msg('HTERM_PREF_CLOSE_ON_EXIT')}">
                 <h4>${msg('HTERM_NAME_PREF_CLOSE_ON_EXIT')}</h4>
                 <terminal-settings-checkbox preference="close-on-exit">
                 </terminal-settings-checkbox>
               </li>
-              <li class="setting-container">
+              <li class="setting-container"
+                  title="${msg('HTERM_PREF_DESKTOP_NOTIFICATION_BELL')}">
                 <h4>${msg('HTERM_NAME_PREF_DESKTOP_NOTIFICATION_BELL')}</h4>
                 <terminal-settings-checkbox
                     preference="desktop-notification-bell">
                 </terminal-settings-checkbox>
               </li>
-              <li class="setting-container">
-                <h4>${msg('HTERM_NAME_PREF_ENABLE_DEC12')}</h4>
-                <terminal-settings-checkbox preference="enable-dec12">
-                </terminal-settings-checkbox>
-              </li>
-              <li class="setting-container">
-                <h4>${msg('HTERM_NAME_PREF_ENABLE_CSI_J_3')}</h4>
-                <terminal-settings-checkbox preference="enable-csi-j-3">
-                </terminal-settings-checkbox>
-              </li>
-              <li class="setting-container">
-                <h4>${msg('HTERM_NAME_PREF_RECEIVE_ENCODING')}</h4>
-                <terminal-settings-dropdown preference="receive-encoding">
-                </terminal-settings-dropdown>
-              </li>
-              <li class="setting-container">
-                <h4>${msg('HTERM_NAME_PREF_TERMINAL_ENCODING')}</h4>
-                <terminal-settings-dropdown preference="terminal-encoding">
-                </terminal-settings-dropdown>
-              </li>
             </ul>
+        </section>
+
+        <section class="terminal-settings-category"
+            ?active-category="${this.activeCategory_ === 'about'}">
+          <h3>${msg('TERMINAL_SETTINGS_ABOUT_LABEL')}</h3>
+          <ul class="section-body">
+            <li class="setting-container about-link" role="link"
+                @click="${() => lib.f.openWindow('/html/licenses.html')}">
+                <h4>${msg('LICENSES')}</h4>
+            </li>
+          </ul>
         </section>
     `;
   }

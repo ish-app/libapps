@@ -1,3 +1,94 @@
+# 1.90, 2020-07-06, ES2018, UI tweaks to martial design, and minor bugfixes.
+
+* storage: Convert get APIs to promises.
+* terminal: Rescan font family whenever a new font is loaded.
+* eslint: Check embedded <script> content.
+* npm: Refresh tool versions.
+* lib.init: Rewrite from callbacks to promises.
+* test page: Show hterm details instead of libdot.
+* i18n: Change getAcceptLanguages from callbacks to promises.
+* Make ES2018 requirement official.
+* test page: Load nassh translations.
+* l10n: Improve some descriptions and translation tips.
+* terminal: Do not scrape URIs from OSC-8 links.
+* keyboard: Add chromeos ctrl+alt+z toggle chromevox as os default binding.
+* contextmenu: Style context menu to match material design.
+* terminal: Add an optional border to the main screen.
+* html: Add missing <meta charset=utf-8/> tag.
+* lint: Change default behavior to look at all files.
+* hterm.py: Convert core constants to pathlib.
+* keyboard: Remap Ctrl+N to call terminalPrivate.openWindow.
+* terminal: Style copy toast to match material design.
+* terminal: Use local color state for text overlays.
+* keyboard: Ctrl+n should PASS if pref is set.
+* scrollport: Fix screen visible height to avoid seeing partial bottom row.
+* terminal: Style size toast to match material design.
+* doc: Add info about CrOS WM shortcuts.
+* scrollport: Handle padding for fold and a11y buttons.
+* terminal: Fix default keybinding handling.
+* terminal: Fix mouse events to adjust for screen padding.
+* eslint: Enable no-multi-spacesfix checks.
+
+# 1.89, 2020-04-29, Tons of linting cleanups, and scrollbar fixes.
+
+* keyboard: Hide context menu for most key presses.
+* closure: Update to v20200204.
+* scrollport: Add padding with new screen-padding-size property.
+* lint: Avoid date->number coercion.
+* keymap: Do not use ^ with bools.
+* accessibility_reader: Add non-null assert.
+* keymap: Fix altKey typo.
+* terminal: Use screen rather than body size for displayImage sizing.
+* terminal: Use display none rather than positioning to hide cursor.
+* scrollport: keep room for scrollbar.
+* eslint: Enable default-param-last check.
+* eslint: Enable no-throw-literal check.
+* lint: Add missing dangling commas.
+* eslint: Enable no-empty check.
+* eslint: Enable prefer-rest-params check.
+* mocha: Upgrade to v7.
+* lint: Convert var to let/const.
+* closure: Update to v20190929.
+* eslint: Ban self usage.
+* eslint: Disable l/I variable usage by default.
+* prefs: Improve some descriptions and translation tips.
+* eslint: Enable object-curly-spacing checks.
+* eslint: Enable space-in-parens checks.
+* eslint: Enable space-before-function-paren checks.
+* eslint: Enable one-var-declaration-per-line checks.
+* eslint: Enable semi-spacing checks.
+* eslint: Enable comma-dangle checks.
+* eslint: Enable space-infix-ops checks.
+* eslint: Enable comma-spacing checks.
+* eslint: Enable keyword-spacing checks.
+* eslint: Enable no-control-regex checks.
+* eslint: Enable no-useless-return checks.
+* eslint: Enable no-useless-escape checks.
+* eslint: Enable no-useless-concat checks.
+* eslint: Enable spaced-comment checks.
+* eslint: Enable radix check for parseInt.
+* lint: Clean up remaining opt_ usage.
+* lint: Add missing braces everywhere per our style guide.
+* lint: Use const with for...of loops.
+
+# 1.88, 2020-04-05, Better word breaks, more keyboard prefs, and dynamic colors.
+
+* a11y: Add options page button.
+* colors: Use css vars.
+* terminal: Use navigator.clipboard for pasting.
+* keyboard: Also pass shift for pass-ctrl-t and pass-ctrl-w.
+* scrollport: Remove fixed width for Page Up button to allow wider text in JA.
+* prefs: keybindings-os-defaults: New preference.
+* hterm: Replace minus with plus for key shortcuts.
+* a11y: Use innerText instead of aria-label for announcements.
+* prefs: Reword pass-X pref descriptions.
+* keyboard: Delay keymap handling to allow binding overrides.
+* terminal: Update charsize CSS variables when font-family changes.
+* prefs: Add preferences for tab accelerators.
+* word-breaks: Add more quote marks.
+* scrollport: Put hidden page up/down buttons outside of <x-screen>.
+* eslint: Enable single quote checking.
+
 # 1.87, 2019-11-28, Tons of linting/cleanups.
 
 * osc52.sh: add a --force flag to ignore limits.

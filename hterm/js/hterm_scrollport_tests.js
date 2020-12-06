@@ -42,7 +42,7 @@ before(function() {
   this.rowProvider = new MockRowProvider(document, this.totalRowCount);
 
   // The scrollport will attach to this.
-  var div = document.createElement('div');
+  const div = document.createElement('div');
   this.div = div;
   div.style.position = 'relative';
   div.style.height = '100%';
@@ -63,8 +63,9 @@ after(function() {
  */
 beforeEach(function(done) {
   const selection = window.getSelection();
-  if (!selection.isCollapsed)
+  if (!selection.isCollapsed) {
     selection.collapseToStart();
+  }
 
   this.rowProvider.setCacheEnabled(true);
 
@@ -91,7 +92,7 @@ afterEach(function() {
  * rows at the right places after some scrolling.
  */
 it('basic-scroll', function() {
-    var topRow = this.scrollPort.getTopRowIndex();
+    let topRow = this.scrollPort.getTopRowIndex();
     assert.equal(topRow, 0);
     assert.equal(this.scrollPort.getBottomRowIndex(topRow),
                  this.visibleRowCount - 1);
@@ -141,7 +142,7 @@ it('node-recycler', function() {
     // Sync redraw so we know getRowNode was called again.
     this.scrollPort.redraw_();
 
-    var count = this.rowProvider.getCallCount('getRowNode');
+    const count = this.rowProvider.getCallCount('getRowNode');
 
     // Scrolling from 0 to 1 should result in only one call to getRowNode.
     assert.equal(count, 1);
@@ -151,9 +152,9 @@ it('node-recycler', function() {
  * Make sure the selection is maintained even after scrolling off screen.
  */
 it('scroll-selection', function() {
-    var doc = this.scrollPort.getDocument();
+    const doc = this.scrollPort.getDocument();
 
-    var s = doc.getSelection();
+    const s = doc.getSelection();
     // IE does not supposed the extend method on selections.  They support
     // an approximation using addRange, but it automatically merges sibling
     // ranges and selects the parent node.  Ignore this test on IE for now.
@@ -170,26 +171,29 @@ it('scroll-selection', function() {
     this.scrollPort.redraw_();
 
     // And select some text in the middle of the visible range.
-    var anchorRow = this.rowProvider.getRowNode(55);
-    var anchorNode = anchorRow;
-    while (anchorNode.firstChild)
+    const anchorRow = this.rowProvider.getRowNode(55);
+    let anchorNode = anchorRow;
+    while (anchorNode.firstChild) {
       anchorNode = anchorNode.firstChild;
+    }
     s.collapse(anchorNode, 0);
 
-    var focusRow = this.rowProvider.getRowNode(55 + this.visibleRowCount - 10);
-    var focusNode = focusRow;
-    while (focusNode.lastChild)
+    const focusRow = this.rowProvider.getRowNode(
+        55 + this.visibleRowCount - 10);
+    let focusNode = focusRow;
+    while (focusNode.lastChild) {
       focusNode = focusNode.lastChild;
+    }
     s.extend(focusNode, focusNode.length || 0);
 
-    for (var i = 0; i < this.visibleRowCount; i++) {
+    for (let i = 0; i < this.visibleRowCount; i++) {
       this.scrollPort.scrollRowToTop(50 - i);
       this.scrollPort.redraw_();
       assert.strictEqual(anchorNode, s.anchorNode);
       assert.strictEqual(focusNode, s.focusNode);
     }
 
-    for (var i = 0; i < this.visibleRowCount; i++) {
+    for (let i = 0; i < this.visibleRowCount; i++) {
       this.scrollPort.scrollRowToTop(50 + i);
       this.scrollPort.redraw_();
       assert.strictEqual(anchorNode, s.anchorNode);
@@ -278,10 +282,10 @@ it('select-all', function() {
  * Test that the page up/down buttons are onscreen when selected but offscreen
  * otherwise.
  */
-it('page-up-down-visible', function() {
+it('page-up-down-options-visible', function() {
   const doc = this.scrollPort.getDocument();
 
-  this.scrollPort.allowScrollButtonsToDisplay_ = true;
+  this.scrollPort.allowA11yButtonsToDisplay_ = true;
   const mockAccessibilityReader = new MockAccessibilityReader();
   mockAccessibilityReader.accessibilityEnabled = true;
   this.scrollPort.setAccessibilityReader(mockAccessibilityReader);
@@ -293,7 +297,7 @@ it('page-up-down-visible', function() {
 
   selection.removeAllRanges();
   let range = document.createRange();
-  range.selectNodeContents(pageUp);
+  range.selectNodeContents(pageUp.firstChild);
   selection.addRange(range);
   doc.dispatchEvent(new Event('selectionchange'));
 
@@ -305,11 +309,24 @@ it('page-up-down-visible', function() {
 
   selection.removeAllRanges();
   range = document.createRange();
-  range.selectNodeContents(pageDown);
+  range.selectNodeContents(pageDown.firstChild);
   selection.addRange(range);
   doc.dispatchEvent(new Event('selectionchange'));
 
   assert.isAtMost(pageDown.getBoundingClientRect().bottom,
+                  this.scrollPort.getScreenHeight());
+
+  const options = doc.getElementById('hterm:a11y:options');
+  assert.isAtLeast(options.getBoundingClientRect().top,
+                   this.scrollPort.getScreenHeight());
+
+  selection.removeAllRanges();
+  range = document.createRange();
+  range.selectNodeContents(options.firstChild);
+  selection.addRange(range);
+  doc.dispatchEvent(new Event('selectionchange'));
+
+  assert.isAtMost(options.getBoundingClientRect().bottom,
                   this.scrollPort.getScreenHeight());
 });
 
@@ -318,10 +335,10 @@ it('page-up-down-visible', function() {
  * isn't enabled.
  *
  */
-it('page-up-down-hidden', function() {
+it('page-up-down-options-hidden', function() {
   const doc = this.scrollPort.getDocument();
 
-  this.scrollPort.allowScrollButtonsToDisplay_ = true;
+  this.scrollPort.allowA11yButtonsToDisplay_ = true;
   const mockAccessibilityReader = new MockAccessibilityReader();
   mockAccessibilityReader.accessibilityEnabled = false;
   this.scrollPort.setAccessibilityReader(mockAccessibilityReader);
@@ -350,6 +367,19 @@ it('page-up-down-hidden', function() {
   doc.dispatchEvent(new Event('selectionchange'));
 
   assert.isAtLeast(pageDown.getBoundingClientRect().top,
+                   this.scrollPort.getScreenHeight());
+
+  const options = doc.getElementById('hterm:a11y:options');
+  assert.isAtLeast(options.getBoundingClientRect().top,
+                   this.scrollPort.getScreenHeight());
+
+  selection.removeAllRanges();
+  range = document.createRange();
+  range.selectNodeContents(options.firstChild);
+  selection.addRange(range);
+  doc.dispatchEvent(new Event('selectionchange'));
+
+  assert.isAtLeast(options.getBoundingClientRect().top,
                    this.scrollPort.getScreenHeight());
 });
 
@@ -553,14 +583,16 @@ it('scroll-selection-hidden', function() {
   // And select some text in the middle of the visible range.
   const anchorRow = this.rowProvider.getRowNode(1003);
   let anchorNode = anchorRow;
-  while (anchorNode.firstChild)
+  while (anchorNode.firstChild) {
     anchorNode = anchorNode.firstChild;
+  }
   s.collapse(anchorNode, 0);
 
   const focusRow = this.rowProvider.getRowNode(1004);
   let focusNode = focusRow;
-  while (focusNode.lastChild)
+  while (focusNode.lastChild) {
     focusNode = focusNode.lastChild;
+  }
   s.extend(focusNode, focusNode.length || 0);
 
   assert.isNull(anchorRow.getAttribute('aria-hidden'));
@@ -597,7 +629,7 @@ it('fullscreen', function() {
 
     const rowProvider = new MockRowProvider(document, this.totalRowCount);
 
-    var div = document.createElement('div');
+    const div = document.createElement('div');
     div.style.position = 'absolute';
     div.style.height = '100%';
     div.style.width = '100%';
@@ -606,7 +638,7 @@ it('fullscreen', function() {
     const scrollPort = new hterm.ScrollPort(rowProvider);
     scrollPort.decorate(div);
 
-    var divSize = hterm.getClientSize(div);
+    const divSize = hterm.getClientSize(div);
 
     assert.isAbove(divSize.height, 0);
     assert.isAbove(divSize.width, 0);

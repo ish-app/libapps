@@ -12,8 +12,12 @@
  */
 nassh.App = function() {
   this.prefs_ = new nassh.PreferenceManager();
+  this.localPrefs_ = new nassh.LocalPreferenceManager();
   this.omniMatches_ = [];
   this.omniDefault_ = null;
+
+  this.prefs_.readStorage();
+  this.localPrefs_.readStorage();
 };
 
 /**
@@ -33,12 +37,13 @@ nassh.App.prototype.omniboxOnInputStarted_ = function() {
   this.omniDefault_ = null;
 
   // Convert a nassh profile into an object we can easily match later on.
-  var profileIdToOmni = function(id) {
-    var profile = this.prefs_.getProfile(id);
+  const profileIdToOmni = (id) => {
+    const profile = this.prefs_.getProfile(id);
 
-    var port = profile.get('port') || '';
-    if (port)
+    let port = profile.get('port') || '';
+    if (port) {
       port = ':' + port;
+    }
 
     return {
       uhp: profile.get('username') + '@' + profile.get('hostname') + port,
@@ -49,18 +54,13 @@ nassh.App.prototype.omniboxOnInputStarted_ = function() {
 
   // Read our saved settings and construct the partial matches from all of
   // our active profiles.
-  this.prefs_.readStorage(() => {
-    var ids = this.prefs_.get('profile-ids');
-    for (var i = 0; i < ids.length; ++i)
-      this.omniMatches_.push(profileIdToOmni.call(this, ids[i]));
+  const ids = this.prefs_.get('profile-ids');
+  for (let i = 0; i < ids.length; ++i) {
+    this.omniMatches_.push(profileIdToOmni(ids[i]));
+  }
 
-    chrome.storage.local.get('/nassh/connectDialog/lastProfileId',
-      (items) => {
-        var lastProfileId = items['/nassh/connectDialog/lastProfileId'];
-        if (lastProfileId)
-          this.omniDefault_ = profileIdToOmni.call(this, lastProfileId);
-      });
-  });
+  this.omniDefault_ = profileIdToOmni(
+      this.localPrefs_.get('connectDialog/lastProfileId'));
 };
 
 /**
@@ -71,47 +71,52 @@ nassh.App.prototype.omniboxOnInputStarted_ = function() {
  *     Function for us to call to notify of our matches against the text.
  */
 nassh.App.prototype.omniboxOnInputChanged_ = function(text, suggest) {
-  var resultsUhp = [];
-  var resultsDescLeading = [];
-  var resultsDescSubstr = [];
+  const resultsUhp = [];
+  const resultsDescLeading = [];
+  const resultsDescSubstr = [];
 
   this.omniMatches_.forEach((match) => {
-    if (match.uhp.startsWith(text))
+    if (match.uhp.startsWith(text)) {
       resultsUhp.push({
         content: 'profile-id:' + match.id,
         description: lib.f.replaceVars(
           '<match>%escapeHTML(uhp)</match>: %escapeHTML(desc)', match),
       });
+    }
 
-    if (match.desc.startsWith(text))
+    if (match.desc.startsWith(text)) {
       resultsDescLeading.push({
         content: 'profile-id:' + match.id,
         description: lib.f.replaceVars(
           '%escapeHTML(uhp): <match>%escapeHTML(desc)</match>', match),
       });
+    }
 
-    if (match.desc.includes(text))
+    if (match.desc.includes(text)) {
       resultsDescSubstr.push({
         content: 'profile-id:' + match.id,
         description: lib.f.replaceVars(
           '%escapeHTML(uhp): <match>%escapeHTML(desc)</match>', match),
       });
+    }
   });
 
   // Now merge the suggestions together in order.
-  var results = resultsUhp.concat(resultsDescLeading, resultsDescSubstr);
+  const results = resultsUhp.concat(resultsDescLeading, resultsDescSubstr);
   if (results.length == 0 || text.trim().length == 0) {
     // If they're just starting input, or if we have no matches, then show the
     // last connection used first.
-    if (this.omniDefault_)
+    if (this.omniDefault_) {
       results.unshift({
         content: 'profile-id:' + this.omniDefault_.id,
         description: lib.f.replaceVars('%escapeHTML(uhp): %escapeHTML(desc)',
                                        this.omniDefault_),
       });
+    }
   }
-  if (results.length)
+  if (results.length) {
     suggest(results);
+  }
 };
 
 /**
@@ -136,7 +141,7 @@ nassh.App.prototype.omniboxOnInputEntered_ = function(text, disposition) {
     }
   }
 
-  var url = chrome.runtime.getURL('/html/nassh.html#' + text);
+  const url = chrome.runtime.getURL('/html/nassh.html#' + text);
   switch (disposition) {
     default:
       console.warn('unknown disposition: ' + disposition);
@@ -145,28 +150,39 @@ nassh.App.prototype.omniboxOnInputEntered_ = function(text, disposition) {
       // Ideally we'd just call chrome.tabs.update, but that won't focus the
       // new ssh session.  We close the current tab and then open a new one
       // right away -- Chrome will focus the content for us.
-      chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-        chrome.tabs.remove(tabs[0].id);
+      //
+      // TODO(crbug.com/1075427#c6): Incognito mode is a bit buggy, so we have
+      // to use getCurrent+windowId instead of currentWindow directly for now.
+      chrome.windows.getCurrent((win) => {
+        chrome.tabs.query({active: true, windowId: win.id}, (tabs) => {
+          chrome.tabs.remove(tabs[0].id);
+        });
+
+        chrome.tabs.create({windowId: win.id, url: url, active: true});
       });
-      chrome.tabs.create({url: url, active: true});
       break;
     case 'newBackgroundTab':
-      // Fired when pressing Meta-Enter/Command-Enter.
+      // Fired when pressing Meta+Enter/Command+Enter.
       chrome.tabs.create({url: url, active: false});
       break;
     case 'newForegroundTab':
-      // Fired when pressing Alt-Enter.
+      // Fired when pressing Alt+Enter.
       // Close the active tab.  We need to do this before opening a new window
       // in case Chrome selects that as the new active tab.  It won't kill us
       // right away though as the JS execution model guarantees we'll finish
       // running this func before the callback runs.
-      chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-        chrome.tabs.remove(tabs[0].id);
+      //
+      // TODO(crbug.com/1075427#c6): Incognito mode is a bit buggy, so we have
+      // to use getCurrent+windowId instead of currentWindow directly for now.
+      chrome.windows.getCurrent((win) => {
+        chrome.tabs.query({active: true, windowId: win.id}, (tabs) => {
+          chrome.tabs.remove(tabs[0].id);
+        });
       });
       // We'll abuse this to open a window instead of a tab.
       lib.f.openWindow(url, '',
                        'chrome=no,close=yes,resize=yes,minimizable=yes,' +
-                       'scrollbars=yes,width=900,height=600,noopener');
+                       'scrollbars=yes,width=900,height=600');
       break;
   }
 };
@@ -183,7 +199,7 @@ nassh.App.prototype.omniboxOnInputCancelled_ = function() {
 /**
  * Bind our callbacks to the omnibox.
  *
- * @param {!chrome.Omnibox} omnibox The omnibox instance to bind to.
+ * @param {!typeof chrome.omnibox} omnibox The omnibox instance to bind to.
  */
 nassh.App.prototype.installOmnibox = function(omnibox) {
   this.omnibox_ = omnibox;
@@ -199,20 +215,11 @@ nassh.App.prototype.installOmnibox = function(omnibox) {
  * Bind our callbacks to the browser action button (for extensions).
  */
 nassh.App.prototype.installBrowserAction = function() {
-  if (!nassh.browserAction)
+  if (!nassh.browserAction) {
     return;
+  }
 
   nassh.browserAction.onClicked.addListener(this.onLaunched.bind(this));
-};
-
-/**
- * Bind our callbacks to the runtime.
- *
- * @param {!Object} runtime The runtime instance to bind to.
- */
-nassh.App.prototype.installHandlers = function(runtime) {
-  runtime.onLaunched.addListener(this.onLaunched.bind(this));
-  runtime.onRestarted.addListener(this.onLaunched.bind(this));
 };
 
 /**
@@ -221,17 +228,7 @@ nassh.App.prototype.installHandlers = function(runtime) {
 nassh.App.prototype.onLaunched = function() {
   const width = 900;
   const height = 600;
-  if (nassh.v2) {
-    chrome.app.window.create('/html/nassh.html', {
-      innerBounds: {
-        width: width,
-        height: height,
-      },
-      id: 'mainWindow',
-    });
-  } else {
-    lib.f.openWindow(lib.f.getURL('/html/nassh.html'), '',
-                     'chrome=no,close=yes,resize=yes,scrollbars=yes,' +
-                     `minimizable=yes,width=${width},height=${height}`);
-  }
+  lib.f.openWindow(lib.f.getURL('/html/nassh.html'), '',
+                   'chrome=no,close=yes,resize=yes,scrollbars=yes,' +
+                   `minimizable=yes,width=${width},height=${height}`);
 };

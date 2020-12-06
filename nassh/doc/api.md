@@ -14,7 +14,8 @@ The nassh background page adds a listener for
 The possible messages are documented in the next sections, but they all must
 have the `command` field set to select the right function.
 
-The API will then respond with an object of the form:
+The API will then respond with an object of the basic form
+(some commands might contain more fields):
 
 | Field name     | Type    | Description |
 |----------------|---------|-------------|
@@ -27,8 +28,8 @@ The API will then respond with an object of the form:
 External callers can make requests like:
 
 ```js
-// Extension id for stable Secure Shell app.
-const id = 'pnhechapfaindjhompbnflcldabbghjo';
+// Extension id for stable Secure Shell.
+const id = 'iodihamcpbpeioajjeobimgagajmlibd';
 
 // Open a new crosh window.
 const msg = {
@@ -56,6 +57,23 @@ Internal callers use the same form but omit `id` as it'll automatically go to
 the right background page.
 
 ## API
+
+### Hello
+
+This is a simple stub message to help with debugging.
+It will respond with some basic messaging details.
+
+| Field name     | Type    | Description |
+|----------------|---------|-------------|
+| `command`      | !string | Must be `hello`. |
+
+The response will have these additional fields:
+
+| Field name     | Type    | Description |
+|----------------|---------|-------------|
+| `message`      | !string | Will be `hello`. |
+| `internal`     | bool    | Whether the sender is the same extension. |
+| `id`           | string  | The extension id of the sender. |
 
 ### Mount
 
@@ -92,6 +110,49 @@ Open a new ssh session.
 | `height`       | number= | The height of the new window. |
 | `width`        | number= | The width of the new window. |
 | `url`          | string= | *(internal)* URL to open instead for specific profiles. |
+
+### Import Preferences
+
+*** note
+**NB**: This is only available to Secure Shell itself.
+***
+
+Import saved preferences for nassh & hterm.
+
+| Field name     | Type    | Description |
+|----------------|---------|-------------|
+| `command`      | !string | Must be `prefsImport`. |
+| `prefs`        | !Object | The preferences to import. |
+| `asJson`       | bool=   | Whether the prefs are a JSON string. |
+
+### Export Preferences
+
+*** note
+**NB**: This is only available to Secure Shell itself.
+***
+
+Export saved preferences for nassh & hterm.
+
+| Field name     | Type    | Description |
+|----------------|---------|-------------|
+| `command`      | !string | Must be `prefsExport`. |
+| `asJson`       | bool=   | Whether the prefs will be a JSON string. |
+
+The response will have these additional fields:
+
+| Field name     | Type    | Description |
+|----------------|---------|-------------|
+| `prefs`        | !Object | The exported preferences as JSON or an object. |
+
+### Protocol Registration
+
+Open a dedicated page for registering protocol handlers (e.g. `ssh://`).
+The web platform does not allow us to register handlers without user intent,
+so this provides a simple/clear UI for users to manually trigger.
+
+| Field name     | Type    | Description |
+|----------------|---------|-------------|
+| `command`      | !string | Must be `openProtoReg`. |
 
 
 [Chrome messaging API]: https://developer.chrome.com/apps/messaging

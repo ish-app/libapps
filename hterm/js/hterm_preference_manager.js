@@ -33,9 +33,9 @@ hterm.PreferenceManager.prefix_ = '/hterm/profiles/';
  * @param {function(!Array<string>)} callback Called with the list of profiles.
  */
 hterm.PreferenceManager.listProfiles = function(callback) {
-  hterm.defaultStorage.getItems(null, (items) => {
+  hterm.defaultStorage.getItems(null).then((items) => {
     const profiles = {};
-    for (let key of Object.keys(items)) {
+    for (const key of Object.keys(items)) {
       if (key.startsWith(hterm.PreferenceManager.prefix_)) {
         // Turn "/hterm/profiles/foo/bar/cow" to "foo/bar/cow".
         const subKey = key.slice(hterm.PreferenceManager.prefix_.length);
@@ -63,22 +63,22 @@ hterm.PreferenceManager.Categories = {
  * List of categories, ordered by display order (top to bottom)
  */
 hterm.PreferenceManager.categoryDefinitions = [
-  { id: hterm.PreferenceManager.Categories.Appearance,
+  {id: hterm.PreferenceManager.Categories.Appearance,
     text: 'Appearance (fonts, colors, images)'},
-  { id: hterm.PreferenceManager.Categories.CopyPaste,
+  {id: hterm.PreferenceManager.Categories.CopyPaste,
     text: 'Copy & Paste'},
-  { id: hterm.PreferenceManager.Categories.Encoding,
+  {id: hterm.PreferenceManager.Categories.Encoding,
     text: 'Encoding'},
-  { id: hterm.PreferenceManager.Categories.Keyboard,
+  {id: hterm.PreferenceManager.Categories.Keyboard,
     text: 'Keyboard'},
-  { id: hterm.PreferenceManager.Categories.Scrolling,
+  {id: hterm.PreferenceManager.Categories.Scrolling,
     text: 'Scrolling'},
-  { id: hterm.PreferenceManager.Categories.Sounds,
+  {id: hterm.PreferenceManager.Categories.Sounds,
     text: 'Sounds'},
-  { id: hterm.PreferenceManager.Categories.Extensions,
+  {id: hterm.PreferenceManager.Categories.Extensions,
     text: 'Extensions'},
-  { id: hterm.PreferenceManager.Categories.Miscellaneous,
-    text: 'Miscellaneous'}
+  {id: hterm.PreferenceManager.Categories.Miscellaneous,
+    text: 'Miscellaneous'},
 ];
 
 /**
@@ -112,25 +112,25 @@ hterm.PreferenceManager.defaultPreferences = {
       `\n` +
       `'null': Autodetect based on navigator.language:\n` +
       `      'en-us' => 'none', else => 'right-alt'\n` +
-      `'none': Disable any AltGr related munging.\n` +
+      `'none': Disable any AltGr emulation.\n` +
       `'ctrl-alt': Assume Ctrl+Alt means AltGr.\n` +
       `'left-alt': Assume left Alt means AltGr.\n` +
-      `'right-alt': Assume right Alt means AltGr.`
+      `'right-alt': Assume right Alt means AltGr.`,
   ),
 
   'alt-backspace-is-meta-backspace': hterm.PreferenceManager.definePref_(
-      'Alt-Backspace is Meta-Backspace',
+      'Alt+Backspace is Meta+Backspace',
       hterm.PreferenceManager.Categories.Keyboard,
       false, 'bool',
-      `If set, undoes the Chrome OS Alt-Backspace->DEL remap, so that ` +
-      `Alt-Backspace indeed is Alt-Backspace.`
+      `If set, undoes the Chrome OS Alt+Backspace->Delete remap, so that ` +
+      `Alt+Backspace indeed is Alt+Backspace.`,
   ),
 
   'alt-is-meta': hterm.PreferenceManager.definePref_(
       'Treat Alt key as Meta key',
       hterm.PreferenceManager.Categories.Keyboard,
       false, 'bool',
-      `Whether the Alt key acts as a Meta key or as a distinct Alt key.`
+      `Whether the Alt key acts as a Meta key or as a distinct Alt key.`,
   ),
 
   'alt-sends-what': hterm.PreferenceManager.definePref_(
@@ -143,14 +143,14 @@ hterm.PreferenceManager.defaultPreferences = {
       `  8-bit: Add 128 to the typed character as in xterm.\n` +
       `  browser-key: Wait for the keypress event and see what the browser\n` +
       `    says. (This won't work well on platforms where the browser\n` +
-      `    performs a default action for some Alt sequences.)`
+      `    performs a default action for some Alt sequences.)`,
   ),
 
   'audible-bell-sound': hterm.PreferenceManager.definePref_(
       'Alert bell sound (URI)',
       hterm.PreferenceManager.Categories.Sounds,
       'lib-resource:hterm/audio/bell', 'url',
-      `URL of the terminal bell sound. Empty string for no audible bell.`
+      `URL of the terminal bell sound. Leave it blank for no audible bell.`,
   ),
 
   'desktop-notification-bell': hterm.PreferenceManager.definePref_(
@@ -162,36 +162,36 @@ hterm.PreferenceManager.defaultPreferences = {
       `\n` +
       `Displaying notifications requires permission from the user. When this ` +
       `option is set to true, hterm will attempt to ask the user for ` +
-      `permission if necessary. Browsers may not show this permission ` +
+      `permission if necessary. Browsers might not show this permission ` +
       `request if it was not triggered by a user action.\n` +
       `\n` +
       `Chrome extensions with the "notifications" permission have permission ` +
-      `to display notifications.`
+      `to display notifications.`,
   ),
 
   'background-color': hterm.PreferenceManager.definePref_(
       'Background color',
       hterm.PreferenceManager.Categories.Appearance,
       'rgb(16, 16, 16)', 'color',
-      `The background color for text with no other color attributes.`
+      `The background color for text with no other color attributes.`,
   ),
 
   'background-image': hterm.PreferenceManager.definePref_(
       'Background image',
       hterm.PreferenceManager.Categories.Appearance,
       '', 'string',
-      `CSS value of the background image. Empty string for no image.\n` +
+      `CSS value of the background image. Leave it blank for no image.\n` +
       `\n` +
       `For example:\n` +
       `  url(https://goo.gl/anedTK)\n` +
-      `  linear-gradient(top bottom, blue, red)`
+      `  linear-gradient(top bottom, blue, red)`,
   ),
 
   'background-size': hterm.PreferenceManager.definePref_(
       'Background image size',
       hterm.PreferenceManager.Categories.Appearance,
       '', 'string',
-      `CSS value of the background image size.`
+      `CSS value of the background image size.`,
   ),
 
   'background-position': hterm.PreferenceManager.definePref_(
@@ -202,15 +202,15 @@ hterm.PreferenceManager.defaultPreferences = {
       `\n` +
       `For example:\n` +
       `  10% 10%\n` +
-      `  center`
+      `  center`,
   ),
 
   'backspace-sends-backspace': hterm.PreferenceManager.definePref_(
       'Backspace key behavior',
       hterm.PreferenceManager.Categories.Keyboard,
       false, 'bool',
-      `If true, the backspace should send BS ('\\x08', aka ^H). Otherwise ` +
-      `the backspace key should send '\\x7f'.`
+      `If true, the Backspace key will send BS ('\\x08', aka ^H). Otherwise ` +
+      `the Backspace key will send '\\x7f'.`,
   ),
 
   'character-map-overrides': hterm.PreferenceManager.definePref_(
@@ -223,15 +223,19 @@ hterm.PreferenceManager.defaultPreferences = {
       `received character and the value is the displayed character.\n` +
       `\n` +
       `For example:\n` +
-      `  {"0":{"+":"\\u2192",",":"\\u2190","-":"\\u2191",".":"\\u2193", ` +
-      `"0":"\\u2588"}}`
+      `{ "0": {\n` +
+      `  "+": "\\u2192",\n` +
+      `  ",": "\\u2190",\n` +
+      `  "-": "\\u2191",\n` +
+      `  ".": "\\u2193",\n` +
+      `  "0": "\\u2588"\n} }`,
   ),
 
   'close-on-exit': hterm.PreferenceManager.definePref_(
       'Close window on exit',
       hterm.PreferenceManager.Categories.Miscellaneous,
       true, 'bool',
-      `Whether to close the window when the command finishes executing.`
+      `Whether to close the window when the command finishes executing.`,
   ),
 
   'cursor-blink': hterm.PreferenceManager.definePref_(
@@ -239,7 +243,7 @@ hterm.PreferenceManager.defaultPreferences = {
       hterm.PreferenceManager.Categories.Appearance,
       false, 'bool',
       `Whether the text cursor blinks by default. This can be toggled at ` +
-      `runtime via terminal escape sequences.`
+      `runtime via terminal escape sequences.`,
   ),
 
   'cursor-blink-cycle': hterm.PreferenceManager.definePref_(
@@ -249,22 +253,22 @@ hterm.PreferenceManager.defaultPreferences = {
       `The text cursor blink rate in milliseconds.\n` +
       `\n` +
       `A two element array, the first of which is how long the text cursor ` +
-      `should be on, second is how long it should be off.`
+      `should be on, second is how long it should be off.`,
   ),
 
   'cursor-shape': hterm.PreferenceManager.definePref_(
       'Text cursor shape',
       hterm.PreferenceManager.Categories.Appearance,
       'BLOCK', ['BLOCK', 'BEAM', 'UNDERLINE'],
-      `The shape of the visible text cursor. This can be toggled at ` +
-      `runtime via terminal escape sequences.`
+      `The shape of the visible text cursor. This can be changed at ` +
+      `runtime via terminal escape sequences.`,
   ),
 
   'cursor-color': hterm.PreferenceManager.definePref_(
       'Text cursor color',
       hterm.PreferenceManager.Categories.Appearance,
       'rgba(255, 0, 0, 0.5)', 'color',
-      `The color of the visible text cursor.`
+      `The color of the visible text cursor.`,
   ),
 
   'color-palette-overrides': hterm.PreferenceManager.definePref_(
@@ -287,14 +291,14 @@ hterm.PreferenceManager.defaultPreferences = {
       `\n` +
       `For example, these both set color index 1 to blue:\n` +
       `  {1: "#0000ff"}\n` +
-      `  [null, "#0000ff"]`
+      `  [null, "#0000ff"]`,
   ),
 
   'copy-on-select': hterm.PreferenceManager.definePref_(
       'Automatically copy selected content',
       hterm.PreferenceManager.Categories.CopyPaste,
       true, 'bool',
-      `Automatically copy mouse selection to the clipboard.`
+      `Automatically copy mouse selection to the clipboard.`,
   ),
 
   'use-default-window-copy': hterm.PreferenceManager.definePref_(
@@ -308,46 +312,46 @@ hterm.PreferenceManager.defaultPreferences = {
       `at all), but makes the text selection less robust.\n` +
       `\n` +
       `For example, long lines that were automatically line wrapped will ` +
-      `be copied with the newlines still in them.`
+      `be copied with the newlines still in them.`,
   ),
 
   'clear-selection-after-copy': hterm.PreferenceManager.definePref_(
       'Automatically clear text selection',
       hterm.PreferenceManager.Categories.CopyPaste,
       true, 'bool',
-      `Whether to clear the selection after copying.`
+      `Whether to clear the selection after copying.`,
   ),
 
   'ctrl-plus-minus-zero-zoom': hterm.PreferenceManager.definePref_(
-      'Ctrl-+/-/0 zoom behavior',
+      'Ctrl++/-/0 zoom behavior',
       hterm.PreferenceManager.Categories.Keyboard,
       true, 'bool',
-      `If true, Ctrl-Plus/Minus/Zero controls zoom.\n` +
-      `If false, Ctrl-Shift-Plus/Minus/Zero controls zoom, Ctrl-Minus sends ` +
-      `^_, Ctrl-Plus/Zero do nothing.`
+      `If true, Ctrl+Plus/Minus/Zero controls zoom.\n` +
+      `If false, Ctrl+Shift+Plus/Minus/Zero controls zoom, Ctrl+Minus sends ` +
+      `^_, Ctrl+Plus/Zero do nothing.`,
   ),
 
   'ctrl-c-copy': hterm.PreferenceManager.definePref_(
-      'Ctrl-C copy behavior',
+      'Ctrl+C copy behavior',
       hterm.PreferenceManager.Categories.Keyboard,
       false, 'bool',
-      `Ctrl-C copies if true, send ^C to host if false.\n` +
-      `Ctrl-Shift-C sends ^C to host if true, copies if false.`
+      `Ctrl+C copies if true, send ^C to host if false.\n` +
+      `Ctrl+Shift+C sends ^C to host if true, copies if false.`,
   ),
 
   'ctrl-v-paste': hterm.PreferenceManager.definePref_(
-      'Ctrl-V paste behavior',
+      'Ctrl+V paste behavior',
       hterm.PreferenceManager.Categories.Keyboard,
       false, 'bool',
-      `Ctrl-V pastes if true, send ^V to host if false.\n` +
-      `Ctrl-Shift-V sends ^V to host if true, pastes if false.`
+      `Ctrl+V pastes if true, send ^V to host if false.\n` +
+      `Ctrl+Shift+V sends ^V to host if true, pastes if false.`,
   ),
 
   'east-asian-ambiguous-as-two-column': hterm.PreferenceManager.definePref_(
       'East Asian Ambiguous use two columns',
       hterm.PreferenceManager.Categories.Keyboard,
       false, 'bool',
-      `Whether East Asian Ambiguous characters have two column width.`
+      `Whether East Asian Ambiguous characters have two column width.`,
   ),
 
   'enable-8-bit-control': hterm.PreferenceManager.definePref_(
@@ -357,7 +361,7 @@ hterm.PreferenceManager.defaultPreferences = {
       `True to enable 8-bit control characters, false to ignore them.\n` +
       `\n` +
       `We'll respect the two-byte versions of these control characters ` +
-      `regardless of this setting.`
+      `regardless of this setting.`,
   ),
 
   'enable-bold': hterm.PreferenceManager.definePref_(
@@ -365,7 +369,7 @@ hterm.PreferenceManager.defaultPreferences = {
       hterm.PreferenceManager.Categories.Appearance,
       null, 'tristate',
       `If true, use bold weight font for text with the bold/bright ` +
-      `attribute. False to use the normal weight font. Null to autodetect.`
+      `attribute. False to use the normal weight font. Null to autodetect.`,
   ),
 
   'enable-bold-as-bright': hterm.PreferenceManager.definePref_(
@@ -373,14 +377,14 @@ hterm.PreferenceManager.defaultPreferences = {
       hterm.PreferenceManager.Categories.Appearance,
       true, 'bool',
       `If true, use bright colors (8-15 on a 16 color palette) for any text ` +
-      `with the bold attribute. False otherwise.`
+      `with the bold attribute. False otherwise.`,
   ),
 
   'enable-blink': hterm.PreferenceManager.definePref_(
       'Enable blinking text',
       hterm.PreferenceManager.Categories.Appearance,
       true, 'bool',
-      `If true, respect the blink attribute. False to ignore it.`
+      `If true, respect the blink attribute. False to ignore it.`,
   ),
 
   'enable-clipboard-notice': hterm.PreferenceManager.definePref_(
@@ -388,7 +392,7 @@ hterm.PreferenceManager.defaultPreferences = {
       hterm.PreferenceManager.Categories.CopyPaste,
       true, 'bool',
       `Whether to show a message in the terminal when the host writes to the ` +
-      `clipboard.`
+      `clipboard.`,
   ),
 
   'enable-clipboard-write': hterm.PreferenceManager.definePref_(
@@ -399,7 +403,7 @@ hterm.PreferenceManager.defaultPreferences = {
       `clipboard.\n` +
       `Read access is never granted regardless of this setting.\n` +
       `\n` +
-      `This is used to control access to features like OSC-52.`
+      `This is used to control access to features like OSC-52.`,
   ),
 
   'enable-dec12': hterm.PreferenceManager.definePref_(
@@ -407,17 +411,17 @@ hterm.PreferenceManager.defaultPreferences = {
       hterm.PreferenceManager.Categories.Miscellaneous,
       false, 'bool',
       `Respect the host's attempt to change the text cursor blink status ` +
-      `using DEC Private Mode 12.`
+      `using DEC Private Mode 12.`,
   ),
 
   'enable-csi-j-3': hterm.PreferenceManager.definePref_(
       'Allow clearing of scrollback buffer (CSI-J-3)',
       hterm.PreferenceManager.Categories.Miscellaneous,
       true, 'bool',
-      `Whether CSI-J (Erase Display) mode 3 may clear the terminal ` +
-      `scrollback buffer.\n` +
+      `Whether the Erase Saved Lines function (mode 3) of the Erase Display ` +
+      `command (CSI-J) may clear the terminal scrollback buffer.\n` +
       `\n` +
-      `Enabling this by default is safe.`
+      `Enabling this by default is safe.`,
   ),
 
   'environment': hterm.PreferenceManager.definePref_(
@@ -435,7 +439,7 @@ hterm.PreferenceManager.defaultPreferences = {
         'COLORTERM': 'truecolor',
       },
       'value',
-      `The initial set of environment variables, as an object.`
+      `The initial set of environment variables, as an object.`,
   ),
 
   'font-family': hterm.PreferenceManager.definePref_(
@@ -444,35 +448,35 @@ hterm.PreferenceManager.defaultPreferences = {
       '"DejaVu Sans Mono", "Noto Sans Mono", "Everson Mono", FreeMono, ' +
       'Menlo, Terminal, monospace',
       'string',
-      `Default font family for the terminal text.`
+      `Default font family for the terminal text.`,
   ),
 
   'font-size': hterm.PreferenceManager.definePref_(
       'Text font size',
       hterm.PreferenceManager.Categories.Appearance,
       15, 'int',
-      `The default font size in pixels.`
+      `The default font size in pixels.`,
   ),
 
   'font-smoothing': hterm.PreferenceManager.definePref_(
       'Text font smoothing',
       hterm.PreferenceManager.Categories.Appearance,
       'antialiased', 'string',
-      `CSS font-smoothing property.`
+      `CSS font-smoothing property.`,
   ),
 
   'foreground-color': hterm.PreferenceManager.definePref_(
       'Text color',
       hterm.PreferenceManager.Categories.Appearance,
       'rgb(240, 240, 240)', 'color',
-      `The foreground color for text with no other color attributes.`
+      `The foreground color for text with no other color attributes.`,
   ),
 
   'enable-resize-status': hterm.PreferenceManager.definePref_(
       'Show terminal dimensions when resized',
       hterm.PreferenceManager.Categories.Appearance,
       false, 'bool',
-      `Whether to show terminal dimensions when the terminal changes size.`
+      `Whether to show terminal dimensions when the terminal changes size.`,
   ),
 
   'hide-mouse-while-typing': hterm.PreferenceManager.definePref_(
@@ -482,17 +486,17 @@ hterm.PreferenceManager.defaultPreferences = {
       `Whether to automatically hide the mouse cursor when typing. ` +
       `By default, autodetect whether the platform/OS handles this.\n` +
       `\n` +
-      `Note: Some operating systems may override this setting and thus you ` +
-      `might not be able to always disable it.`
+      `Note: Your operating system might override this setting and thus you ` +
+      `might not be able to always disable it.`,
   ),
 
   'home-keys-scroll': hterm.PreferenceManager.definePref_(
       'Home/End key scroll behavior',
       hterm.PreferenceManager.Categories.Keyboard,
       false, 'bool',
-      `If true, Home/End controls the terminal scrollbar and Shift-Home/` +
-      `Shift-End are sent to the remote host. If false, then Home/End are ` +
-      `sent to the remote host and Shift-Home/Shift-End scrolls.`
+      `If true, Home/End controls the terminal scrollbar and Shift+Home/` +
+      `Shift+End are sent to the remote host. If false, then Home/End are ` +
+      `sent to the remote host and Shift+Home/Shift+End scrolls.`,
   ),
 
   'keybindings': hterm.PreferenceManager.definePref_(
@@ -507,10 +511,18 @@ hterm.PreferenceManager.defaultPreferences = {
       `\n` +
       `Sample keybindings:\n` +
       `{\n` +
-      `  "Ctrl-Alt-K": "clearTerminal",\n` +
-      `  "Ctrl-Shift-L": "PASS",\n` +
-      `  "Ctrl-H": "'Hello World'"\n` +
-      `}`
+      `  "Ctrl+Alt+K": "clearTerminal",\n` +
+      `  "Ctrl+Shift+L": "PASS",\n` +
+      `  "Ctrl+H": "'Hello World'"\n` +
+      `}`,
+  ),
+
+  'keybindings-os-defaults': hterm.PreferenceManager.definePref_(
+      'Use default OS Keyboard bindings/shortcuts',
+      hterm.PreferenceManager.Categories.Keyboard,
+      false, 'bool',
+      `Whether common OS keyboard bindings should be respected instead of ` +
+      `always capturing for hterm's own use.`,
   ),
 
   'media-keys-are-fkeys': hterm.PreferenceManager.definePref_(
@@ -518,7 +530,7 @@ hterm.PreferenceManager.defaultPreferences = {
       hterm.PreferenceManager.Categories.Keyboard,
       false, 'bool',
       `If true, convert media keys to their Fkey equivalent. If false, let ` +
-      `the browser handle the keys.`
+      `the browser handle the keys.`,
   ),
 
   'meta-sends-escape': hterm.PreferenceManager.definePref_(
@@ -527,8 +539,8 @@ hterm.PreferenceManager.defaultPreferences = {
       true, 'bool',
       `Send an ESC prefix when pressing a key while holding the Meta key.\n` +
       `\n` +
-      `For example, when enabled, pressing Meta-K will send ^[k as if you ` +
-      `typed Escape then k. When disabled, only k will be sent.`
+      `For example, when enabled, pressing Meta+K will send ^[k as if you ` +
+      `typed Escape then k. When disabled, only k will be sent.`,
   ),
 
   'mouse-right-click-paste': hterm.PreferenceManager.definePref_(
@@ -539,18 +551,19 @@ hterm.PreferenceManager.defaultPreferences = {
       `\n` +
       `This option is independent of the "mouse-paste-button" setting.\n` +
       `\n` +
-      `Note: This will handle left & right handed mice correctly.`
+      `Note: The primary & secondary buttons are handled for you with left ` +
+      `& right handed mice.`,
   ),
 
   'mouse-paste-button': hterm.PreferenceManager.definePref_(
       'Mouse button paste',
       hterm.PreferenceManager.Categories.CopyPaste,
       null, [null, 0, 1, 2, 3, 4, 5, 6],
-      `Mouse paste button, or null to autodetect.\n` +
+      `The mouse button to use for pasting.\n` +
       `\n` +
       `For autodetect, we'll use the middle mouse button for non-X11 ` +
       `platforms (including Chrome OS). On X11, we'll use the right mouse ` +
-      `button (since the native window manager should paste via the middle ` +
+      `button (since the window manager should handle pasting via the middle ` +
       `mouse button).\n` +
       `\n` +
       `0 == left (primary) button.\n` +
@@ -559,39 +572,73 @@ hterm.PreferenceManager.defaultPreferences = {
       `\n` +
       `This option is independent of the setting for right-click paste.\n` +
       `\n` +
-      `Note: This will handle left & right handed mice correctly.`
+      `Note: The primary & secondary buttons are handled for you with left ` +
+      `& right handed mice.`,
+  ),
+
+  'screen-padding-size': hterm.PreferenceManager.definePref_(
+      'Screen padding size',
+      hterm.PreferenceManager.Categories.Appearance,
+      8, 'int',
+      `The padding size in pixels around the border of the terminal screen.\n` +
+      `\n` +
+      `This controls the size of the border around the terminal screen so ` +
+      `the user can add some visible padding to the edges of the screen.`,
+  ),
+
+  'screen-border-size': hterm.PreferenceManager.definePref_(
+      'Screen border size',
+      hterm.PreferenceManager.Categories.Appearance,
+      0, 'int',
+      `The border size in pixels around the terminal screen.\n` +
+      `\n` +
+      `This controls the size of the border around the terminal screen to ` +
+      `create a visible line at the edges of the screen.`,
+  ),
+
+  'screen-border-color': hterm.PreferenceManager.definePref_(
+      'Screen border color',
+      hterm.PreferenceManager.Categories.Appearance,
+      'rgb(128, 128, 128)', 'color',
+      `The color for the border around the terminal screen.\n` +
+      `\n` +
+      `This controls the color of the border around the terminal screen to ` +
+      `create a visible line at the edges of the screen.`,
   ),
 
   'word-break-match-left': hterm.PreferenceManager.definePref_(
       'Automatic selection halting (to the left)',
       hterm.PreferenceManager.Categories.CopyPaste,
-      '[^\\s\\[\\](){}<>"\'\\^!@#$%&*,;:`]', 'string',
+      // TODO(vapier): Switch \u back to ‘“‹« once builders are fixed.
+      '[^\\s[\\](){}<>"\'^!@#$%&*,;:`\u{2018}\u{201c}\u{2039}\u{ab}]', 'string',
       `Regular expression to halt matching to the left (start) of a ` +
       `selection.\n` +
       `\n` +
       `Normally this is a character class to reject specific characters.\n` +
-      `We allow "~" and "." by default as paths frequently start with those.`
+      `We allow "~" and "." by default as paths frequently start with those.`,
   ),
 
   'word-break-match-right': hterm.PreferenceManager.definePref_(
       'Automatic selection halting (to the right)',
       hterm.PreferenceManager.Categories.CopyPaste,
-      '[^\\s\\[\\](){}<>"\'\\^!@#$%&*,;:~.`]', 'string',
+      // TODO(vapier): Switch \u back to ’”›» once builders are fixed.
+      '[^\\s[\\](){}<>"\'^!@#$%&*,;:~.`\u{2019}\u{201d}\u{203a}\u{bb}]',
+      'string',
       `Regular expression to halt matching to the right (end) of a ` +
       `selection.\n` +
       `\n` +
-      `Normally this is a character class to reject specific characters.`
+      `Normally this is a character class to reject specific characters.`,
   ),
 
   'word-break-match-middle': hterm.PreferenceManager.definePref_(
       'Word break characters',
       hterm.PreferenceManager.Categories.CopyPaste,
-      '[^\\s\\[\\](){}<>"\'\\^]*', 'string',
+      '[^\\s[\\](){}<>"\'^]*', 'string',
       `Regular expression to match all the characters in the middle.\n` +
       `\n` +
       `Normally this is a character class to reject specific characters.\n` +
       `\n` +
-      `Used to expand the selection surrounding the starting point.`
+      `Used to expand the selection surrounding the starting point.`,
   ),
 
   'page-keys-scroll': hterm.PreferenceManager.definePref_(
@@ -599,64 +646,107 @@ hterm.PreferenceManager.defaultPreferences = {
       hterm.PreferenceManager.Categories.Keyboard,
       false, 'bool',
       `If true, Page Up/Page Down controls the terminal scrollbar and ` +
-      `Shift-Page Up/Shift-Page Down are sent to the remote host. If false, ` +
-      `then Page Up/Page Down are sent to the remote host and Shift-Page Up/` +
-      `Shift-Page Down scrolls.`
+      `Shift+Page Up/Shift+Page Down are sent to the remote host. If false, ` +
+      `then Page Up/Page Down are sent to the remote host and Shift+Page Up/` +
+      `Shift+Page Down scrolls.`,
   ),
 
   'pass-alt-number': hterm.PreferenceManager.definePref_(
-      'Pass Alt-1..9 key behavior',
+      'Alt+1..9 switch tab behavior',
       hterm.PreferenceManager.Categories.Keyboard,
       null, 'tristate',
-      `Whether Alt-1..9 is passed to the browser.\n` +
+      `Whether Alt+1..9 is passed to the browser.\n` +
       `\n` +
       `This is handy when running hterm in a browser tab, so that you don't ` +
-      `lose Chrome's "switch to tab" keyboard accelerators. When not running ` +
+      `lose Chrome's "switch to tab" keyboard shortcuts. When not running ` +
       `in a tab it's better to send these keys to the host so they can be ` +
       `used in vim or emacs.\n` +
       `\n` +
-      `If true, Alt-1..9 will be handled by the browser. If false, Alt-1..9 ` +
+      `If true, Alt+1..9 will be handled by the browser. If false, Alt+1..9 ` +
       `will be sent to the host. If null, autodetect based on browser ` +
-      `platform and window type.`
+      `platform and window type.`,
   ),
 
   'pass-ctrl-number': hterm.PreferenceManager.definePref_(
-      'Pass Ctrl-1..9 key behavior',
+      'Ctrl+1..9 switch tab behavior',
       hterm.PreferenceManager.Categories.Keyboard,
       null, 'tristate',
-      `Whether Ctrl-1..9 is passed to the browser.\n` +
+      `Whether Ctrl+1..9 is passed to the browser.\n` +
       `\n` +
       `This is handy when running hterm in a browser tab, so that you don't ` +
-      `lose Chrome's "switch to tab" keyboard accelerators. When not running ` +
+      `lose Chrome's "switch to tab" keyboard shortcuts. When not running ` +
       `in a tab it's better to send these keys to the host so they can be ` +
       `used in vim or emacs.\n` +
       `\n` +
-      `If true, Ctrl-1..9 will be handled by the browser. If false, ` +
-      `Ctrl-1..9 will be sent to the host. If null, autodetect based on ` +
-      `browser platform and window type.`
+      `If true, Ctrl+1..9 will be handled by the browser. If false, ` +
+      `Ctrl+1..9 will be sent to the host. If null, autodetect based on ` +
+      `browser platform and window type.`,
+  ),
+
+  'pass-ctrl-n': hterm.PreferenceManager.definePref_(
+      'Ctrl+N new window behavior',
+      hterm.PreferenceManager.Categories.Keyboard,
+      false, 'bool',
+      `Whether Ctrl+N is passed to the browser.\n` +
+      `\n` +
+      `If true, Ctrl+N will be handled by the browser as the "new window" ` +
+      `keyboard shortcut. If false, Ctrl+N will be sent to the host.`,
+  ),
+
+  'pass-ctrl-t': hterm.PreferenceManager.definePref_(
+      'Ctrl+T new tab behavior',
+      hterm.PreferenceManager.Categories.Keyboard,
+      false, 'bool',
+      `Whether Ctrl+T is passed to the browser.\n` +
+      `\n` +
+      `If true, Ctrl+T will be handled by the browser as the "new tab" ` +
+      `keyboard shortcut. If false, Ctrl+T will be sent to the host.`,
+  ),
+
+  'pass-ctrl-tab': hterm.PreferenceManager.definePref_(
+      'Ctrl+Tab switch tab behavior',
+      hterm.PreferenceManager.Categories.Keyboard,
+      false, 'bool',
+      `Whether Ctrl+Tab and Ctrl+Shift+Tab are passed to the browser.\n` +
+      `\n` +
+      `If true, Ctrl+Tab and Ctrl+Shift+Tab will be handled by the browser ` +
+      `as the "next/previous tab" keyboard shortcut. If false, the Tab ` +
+      `key is sent to the host without Ctrl or Shift.`,
+  ),
+
+  'pass-ctrl-w': hterm.PreferenceManager.definePref_(
+      'Ctrl+W close tab behavior',
+      hterm.PreferenceManager.Categories.Keyboard,
+      false, 'bool',
+      `Whether Ctrl+W is passed to the browser.\n` +
+      `\n` +
+      `If true, Ctrl+W will be handled by the browser as the "close tab" ` +
+      `keyboard shortcut. If false, Ctrl+W will be sent to the host.`,
   ),
 
   'pass-meta-number': hterm.PreferenceManager.definePref_(
-      'Pass Meta-1..9 key behavior',
+      'Meta+1..9 switch tab behavior',
       hterm.PreferenceManager.Categories.Keyboard,
       null, 'tristate',
-      `Whether Meta-1..9 is passed to the browser.\n` +
+      `Whether Meta+1..9 is passed to the browser.\n` +
       `\n` +
       `This is handy when running hterm in a browser tab, so that you don't ` +
-      `lose Chrome's "switch to tab" keyboard accelerators. When not running ` +
+      `lose Chrome's "switch to tab" keyboard shortcuts. When not running ` +
       `in a tab it's better to send these keys to the host so they can be ` +
       `used in vim or emacs.\n` +
       `\n` +
-      `If true, Meta-1..9 will be handled by the browser. If false, ` +
-      `Meta-1..9 will be sent to the host. If null, autodetect based on ` +
-      `browser platform and window type.`
+      `If true, Meta+1..9 will be handled by the browser. If false, ` +
+      `Meta+1..9 will be sent to the host. If null, autodetect based on ` +
+      `browser platform and window type.`,
   ),
 
   'pass-meta-v': hterm.PreferenceManager.definePref_(
-      'Pass Meta-V key behavior',
+      'Meta+V paste behavior',
       hterm.PreferenceManager.Categories.Keyboard,
       true, 'bool',
-      `Whether Meta-V gets passed to host.`
+      `Whether Meta+V gets passed to the browser.\n` +
+      `\n` +
+      `On some systems, this is used to paste content.`,
   ),
 
   'paste-on-drop': hterm.PreferenceManager.definePref_(
@@ -664,7 +754,7 @@ hterm.PreferenceManager.defaultPreferences = {
       hterm.PreferenceManager.Categories.CopyPaste,
       true, 'bool',
       `If true, Drag and dropped text will paste into terminal.\n` +
-      `If false, dropped text will be ignored.`
+      `If false, dropped text will be ignored.`,
   ),
 
   'receive-encoding': hterm.PreferenceManager.definePref_(
@@ -675,28 +765,28 @@ hterm.PreferenceManager.defaultPreferences = {
       `If the encodings do not match, visual bugs are likely to be ` +
       `observed.\n` +
       `\n` +
-      `Valid values are 'utf-8' and 'raw'.`
+      `Valid values are 'utf-8' and 'raw'.`,
   ),
 
   'scroll-on-keystroke': hterm.PreferenceManager.definePref_(
       'Scroll to bottom after keystroke',
       hterm.PreferenceManager.Categories.Scrolling,
       true, 'bool',
-      `Whether to scroll to the bottom on any keystroke.`
+      `Whether to scroll to the bottom on any keystroke.`,
   ),
 
   'scroll-on-output': hterm.PreferenceManager.definePref_(
       'Scroll to bottom after new output',
       hterm.PreferenceManager.Categories.Scrolling,
       false, 'bool',
-      `Whether to scroll to the bottom on terminal output.`
+      `Whether to scroll to the bottom on terminal output.`,
   ),
 
   'scrollbar-visible': hterm.PreferenceManager.definePref_(
       'Scrollbar visibility',
       hterm.PreferenceManager.Categories.Scrolling,
       true, 'bool',
-      `The vertical scrollbar mode.`
+      `The vertical scrollbar mode.`,
   ),
 
   'scroll-wheel-may-send-arrow-keys': hterm.PreferenceManager.definePref_(
@@ -704,22 +794,23 @@ hterm.PreferenceManager.defaultPreferences = {
       hterm.PreferenceManager.Categories.Scrolling,
       false, 'bool',
       `When using the alternative screen buffer, and DECCKM (Application ` +
-      `Cursor Keys) is active, mouse wheel scroll events will emulate arrow ` +
+      `Cursor Keys) is active, mouse scroll wheel events will emulate arrow ` +
       `keys.\n` +
       `\n` +
       `It can be temporarily disabled by holding the Shift key.\n` +
       `\n` +
       `This frequently comes up when using pagers (less) or reading man ` +
-      `pages or text editors (vi/nano) or using screen/tmux.`
+      `pages or text editors (vi/nano) or using screen/tmux.`,
   ),
 
   'scroll-wheel-move-multiplier': hterm.PreferenceManager.definePref_(
       'Mouse scroll wheel multiplier',
       hterm.PreferenceManager.Categories.Scrolling,
       1, 'int',
-      `The multiplier for scroll wheel events when measured in pixels.\n` +
+      `The multiplier for mouse scroll wheel events when measured in ` +
+      `pixels.\n` +
       `\n` +
-      `Alters how fast the page scrolls.`
+      `Alters how fast the page scrolls.`,
   ),
 
   'terminal-encoding': hterm.PreferenceManager.definePref_(
@@ -735,28 +826,28 @@ hterm.PreferenceManager.defaultPreferences = {
       `via terminal escape sequences.\n` +
       `\n` +
       `You should stick with UTF-8 unless you notice broken rendering with ` +
-      `legacy applications.`
+      `legacy applications.`,
   ),
 
   'shift-insert-paste': hterm.PreferenceManager.definePref_(
-      'Shift-Insert paste',
+      'Shift+Insert paste',
       hterm.PreferenceManager.Categories.Keyboard,
       true, 'bool',
-      `Whether Shift-Insert is used for pasting or is sent to the remote host.`
+      `Whether Shift+Insert is used for pasting or is sent to the remote host.`,
   ),
 
   'user-css': hterm.PreferenceManager.definePref_(
       'Custom CSS (URI)',
       hterm.PreferenceManager.Categories.Appearance,
       '', 'url',
-      `URL of user stylesheet to include in the terminal document.`
+      `URL of user stylesheet to include in the terminal document.`,
   ),
 
   'user-css-text': hterm.PreferenceManager.definePref_(
       'Custom CSS (inline text)',
       hterm.PreferenceManager.Categories.Appearance,
       '', 'multiline-string',
-      `Custom CSS text for styling the terminal.`
+      `Custom CSS text for styling the terminal.`,
   ),
 
   'allow-images-inline': hterm.PreferenceManager.definePref_(
@@ -765,7 +856,7 @@ hterm.PreferenceManager.defaultPreferences = {
       null, 'tristate',
       `Whether to allow the remote host to display images in the terminal.\n` +
       `\n` +
-      `By default, we prompt until a choice is made.`
+      `By default, we prompt until a choice is made.`,
   ),
 };
 

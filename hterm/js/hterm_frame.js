@@ -19,15 +19,14 @@
  *
  * @param {!hterm.Terminal} terminal The parent terminal object.
  * @param {string} url The url to load in the frame.
- * @param {!Object=} opt_options Optional options for the frame.  Not
- *     implemented.
+ * @param {!Object=} options Optional options for the frame.  Not implemented.
  * @constructor
  */
-hterm.Frame = function(terminal, url, opt_options) {
+hterm.Frame = function(terminal, url, options = {}) {
   this.terminal_ = terminal;
   this.div_ = terminal.div_;
   this.url = url;
-  this.options = opt_options || {};
+  this.options = options;
   this.iframe_ = null;
   this.container_ = null;
   this.messageChannel_ = null;
@@ -55,7 +54,6 @@ hterm.Frame.prototype.onMessage_ = function(e) {
       return;
     default:
       console.log('Unknown message from frame:', e.data);
-      return;
   }
 };
 
@@ -88,18 +86,17 @@ hterm.Frame.prototype.onLoad = function() {};
  * Sends the terminal-info message to the iframe.
  */
 hterm.Frame.prototype.sendTerminalInfo_ = function() {
-  lib.i18n.getAcceptLanguages(function(languages) {
-      this.postMessage('terminal-info', [{
-         acceptLanguages: languages,
-         foregroundColor: this.terminal_.getForegroundColor(),
-         backgroundColor: this.terminal_.getBackgroundColor(),
-         cursorColor: this.terminal_.getCursorColor(),
-         fontSize: this.terminal_.getFontSize(),
-         fontFamily: this.terminal_.getFontFamily(),
-         baseURL: lib.f.getURL('/')
-          }]
-        );
-    }.bind(this));
+  lib.i18n.getAcceptLanguages().then((languages) => {
+    this.postMessage('terminal-info', [{
+      acceptLanguages: languages,
+      foregroundColor: this.terminal_.getForegroundColor(),
+      backgroundColor: this.terminal_.getBackgroundColor(),
+      cursorColor: this.terminal_.getCursorColor(),
+      fontSize: this.terminal_.getFontSize(),
+      fontFamily: this.terminal_.getFontFamily(),
+      baseURL: lib.f.getURL('/'),
+    }]);
+  });
 };
 
 /**
@@ -113,8 +110,9 @@ hterm.Frame.prototype.onCloseClicked_ = function() {
  * Close this frame.
  */
 hterm.Frame.prototype.close = function() {
-  if (!this.container_ || !this.container_.parentNode)
-      return;
+  if (!this.container_ || !this.container_.parentNode) {
+    return;
+  }
 
   this.container_.parentNode.removeChild(this.container_);
   this.onClose();
@@ -133,8 +131,9 @@ hterm.Frame.prototype.onClose = function() {};
  * @param {!Array=} argv The message arguments.
  */
 hterm.Frame.prototype.postMessage = function(name, argv) {
-  if (!this.messageChannel_)
+  if (!this.messageChannel_) {
     throw new Error('Message channel is not set up.');
+  }
 
   this.messageChannel_.port1.postMessage({name: name, argv: argv});
 };
@@ -145,23 +144,14 @@ hterm.Frame.prototype.postMessage = function(name, argv) {
  * The iframe src is not loaded until this method is called.
  */
 hterm.Frame.prototype.show = function() {
-  var self = this;
-
-  function opt(name, defaultValue) {
-    if (name in self.options)
-      return self.options[name];
-
-    return defaultValue;
-  }
-
   if (this.container_ && this.container_.parentNode) {
     console.error('Frame already visible');
     return;
   }
 
-  var document = this.terminal_.document_;
+  const document = this.terminal_.document_;
 
-  var container = this.container_ = document.createElement('div');
+  const container = this.container_ = document.createElement('div');
   container.style.cssText = (
       'position: absolute;' +
       'display: none;' +
@@ -175,7 +165,7 @@ hterm.Frame.prototype.show = function() {
       'box-shadow: 0 0 2px ' + this.terminal_.getForegroundColor() + ';' +
       'border: 2px ' + this.terminal_.getForegroundColor() + ' solid;');
 
-  var iframe = this.iframe_ = document.createElement('iframe');
+  const iframe = this.iframe_ = document.createElement('iframe');
   iframe.onload = this.onLoad_.bind(this);
   iframe.style.cssText = (
       'display: flex;' +

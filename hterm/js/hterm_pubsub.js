@@ -23,8 +23,8 @@ hterm.PubSub = function() {
  * @param {!Object} obj The object to add this behavior to.
  */
 hterm.PubSub.addBehavior = function(obj) {
-  var pubsub = new hterm.PubSub();
-  for (var m in hterm.PubSub.prototype) {
+  const pubsub = new hterm.PubSub();
+  for (const m in hterm.PubSub.prototype) {
     obj[m] = hterm.PubSub.prototype[m].bind(pubsub);
   }
 };
@@ -36,8 +36,9 @@ hterm.PubSub.addBehavior = function(obj) {
  * @param {function(...)} callback The function to invoke for notifications.
  */
 hterm.PubSub.prototype.subscribe = function(subject, callback) {
-  if (!(subject in this.observers_))
+  if (!(subject in this.observers_)) {
     this.observers_[subject] = [];
+  }
 
   this.observers_[subject].push(callback);
 };
@@ -50,13 +51,15 @@ hterm.PubSub.prototype.subscribe = function(subject, callback) {
  *     subscribe().
  */
 hterm.PubSub.prototype.unsubscribe = function(subject, callback) {
-  var list = this.observers_[subject];
-  if (!list)
-    throw 'Invalid subject: ' + subject;
+  const list = this.observers_[subject];
+  if (!list) {
+    throw new Error(`Invalid subject: ${subject}`);
+  }
 
-  var i = list.indexOf(callback);
-  if (i < 0)
-    throw 'Not subscribed: ' + subject;
+  const i = list.indexOf(callback);
+  if (i < 0) {
+    throw new Error(`Not subscribed: ${subject}`);
+  }
 
   list.splice(i, 1);
 };
@@ -69,33 +72,36 @@ hterm.PubSub.prototype.unsubscribe = function(subject, callback) {
  *
  * @param {string} subject The subject to publish about.
  * @param {?Object=} e An arbitrary object associated with this notification.
- * @param {function(!Object)=} opt_lastCallback An optional function to call
+ * @param {function(!Object)=} lastCallback An optional function to call
  *     after all subscribers have been notified.
  */
-hterm.PubSub.prototype.publish = function(subject, e, opt_lastCallback) {
+hterm.PubSub.prototype.publish = function(
+    subject, e, lastCallback = undefined) {
   function notifyList(i) {
     // Set this timeout before invoking the callback, so we don't have to
     // concern ourselves with exceptions.
-    if (i < list.length - 1)
+    if (i < list.length - 1) {
       setTimeout(notifyList, 0, i + 1);
+    }
 
     list[i](e);
   }
 
-  var list = this.observers_[subject];
+  let list = this.observers_[subject];
   if (list) {
     // Copy the list, in case it changes while we're notifying.
     list = [].concat(list);
   }
 
-  if (opt_lastCallback) {
+  if (lastCallback) {
     if (list) {
-      list.push(opt_lastCallback);
+      list.push(lastCallback);
     } else {
-      list = [opt_lastCallback];
+      list = [lastCallback];
     }
   }
 
-  if (list)
+  if (list) {
     setTimeout(notifyList, 0, 0);
+  }
 };

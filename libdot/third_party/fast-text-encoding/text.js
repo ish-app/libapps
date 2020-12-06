@@ -32,7 +32,7 @@ if (scope['TextEncoder'] && scope['TextDecoder']) {
  * @constructor
  * @param {string=} utfLabel
  */
-function FastTextEncoder(utfLabel='utf-8') {
+function FastTextEncoder(utfLabel = 'utf-8') {
   if (utfLabel !== 'utf-8') {
     throw new RangeError(
         `Failed to construct 'TextEncoder': ` +
@@ -47,7 +47,7 @@ Object.defineProperty(FastTextEncoder.prototype, 'encoding', {value: 'utf-8'});
  * @param {{stream: boolean}=} options
  * @return {!Uint8Array}
  */
-FastTextEncoder.prototype.encode = function(string, options={stream: false}) {
+FastTextEncoder.prototype.encode = function(string, options = {stream: false}) {
   if (options.stream) {
     throw new Error(`Failed to encode: the 'stream' option is unsupported.`);
   }
@@ -90,14 +90,14 @@ FastTextEncoder.prototype.encode = function(string, options={stream: false}) {
       target[at++] = value;  // ASCII
       continue;
     } else if ((value & 0xfffff800) === 0) {  // 2-byte
-      target[at++] = ((value >>  6) & 0x1f) | 0xc0;
+      target[at++] = ((value >> 6) & 0x1f) | 0xc0;
     } else if ((value & 0xffff0000) === 0) {  // 3-byte
       target[at++] = ((value >> 12) & 0x0f) | 0xe0;
-      target[at++] = ((value >>  6) & 0x3f) | 0x80;
+      target[at++] = ((value >> 6) & 0x3f) | 0x80;
     } else if ((value & 0xffe00000) === 0) {  // 4-byte
       target[at++] = ((value >> 18) & 0x07) | 0xf0;
       target[at++] = ((value >> 12) & 0x3f) | 0x80;
-      target[at++] = ((value >>  6) & 0x3f) | 0x80;
+      target[at++] = ((value >> 6) & 0x3f) | 0x80;
     } else {
       // TODO: do we care
       continue;
@@ -114,7 +114,7 @@ FastTextEncoder.prototype.encode = function(string, options={stream: false}) {
  * @param {string=} utfLabel
  * @param {{fatal: boolean}=} options
  */
-function FastTextDecoder(utfLabel='utf-8', options={fatal: false}) {
+function FastTextDecoder(utfLabel = 'utf-8', options = {fatal: false}) {
   if (utfLabel !== 'utf-8') {
     throw new RangeError(
         `Failed to construct 'TextDecoder': ` +
@@ -138,7 +138,7 @@ Object.defineProperty(FastTextDecoder.prototype, 'ignoreBOM', {value: false});
  * @param {{stream: boolean}=} options
  * @return {string}
  */
-FastTextDecoder.prototype.decode = function(buffer, options={stream: false}) {
+FastTextDecoder.prototype.decode = function(buffer, options = {stream: false}) {
   if (options['stream']) {
     throw new Error(`Failed to decode: the 'stream' option is unsupported.`);
   }

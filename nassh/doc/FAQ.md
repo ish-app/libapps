@@ -47,7 +47,7 @@ is not answered here, please ask it on the [chromium-hterm mailing list].
   other text-based command) on its own.
 
 
-### How do Secure Shell and hterm relate to the "crosh" (Ctrl-Alt-T) command in Chrome OS?
+### How do Secure Shell and hterm relate to the "crosh" (Ctrl+Alt+T) command in Chrome OS?
 
   See [chromeos-crosh.md](chromeos-crosh.md) in this directory for the details.
 
@@ -93,7 +93,7 @@ is not answered here, please ask it on the [chromium-hterm mailing list].
 
   It can handle large bursts of text quickly, support very large scrollback
   buffers, and it closely matches xterm's behavior.  The keyboard even mostly
-  works.  (ha!  See the note about how to get Ctrl-W below.)
+  works.  (ha!  See the note about how to get Ctrl+W below.)
 
   The Secure Shell app is different because it does not require a proxy or
   relay server to function.  Secure Shell can make a direct connection to
@@ -370,21 +370,15 @@ have to re-import them.
   See the [OpenSSH legacy options] page for more details.
 
 
-### How do I remove a key?
+### How do I remove an identity (ssh key)?
+
+  The easiest way is to visit the options page and select the "SSH Files"
+  section on the left.  From there you will find a list of all the identities
+  and you can delete individual ones.
 
   From the connection dialog, select an identity from the dropdown and press
   the DELETE key.  This will remove both the private and public key files from
   the HTML5 filesystem.
-
-
-### How do I remove ALL keys?
-
-  Open the JavaScript console and type...
-
-    term_.command.removeDirectory('/.ssh/')
-
-  This will remove any non-key files you may have uploaded as well.  It will
-  *not* affect your preferences.
 
 
 ### Is there support for keychains?
@@ -425,16 +419,16 @@ have to re-import them.
   3. A `ssh://` URL.
 
   Note that Chrome opens bookmarks in new tabs.  If you want to have a bookmark
-  open as a window, add `?openas=window` to the URI.
+  open as a window, add `?openas=window` to the URI (before `#`).
 
 *** aside
 In the examples below, the *[ID]* field will need adjusting based on the
 version you have installed:
 
-* `pnhechapfaindjhompbnflcldabbghjo`: Secure Shell App (stable)
-* `okddffdblfhhnmhodogpojmfkjmhinfp`: Secure Shell App (dev)
-* `iodihamcpbpeioajjeobimgagajmlibd`: Secure Shell Extension (stable)
-* `algkcnfjnajfhgimadimbjhmpaeohhln`: Secure Shell Extension (dev)
+* `iodihamcpbpeioajjeobimgagajmlibd`: Secure Shell (stable)
+* `algkcnfjnajfhgimadimbjhmpaeohhln`: Secure Shell (dev)
+* `pnhechapfaindjhompbnflcldabbghjo`: Secure Shell Legacy App (stable)
+* `okddffdblfhhnmhodogpojmfkjmhinfp`: Secure Shell Legacy App (dev)
 ***
 
 #### Direct links
@@ -494,8 +488,8 @@ different app, visit the chrome://settings/handlers page.
   defined in the Direct links section above.
 
   You can open it in the existing tab by pressing Enter, or opening it in a new
-  window by pressing Alt-Enter, or opening it in a new background tab by
-  pressing Command-Enter/Meta-Enter.
+  window by pressing Alt+Enter, or opening it in a new background tab by
+  pressing Command+Enter/Meta+Enter.
 
 
 ### How do multiple extensions/apps work with the omnibox?
@@ -517,7 +511,7 @@ different app, visit the chrome://settings/handlers page.
   When trying to search for "ssh" via the omnibox, it might trigger the app
   when you actually want to perform a search.  Here are some alternatives:
 
-  * Instead of pressing Ctrl-L to select the omnibox, press Ctrl-K.
+  * Instead of pressing Ctrl+L to select the omnibox, press Ctrl+K.
     That'll force a search every time regardless of other omnibox integration.
   * Prefix your query with an explicit `?` to force a search.
     i.e. Use `?ssh ...` instead of `ssh ...`.
@@ -546,23 +540,9 @@ You'll have to adjust your keyboard/muscle memory accordingly.
 
 ### How do I remove a known host fingerprint (aka known_hosts) entry?
 
-  If you know the index of the offending host entry (it's usually reported
-  by ssh if the connection fails) you can open the JavaScript console and
-  type...
-
-     term_.command.removeKnownHostByIndex(index)
-
-  Replace index with the numeric, one-based host index.
-
-  If you don't know the index, or you'd like to clear all known hosts,
-  type...
-
-     term_.command.removeAllKnownHosts()
-
-  Make sure that you are typing these commands in the top frame of the app.  You
-  can access it by right-clicking on the new connection dialog, choosing
-  'Inspect', then picking `<top>` from the drop down menu in the JavaScript
-  console.
+  The easiest way to modify the file is to visit the options page and select the
+  "SSH Files" section on the left.  From there you will find text fields to edit
+  the various files including the known_hosts database.
 
   You can also hold Ctrl while right clicking the terminal to bring up a context
   menu.  Under that is an option to clear all SSH known hosts.
@@ -690,6 +670,22 @@ You'll have to adjust your keyboard/muscle memory accordingly.
   this.  It will also disable "real" bold characters, using only bright
   colors to indicate bold.
 
+### Which fonts are supported?
+
+  The following fonts are loaded automatically as web fonts with Secure Shell.
+  * Cousine
+  * Inconsolata
+  * Roboto Mono
+  * Source Code Pro
+
+  In addition, Powerline symbol fonts are bundled and loaded as web fonts for:
+  * Powerline For Cousine
+  * Powerline For Inconsolata
+  * Powerline For Noto Sans Mono
+  * Powerline For Roboto Mono
+  * Powerline For Source Code Pro
+
+  You can also specify other fonts if they are installed on your system.
 
 ### How do I change the default font size?
 
@@ -749,7 +745,7 @@ You'll have to adjust your keyboard/muscle memory accordingly.
 
 ### Can I quickly make temporarily changes to the font size?
 
-  Yes.  The Ctrl-Plus, Ctrl-Minus and Ctrl-Zero keys can increase, decrease,
+  Yes.  The Ctrl+Plus, Ctrl+Minus and Ctrl+Zero keys can increase, decrease,
   or reset the current font size.  This zoomed size is not remembered the
   next time you start hterm.  See the previous question if you want something
   that will stick.
@@ -763,18 +759,18 @@ You'll have to adjust your keyboard/muscle memory accordingly.
   probably not enough to be worth the effort.)
 
   To mitigate this, hterm will display a warning message when your browser
-  zoom is not 100%.  In this mode the Ctrl-Plus, Ctrl-Minus and Ctrl-Zero
-  keys are passed directly to the browser.  Just press Ctrl-Zero to reset your
+  zoom is not 100%.  In this mode the Ctrl+Plus, Ctrl+Minus and Ctrl+Zero
+  keys are passed directly to the browser.  Just press Ctrl+Zero to reset your
   zoom and dismiss the warning.
 
-  hterm should start handling Ctrl-Plus, Ctrl-Minus and Ctrl-Zero on its
+  hterm should start handling Ctrl+Plus, Ctrl+Minus and Ctrl+Zero on its
   own once your zoom setting is fixed.
 
 
 ### Why do I get a warning about my browser zoom?
 
   Because hterm requires you to set your browser to 100%, or 1:1 zoom.
-  Try Ctrl-Zero or the Wrench->Zoom menu to reset your browser zoom.  The
+  Try Ctrl+Zero or the Wrench->Zoom menu to reset your browser zoom.  The
   warning should go away after you correct the zoom level.
 
   See the previous question for more information.
@@ -887,7 +883,7 @@ You'll have to adjust your keyboard/muscle memory accordingly.
   That depends on your platform and which accented characters you want to
   enter.
 
-  In xterm, you could use Alt-plus-a-letter-or-number to select from the
+  In xterm, you could use Alt+plus-a-letter-or-number to select from the
   upper 128 characters.  The palette of 128 characters was "hardcoded" and
   not dependent on your keyboard locale.  You can set hterm to do the same
   thing by opening the JavaScript console and typing...
@@ -931,7 +927,7 @@ You'll have to adjust your keyboard/muscle memory accordingly.
      term_.prefs_.set('backspace-sends-backspace', true)
 
 
-### How do I send Ctrl-W, Ctrl-N or Ctrl-T to the terminal?
+### How do I send Ctrl+W, Ctrl+N or Ctrl+T to the terminal?
 
   Chrome blocks tab contents from getting access to these (and a few other)
   shortcuts.  You can open Secure Shell in a dedicated window to get around
@@ -949,9 +945,9 @@ You'll have to adjust your keyboard/muscle memory accordingly.
   option currently to capture these keystrokes.  See <https://crbug.com/671774>
   for more details.  You could run it in fullscreen mode (by pressing F11), but
   that isn't a great option if you want to leverage tabs.  You could press F11,
-  then Ctrl-N, then F11 again, but that also is not great.
+  then Ctrl+N, then F11 again, but that also is not great.
 
-  If you want to open another Secure Shell session, use Ctrl-Shift-N.
+  If you want to open another Secure Shell session, use Ctrl+Shift+N.
 
   Bookmarks will open in a tab regardless of OS and any settings.  You can add
   `?openas=window` to the URI so Secure Shell will reopen itself as a window
@@ -971,14 +967,36 @@ You'll have to adjust your keyboard/muscle memory accordingly.
 
 ### How do I change input methods?
 
-  In Chrome OS, Ctrl-Shift-Space and Ctrl-Space are used to cycle through
+  In Chrome OS, Ctrl+Shift+Space and Ctrl+Space are used to cycle through
   keyboard input methods.  By default, hterm will capture these.  You can
-  add custom bindings for these in the 'keybindings' settings to pass them
-  along to the OS instead.
+  turn on the 'keybindings-os-defaults' setting, or add custom bindings for
+  these in the 'keybindings' settings to pass them along to the OS instead.
 
      {
-       "Ctrl-Shift-Space": "PASS",
-       "Ctrl-Space": "PASS"
+       "Ctrl+Shift+Space": "PASS",
+       "Ctrl+Space": "PASS"
+     }
+
+  For more details, see the [Can I rebind keys/shortcuts](#keybindings)
+  section below.
+
+
+### How do I use Chrome OS window manager shortcuts?
+
+  In Chrome OS, Alt+- & Alt+= & Alt+[ & Alt+] are used to move windows around.
+  By default, hterm will capture these when using the Left Alt key.
+  In recent Chrome OS versions, the Right Alt key is not captured.
+  So you can use RightAlt+-/=/[/] keys even when running Secure Shell.
+
+  If you really want to use the Left Alt key too, you can add custom bindings in
+  the 'keybindings' settings to pass them along to the OS instead.
+  We have to use the keyCode number though.
+
+     {
+       "Alt+187": "PASS",
+       "Alt+189": "PASS",
+       "Alt+219": "PASS",
+       "Alt+221": "PASS"
      }
 
   For more details, see the [Can I rebind keys/shortcuts](#keybindings)
@@ -1018,14 +1036,14 @@ You'll have to adjust your keyboard/muscle memory accordingly.
   If you disable it you'll need to use one of the following key sequences
   to copy to the clipboard...
 
-  * Under Mac OS X the normal Command-C sequence works.
+  * Under Mac OS X the normal Command+C sequence works.
 
-  * On other platforms Ctrl-C will perform a Copy only when text is selected.
-    When there is no current selection Ctrl-C will send a "^C" to the host.
+  * On other platforms Ctrl+C will perform a Copy only when text is selected.
+    When there is no current selection Ctrl+C will send a "^C" to the host.
 
     Note that after copying text to the clipboard the active selection will be
     cleared.  If you happen to have text selected but want to send "^C",
-    just hit Ctrl-C twice.
+    just hit Ctrl+C twice.
 
   * Under all platforms you can also use the "Copy" command from the Wrench
     menu, when running Secure Shell in a browser tab.
@@ -1033,16 +1051,16 @@ You'll have to adjust your keyboard/muscle memory accordingly.
 
 ### How do I paste text to the terminal?
 
-  By default, Shift-Insert pastes the clipboard on all platforms.  If you'd
-  prefer to be able to send Shift-Insert to the host, set the
+  By default, Shift+Insert pastes the clipboard on all platforms.  If you'd
+  prefer to be able to send Shift+Insert to the host, set the
   'shift-insert-paste' preference to false.
 
   Also...
 
-  * Under Mac OS X the normal Command-V sequence can be used to paste from
+  * Under Mac OS X the normal Command+V sequence can be used to paste from
     the clipboard.
 
-  * On other platforms use Ctrl-Shift-V to paste from the clipboard.
+  * On other platforms use Ctrl+Shift+V to paste from the clipboard.
 
   * Under X11, you can use middle-mouse-click to paste from the X clipboard.
 

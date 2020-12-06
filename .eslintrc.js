@@ -16,6 +16,7 @@ module.exports = {
   },
 
   'plugins': [
+    'html',
     'jsdoc',
   ],
 
@@ -24,37 +25,55 @@ module.exports = {
   // to be too onerous and not required by the styleguide, feel free to discuss.
   'rules': {
     'array-bracket-spacing': 'error',
+    'arrow-parens': ['error', 'always'],
     'arrow-spacing': ['error', {'before': true, 'after': true}],
     'block-spacing': ['error', 'always'],
+    'comma-dangle': ['error', 'always-multiline'],
+    'comma-spacing': 'error',
     'comma-style': 'error',
+    'curly': 'error',
+    'default-param-last': 'error',
     'eol-last': 'error',
+    'func-call-spacing': 'error',
     'generator-star-spacing': ['error', 'after'],
+    // l/I: Depending on the font, these are hard to distinguish.
+    'id-blacklist': ['error', 'l', 'I', 'self'],
+    'keyword-spacing': 'error',
     'lines-between-class-members': 'error',
     'max-len': ['error', {'code': 80, 'ignoreUrls': true}],
     'new-parens': 'error',
     'no-alert': 'error',
-    'no-catch-shadow': 'error',
+    'no-case-declarations': 'error',
     'no-cond-assign': 'error',
     'no-const-assign': 'error',
+    'no-control-regex': 'error',
     'no-debugger': 'error',
     'no-dupe-args': 'error',
     'no-dupe-class-members': 'error',
     'no-dupe-keys': 'error',
     'no-duplicate-case': 'error',
+    'no-empty': 'error',
     'no-empty-character-class': 'error',
     'no-eval': 'error',
     'no-ex-assign': 'error',
+    // We want 'all' (nestedBinaryExpressions=false), but this breaks
+    // closure-compiler casts.
+    'no-extra-parens': ['error', 'functions'],
     'no-extra-semi': 'error',
     'no-implied-eval': 'error',
     'no-invalid-regexp': 'error',
     'no-irregular-whitespace': 'error',
     'no-label-var': 'error',
     'no-mixed-spaces-and-tabs': 'error',
+    'no-multi-spaces': ['error', {'ignoreEOLComments': true}],
     'no-multiple-empty-lines': 'error',
     'no-new': 'error',
     'no-new-func': 'error',
     'no-new-object': 'error',
     'no-new-wrappers': 'error',
+    'no-obj-calls': 'error',
+    'no-octal': 'error',
+    'no-octal-escape': 'error',
     'no-return-await': 'error',
     'no-script-url': 'error',
     'no-self-assign': 'error',
@@ -63,10 +82,16 @@ module.exports = {
     'no-shadow-restricted-names': 'error',
     'no-tabs': 'error',
     'no-template-curly-in-string': 'error',
+    'no-throw-literal': 'error',
     'no-trailing-spaces': 'error',
     'no-unmodified-loop-condition': 'error',
     'no-unneeded-ternary': 'error',
     'no-unreachable': 'error',
+    'no-useless-call': 'error',
+    'no-useless-concat': 'error',
+    'no-useless-escape': 'error',
+    'no-useless-return': 'error',
+    'no-var': 'error',
     'no-void': 'error',
     // We allow TODO comments.
     'no-warning-comments': [
@@ -76,18 +101,39 @@ module.exports = {
     ],
     'no-whitespace-before-property': 'error',
     'no-with': 'error',
+    'object-curly-newline': ['error', {'consistent': true}],
+    'object-curly-spacing': 'error',
+    'one-var-declaration-per-line': 'error',
+    'prefer-const': 'error',
     'prefer-numeric-literals': 'error',
+    'prefer-rest-params': 'error',
     'quote-props': ['error', 'consistent'],
+    'quotes': ['error', 'single',
+               {'avoidEscape': true, 'allowTemplateLiterals': true}],
+    'radix': 'error',
     'rest-spread-spacing': 'error',
     'semi': ['error', 'always'],
+    'semi-spacing': 'error',
     'semi-style': ['error', 'last'],
+    'space-before-blocks': ['error', 'always'],
+    'space-before-function-paren': [
+      'error', {
+        'anonymous': 'never',
+        'named': 'never',
+        'asyncArrow': 'always',
+      },
+    ],
+    'space-in-parens': ['error', 'never'],
+    'space-infix-ops': 'error',
     'space-unary-ops': 'error',
+    'spaced-comment': ['error', 'always'],
     'switch-colon-spacing': ['error', {'after': true, 'before': false}],
     'symbol-description': 'error',
     'template-curly-spacing': ['error', 'never'],
     'unicode-bom': ['error', 'never'],
     'use-isnan': 'error',
     'valid-typeof': 'error',
+    'yield-star-spacing': ['error', 'after'],
     'yoda': 'error',
 
     'jsdoc/check-alignment': 2,
@@ -129,7 +175,16 @@ module.exports = {
   },
 
   'settings': {
+    // https://github.com/BenoitZugmeyer/eslint-plugin-html#settings
+    'html': {
+      // TODO(vapier): Would like to use .html.in, but doesn't work right.
+      // https://github.com/BenoitZugmeyer/eslint-plugin-html/issues/127
+      'html-extensions': ['.html', '.in'],
+    },
+
+    // https://github.com/gajus/eslint-plugin-jsdoc#eslint-plugin-jsdoc
     'jsdoc': {
+      'mode': 'closure',
       'preferredTypes': {
         'object': 'Object',
       },
@@ -143,8 +198,8 @@ module.exports = {
         'returns': 'return',
 
         // Stub out closure-specific tags so they get ignored.
+        // TODO(vapier): Delete this after upgrade to newer jsdoc.
         'closurePrimitive': '',
-        'suppress': '',
       },
     },
   },

@@ -45,7 +45,7 @@
  *    0 if not provided.
  * @constructor
  */
-hterm.Screen = function(columnCount=0) {
+hterm.Screen = function(columnCount = 0) {
   /**
    * Public, read-only access to the rows in this screen.
    *
@@ -120,8 +120,9 @@ hterm.Screen.prototype.getWidth = function() {
 hterm.Screen.prototype.setColumnCount = function(count) {
   this.columnCount_ = count;
 
-  if (this.cursorPosition.column >= count)
+  if (this.cursorPosition.column >= count) {
     this.setCursorPosition(this.cursorPosition.row, count - 1);
+  }
 };
 
 /**
@@ -215,7 +216,7 @@ hterm.Screen.prototype.insertRow = function(index, row) {
  * @param {!Array<!Element>} rows The rows to insert.
  */
 hterm.Screen.prototype.insertRows = function(index, rows) {
-  for (var i = 0; i < rows.length; i++) {
+  for (let i = 0; i < rows.length; i++) {
     this.rowsArray.splice(index + i, 0, rows[i]);
   }
 };
@@ -267,7 +268,7 @@ hterm.Screen.prototype.clearCursorRow = function() {
   this.cursorPosition.column = 0;
   this.cursorPosition.overflow = false;
 
-  var text;
+  let text;
   if (this.textAttributes.isDefault()) {
     text = '';
   } else {
@@ -276,11 +277,11 @@ hterm.Screen.prototype.clearCursorRow = function() {
 
   // We shouldn't honor inverse colors when clearing an area, to match
   // xterm's back color erase behavior.
-  var inverse = this.textAttributes.inverse;
+  const inverse = this.textAttributes.inverse;
   this.textAttributes.inverse = false;
   this.textAttributes.syncColors();
 
-  var node = this.textAttributes.createContainer(text);
+  const node = this.textAttributes.createContainer(text);
   this.cursorRowNode_.appendChild(node);
   this.cursorNode_ = node;
 
@@ -334,15 +335,15 @@ hterm.Screen.prototype.setCursorPosition = function(row, column) {
 
   this.cursorPosition.overflow = false;
 
-  var rowNode = this.rowsArray[row];
-  var node = rowNode.firstChild;
+  const rowNode = this.rowsArray[row];
+  let node = rowNode.firstChild;
 
   if (!node) {
     node = rowNode.ownerDocument.createTextNode('');
     rowNode.appendChild(node);
   }
 
-  var currentColumn = 0;
+  let currentColumn = 0;
 
   if (rowNode == this.cursorRowNode_) {
     if (column >= this.cursorPosition.column - this.cursorOffset_) {
@@ -356,8 +357,8 @@ hterm.Screen.prototype.setCursorPosition = function(row, column) {
   this.cursorPosition.move(row, column);
 
   while (node) {
-    var offset = column - currentColumn;
-    var width = hterm.TextAttributes.nodeWidth(node);
+    const offset = column - currentColumn;
+    const width = hterm.TextAttributes.nodeWidth(node);
     if (!node.nextSibling || width > offset) {
       this.cursorNode_ = node;
       this.cursorOffset_ = offset;
@@ -401,23 +402,25 @@ hterm.Screen.prototype.syncSelectionCaret = function(selection) {
  *     occur.
  */
 hterm.Screen.prototype.splitNode_ = function(node, offset) {
-  var afterNode = node.cloneNode(false);
+  const afterNode = node.cloneNode(false);
 
-  var textContent = node.textContent;
+  const textContent = node.textContent;
   node.textContent = hterm.TextAttributes.nodeSubstr(node, 0, offset);
   afterNode.textContent = lib.wc.substr(textContent, offset);
 
-  if (afterNode.textContent)
+  if (afterNode.textContent) {
     node.parentNode.insertBefore(afterNode, node.nextSibling);
-  if (!node.textContent)
+  }
+  if (!node.textContent) {
     node.parentNode.removeChild(node);
+  }
 };
 
 /**
  * Ensure that text is clipped and the cursor is clamped to the column count.
  */
 hterm.Screen.prototype.maybeClipCurrentRow = function() {
-  var width = hterm.TextAttributes.nodeWidth(lib.notNull(this.cursorRowNode_));
+  let width = hterm.TextAttributes.nodeWidth(lib.notNull(this.cursorRowNode_));
 
   if (width <= this.columnCount_) {
     // Current row does not need clipping, but may need clamping.
@@ -430,7 +433,7 @@ hterm.Screen.prototype.maybeClipCurrentRow = function() {
   }
 
   // Save off the current column so we can maybe restore it later.
-  var currentColumn = this.cursorPosition.column;
+  const currentColumn = this.cursorPosition.column;
 
   // Move the cursor to the final column.
   this.setCursorPosition(this.cursorPosition.row, this.columnCount_ - 1);
@@ -444,8 +447,8 @@ hterm.Screen.prototype.maybeClipCurrentRow = function() {
   }
 
   // Remove all nodes after the cursor.
-  var rowNode = this.cursorRowNode_;
-  var node = this.cursorNode_.nextSibling;
+  const rowNode = this.cursorRowNode_;
+  let node = this.cursorNode_.nextSibling;
 
   while (node) {
     rowNode.removeChild(node);
@@ -477,27 +480,28 @@ hterm.Screen.prototype.maybeClipCurrentRow = function() {
  *     calculated on demand if need be.  Passing in a cached value helps speed
  *     up processing as this is a hot codepath.
  */
-hterm.Screen.prototype.insertString = function(str, wcwidth=undefined) {
-  var cursorNode = this.cursorNode_;
-  var cursorNodeText = cursorNode.textContent;
+hterm.Screen.prototype.insertString = function(str, wcwidth = undefined) {
+  let cursorNode = this.cursorNode_;
+  let cursorNodeText = cursorNode.textContent;
 
   this.cursorRowNode_.removeAttribute('line-overflow');
 
   // We may alter the width of the string by prepending some missing
   // whitespaces, so we need to record the string width ahead of time.
-  if (wcwidth === undefined)
+  if (wcwidth === undefined) {
     wcwidth = lib.wc.strWidth(str);
+  }
 
   // No matter what, before this function exits the cursor column will have
   // moved this much.
   this.cursorPosition.column += wcwidth;
 
   // Local cache of the cursor offset.
-  var offset = this.cursorOffset_;
+  let offset = this.cursorOffset_;
 
   // Reverse offset is the offset measured from the end of the string.
   // Zero implies that the cursor is at the end of the cursor node.
-  var reverseOffset = hterm.TextAttributes.nodeWidth(cursorNode) - offset;
+  let reverseOffset = hterm.TextAttributes.nodeWidth(cursorNode) - offset;
 
   if (reverseOffset < 0) {
     // A negative reverse offset means the cursor is positioned past the end
@@ -529,7 +533,7 @@ hterm.Screen.prototype.insertString = function(str, wcwidth=undefined) {
       cursorNode.textContent = (cursorNodeText += ws);
     } else {
       // Worst case, we have to create a new node to hold the whitespace.
-      var wsNode = cursorNode.ownerDocument.createTextNode(ws);
+      const wsNode = cursorNode.ownerDocument.createTextNode(ws);
       this.cursorRowNode_.insertBefore(wsNode, cursorNode.nextSibling);
       this.cursorNode_ = cursorNode = wsNode;
       this.cursorOffset_ = offset = -reverseOffset;
@@ -562,7 +566,7 @@ hterm.Screen.prototype.insertString = function(str, wcwidth=undefined) {
 
   if (offset == 0) {
     // At the beginning of the cursor node, the check the previous sibling.
-    var previousSibling = cursorNode.previousSibling;
+    const previousSibling = cursorNode.previousSibling;
     if (previousSibling &&
         this.textAttributes.matchesContainer(previousSibling)) {
       previousSibling.textContent += str;
@@ -571,7 +575,7 @@ hterm.Screen.prototype.insertString = function(str, wcwidth=undefined) {
       return;
     }
 
-    var newNode = this.textAttributes.createContainer(str);
+    const newNode = this.textAttributes.createContainer(str);
     this.cursorRowNode_.insertBefore(newNode, cursorNode);
     this.cursorNode_ = newNode;
     this.cursorOffset_ = wcwidth;
@@ -580,7 +584,7 @@ hterm.Screen.prototype.insertString = function(str, wcwidth=undefined) {
 
   if (reverseOffset == 0) {
     // At the end of the cursor node, the check the next sibling.
-    var nextSibling = cursorNode.nextSibling;
+    const nextSibling = cursorNode.nextSibling;
     if (nextSibling &&
         this.textAttributes.matchesContainer(nextSibling)) {
       nextSibling.textContent = str + nextSibling.textContent;
@@ -589,7 +593,7 @@ hterm.Screen.prototype.insertString = function(str, wcwidth=undefined) {
       return;
     }
 
-    var newNode = this.textAttributes.createContainer(str);
+    const newNode = this.textAttributes.createContainer(str);
     this.cursorRowNode_.insertBefore(newNode, nextSibling);
     this.cursorNode_ = newNode;
     // We specifically need to include any missing whitespace here, since it's
@@ -601,7 +605,7 @@ hterm.Screen.prototype.insertString = function(str, wcwidth=undefined) {
   // Worst case, we're somewhere in the middle of the cursor node.  We'll
   // have to split it into two nodes and insert our new container in between.
   this.splitNode_(cursorNode, offset);
-  var newNode = this.textAttributes.createContainer(str);
+  const newNode = this.textAttributes.createContainer(str);
   this.cursorRowNode_.insertBefore(newNode, cursorNode.nextSibling);
   this.cursorNode_ = newNode;
   this.cursorOffset_ = wcwidth;
@@ -621,13 +625,15 @@ hterm.Screen.prototype.insertString = function(str, wcwidth=undefined) {
  *     calculated on demand if need be.  Passing in a cached value helps speed
  *     up processing as this is a hot codepath.
  */
-hterm.Screen.prototype.overwriteString = function(str, wcwidth=undefined) {
-  var maxLength = this.columnCount_ - this.cursorPosition.column;
-  if (!maxLength)
+hterm.Screen.prototype.overwriteString = function(str, wcwidth = undefined) {
+  const maxLength = this.columnCount_ - this.cursorPosition.column;
+  if (!maxLength) {
     return;
+  }
 
-  if (wcwidth === undefined)
+  if (wcwidth === undefined) {
     wcwidth = lib.wc.strWidth(str);
+  }
 
   if (this.textAttributes.matchesContainer(lib.notNull(this.cursorNode_)) &&
       this.cursorNode_.textContent.substr(this.cursorOffset_) ==
@@ -653,16 +659,17 @@ hterm.Screen.prototype.overwriteString = function(str, wcwidth=undefined) {
  * @return {number} The column width of the characters actually deleted.
  */
 hterm.Screen.prototype.deleteChars = function(count) {
-  var node = this.cursorNode_;
-  var offset = this.cursorOffset_;
+  let node = this.cursorNode_;
+  let offset = this.cursorOffset_;
 
-  var currentCursorColumn = this.cursorPosition.column;
+  const currentCursorColumn = this.cursorPosition.column;
   count = Math.min(count, this.columnCount_ - currentCursorColumn);
-  if (!count)
+  if (!count) {
     return 0;
+  }
 
-  var rv = count;
-  var startLength, endLength;
+  const rv = count;
+  let startLength, endLength;
 
   while (node && count) {
     // Sanity check so we don't loop forever, but we don't also go quietly.
@@ -687,15 +694,16 @@ hterm.Screen.prototype.deleteChars = function(count) {
       // No characters were deleted when there should be.  We're probably trying
       // to delete one column width from a wide character node.  We remove the
       // wide character node here and replace it with a single space.
-      var spaceNode = this.textAttributes.createContainer(' ');
+      const spaceNode = this.textAttributes.createContainer(' ');
       node.parentNode.insertBefore(spaceNode, offset ? node : node.nextSibling);
       node.textContent = '';
       endLength = 0;
       count -= 1;
-    } else
+    } else {
       count -= startLength - endLength;
+    }
 
-    var nextNode = node.nextSibling;
+    const nextNode = node.nextSibling;
     if (endLength == 0 && node != this.cursorNode_) {
       node.parentNode.removeChild(node);
     }
@@ -706,7 +714,7 @@ hterm.Screen.prototype.deleteChars = function(count) {
   // Remove this.cursorNode_ if it is an empty non-text node.
   if (this.cursorNode_.nodeType != Node.TEXT_NODE &&
       !this.cursorNode_.textContent) {
-    var cursorNode = this.cursorNode_;
+    const cursorNode = this.cursorNode_;
     if (cursorNode.previousSibling) {
       this.cursorNode_ = cursorNode.previousSibling;
       this.cursorOffset_ = hterm.TextAttributes.nodeWidth(
@@ -715,7 +723,7 @@ hterm.Screen.prototype.deleteChars = function(count) {
       this.cursorNode_ = cursorNode.nextSibling;
       this.cursorOffset_ = 0;
     } else {
-      var emptyNode = this.cursorRowNode_.ownerDocument.createTextNode('');
+      const emptyNode = this.cursorRowNode_.ownerDocument.createTextNode('');
       this.cursorRowNode_.appendChild(emptyNode);
       this.cursorNode_ = emptyNode;
       this.cursorOffset_ = 0;
@@ -771,8 +779,9 @@ hterm.Screen.prototype.getLineText_ = function(row) {
 hterm.Screen.prototype.getXRowAncestor_ = function(node) {
   let nodeOrNull = node;
   while (nodeOrNull) {
-    if (nodeOrNull.nodeName === 'X-ROW')
+    if (nodeOrNull.nodeName === 'X-ROW') {
       break;
+    }
     nodeOrNull = nodeOrNull.parentNode;
   }
   return nodeOrNull;
@@ -788,12 +797,14 @@ hterm.Screen.prototype.getXRowAncestor_ = function(node) {
  * @return {number} Position within line of character at offset within node.
  **/
 hterm.Screen.prototype.getPositionWithOverflow_ = function(row, node, offset) {
-  if (!node)
+  if (!node) {
     return -1;
-  var ancestorRow = this.getXRowAncestor_(node);
-  if (!ancestorRow)
+  }
+  const ancestorRow = this.getXRowAncestor_(node);
+  if (!ancestorRow) {
     return -1;
-  var position = 0;
+  }
+  let position = 0;
   while (ancestorRow != row) {
     position += hterm.TextAttributes.nodeWidth(row);
     if (row.hasAttribute('line-overflow') && row.nextSibling) {
@@ -817,17 +828,19 @@ hterm.Screen.prototype.getPositionWithOverflow_ = function(row, node, offset) {
 hterm.Screen.prototype.getPositionWithinRow_ = function(row, node, offset) {
   if (node.parentNode != row) {
     // If we traversed to the top node, then there's nothing to find here.
-    if (node.parentNode == null)
+    if (node.parentNode == null) {
       return -1;
+    }
 
     return this.getPositionWithinRow_(node.parentNode, node, offset) +
            this.getPositionWithinRow_(row, node.parentNode, 0);
   }
-  var position = 0;
-  for (var i = 0; i < row.childNodes.length; i++) {
-    var currentNode = row.childNodes[i];
-    if (currentNode == node)
+  let position = 0;
+  for (let i = 0; i < row.childNodes.length; i++) {
+    const currentNode = row.childNodes[i];
+    if (currentNode == node) {
       return position + offset;
+    }
     position += hterm.TextAttributes.nodeWidth(currentNode);
   }
   return -1;
@@ -862,9 +875,9 @@ hterm.Screen.prototype.getNodeAndOffsetWithOverflow_ = function(row, position) {
  * @return {?Array} Two element array containing node and offset respectively.
  **/
 hterm.Screen.prototype.getNodeAndOffsetWithinRow_ = function(row, position) {
-  for (var i = 0; i < row.childNodes.length; i++) {
-    var node = row.childNodes[i];
-    var nodeTextWidth = hterm.TextAttributes.nodeWidth(node);
+  for (let i = 0; i < row.childNodes.length; i++) {
+    const node = row.childNodes[i];
+    const nodeTextWidth = hterm.TextAttributes.nodeWidth(node);
     if (position <= nodeTextWidth) {
       if (node.nodeName === 'SPAN') {
         /** Drill down to node contained by SPAN. **/
@@ -888,12 +901,14 @@ hterm.Screen.prototype.getNodeAndOffsetWithinRow_ = function(row, position) {
  * @param {!Range} range Range to modify.
  **/
 hterm.Screen.prototype.setRange_ = function(row, start, end, range) {
-  var startNodeAndOffset = this.getNodeAndOffsetWithOverflow_(row, start);
-  if (startNodeAndOffset == null)
+  const startNodeAndOffset = this.getNodeAndOffsetWithOverflow_(row, start);
+  if (startNodeAndOffset == null) {
     return;
-  var endNodeAndOffset = this.getNodeAndOffsetWithOverflow_(row, end);
-  if (endNodeAndOffset == null)
+  }
+  const endNodeAndOffset = this.getNodeAndOffsetWithOverflow_(row, end);
+  if (endNodeAndOffset == null) {
     return;
+  }
   range.setStart(startNodeAndOffset[0], startNodeAndOffset[1]);
   range.setEnd(endNodeAndOffset[0], endNodeAndOffset[1]);
 };
@@ -908,47 +923,56 @@ hterm.Screen.prototype.setRange_ = function(row, start, end, range) {
  */
 hterm.Screen.prototype.expandSelectionWithWordBreakMatches_ =
     function(selection, leftMatch, rightMatch, insideMatch) {
-  if (!selection)
+  if (!selection) {
     return;
+  }
 
-  var range = selection.getRangeAt(0);
-  if (!range || range.toString().match(/\s/))
+  const range = selection.getRangeAt(0);
+  if (!range || range.toString().match(/\s/)) {
     return;
+  }
 
   const rowElement = this.getXRowAncestor_(lib.notNull(range.startContainer));
-  if (!rowElement)
+  if (!rowElement) {
     return;
+  }
   const row = this.getLineStartRow_(rowElement);
-  if (!row)
+  if (!row) {
     return;
+  }
 
-  var startPosition = this.getPositionWithOverflow_(
+  const startPosition = this.getPositionWithOverflow_(
       row, lib.notNull(range.startContainer), range.startOffset);
-  if (startPosition == -1)
+  if (startPosition == -1) {
     return;
-  var endPosition = this.getPositionWithOverflow_(
+  }
+  const endPosition = this.getPositionWithOverflow_(
       row, lib.notNull(range.endContainer), range.endOffset);
-  if (endPosition == -1)
+  if (endPosition == -1) {
     return;
+  }
 
-  //Move start to the left.
-  var rowText = this.getLineText_(row);
-  var lineUpToRange = lib.wc.substring(rowText, 0, endPosition);
-  var leftRegularExpression = new RegExp(leftMatch + insideMatch + "$");
-  var expandedStart = lineUpToRange.search(leftRegularExpression);
-  if (expandedStart == -1 || expandedStart > startPosition)
+  // Move start to the left.
+  const rowText = this.getLineText_(row);
+  const lineUpToRange = lib.wc.substring(rowText, 0, endPosition);
+  const leftRegularExpression = new RegExp(leftMatch + insideMatch + '$');
+  const expandedStart = lineUpToRange.search(leftRegularExpression);
+  if (expandedStart == -1 || expandedStart > startPosition) {
     return;
+  }
 
-  //Move end to the right.
-  var lineFromRange = lib.wc.substring(rowText, startPosition,
-                                       lib.wc.strWidth(rowText));
-  var rightRegularExpression = new RegExp("^" + insideMatch + rightMatch);
-  var found = lineFromRange.match(rightRegularExpression);
-  if (!found)
+  // Move end to the right.
+  const lineFromRange = lib.wc.substring(rowText, startPosition,
+                                         lib.wc.strWidth(rowText));
+  const rightRegularExpression = new RegExp('^' + insideMatch + rightMatch);
+  const found = lineFromRange.match(rightRegularExpression);
+  if (!found) {
     return;
-  var expandedEnd = startPosition + lib.wc.strWidth(found[0]);
-  if (expandedEnd == -1 || expandedEnd < endPosition)
+  }
+  const expandedEnd = startPosition + lib.wc.strWidth(found[0]);
+  if (expandedEnd == -1 || expandedEnd < endPosition) {
     return;
+  }
 
   this.setRange_(row, expandedStart, expandedEnd, range);
   selection.addRange(range);
@@ -975,9 +999,9 @@ hterm.Screen.prototype.expandSelection = function(selection) {
 hterm.Screen.prototype.expandSelectionForUrl = function(selection) {
   this.expandSelectionWithWordBreakMatches_(
       selection,
-      "[^\\s\\[\\](){}<>\"'\\^!@#$%&*,;:`]",
-      "[^\\s\\[\\](){}<>\"'\\^!@#$%&*,;:~.`]",
-      "[^\\s\\[\\](){}<>\"'\\^]*");
+      '[^\\s[\\](){}<>"\'^!@#$%&*,;:`\u{2018}\u{201c}\u{2039}\u{ab}]',
+      '[^\\s[\\](){}<>"\'^!@#$%&*,;:~.`\u{2019}\u{201d}\u{203a}\u{bb}]',
+      '[^\\s[\\](){}<>"\'^]*');
 };
 
 /**
@@ -1053,7 +1077,8 @@ hterm.Screen.CursorState.prototype.restore = function(vt) {
   // Cursor restore includes char attributes (bold/etc...), but does not change
   // the color palette (which are a terminal setting).
   const tattrs = this.textAttributes.clone();
-  tattrs.colorPalette = this.screen_.textAttributes.colorPalette;
+  tattrs.colorPaletteOverrides =
+      this.screen_.textAttributes.colorPaletteOverrides;
   tattrs.syncColors();
 
   this.screen_.textAttributes = tattrs;

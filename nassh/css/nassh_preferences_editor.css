@@ -38,6 +38,7 @@ body {
   z-index: 3;
   -webkit-margin-start: 0;
   -webkit-margin-end: 15px;
+  overflow: auto;
 }
 
 /*
@@ -54,7 +55,14 @@ body {
 #options {
   width: 100%;
   position: relative;
-  margin-left: 155px; /* Size of navigation pane */
+}
+
+/*
+ * Make sure the right pane takes up the whole page when selected.
+ * Otherwise, unselected panes underneath will bleed through.
+ */
+.chrome-bootstrap .frame .mainview > .selected {
+  height: 100%;
 }
 
 /*
@@ -163,4 +171,10 @@ body {
 
 #settings span.setting-ui input {
   vertical-align: middle;
+}
+
+#ssh-files-known-hosts, #ssh-files-config {
+  font-family: monospace;
+  white-space: nowrap;
+  width: 100%;
 }

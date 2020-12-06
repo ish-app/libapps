@@ -33,6 +33,25 @@ nassh.Stream.ERR_STREAM_CANT_READ = 'Stream has no read permission';
 nassh.Stream.ERR_STREAM_CANT_WRITE = 'Stream has no write permission';
 
 /**
+ * Maximum number of queued bytes allowed in a WebSocket.
+ *
+ * This is the low water mark -- we stop queueing after we exceed this, but we
+ * will keep sending messages as long as we're below it.
+ *
+ * The limit is checked against the WebSocket.bufferedAmount property which
+ * tracks how much data has been queued but not yet drained by the platform.
+ *
+ * The WebSocket API says that if send() is unable to queue data because the
+ * buffer is full, the platform will close the socket on us with an error.  It
+ * is not possible to query the platform's limit however, so we pick an amount
+ * that seems to be reasonable.  In practice on "normal" machines, we seem to
+ * stay well beneath this limit, and the current stream protocols we support
+ * use message sizes well below this limit.  Plus, if the platform is unable
+ * to send/drain the data, us queuing more won't really help either.
+ */
+nassh.Stream.prototype.maxWebSocketBufferLength = 64 * 1024;
+
+/**
  * Open a stream, calling back when complete.
  *
  * @param {!Object} settings Each subclass of nassh.Stream defines its own
@@ -54,8 +73,9 @@ nassh.Stream.prototype.asyncOpen = function(settings, onOpen) {
  * @param {function(!ArrayBuffer)} onRead
  */
 nassh.Stream.prototype.asyncRead = function(size, onRead) {
-  if (this.onDataAvailable === undefined)
+  if (this.onDataAvailable === undefined) {
     throw nassh.Stream.ERR_NOT_IMPLEMENTED;
+  }
 
   setTimeout(() => onRead(new ArrayBuffer(0)), 0);
 };
@@ -74,6 +94,7 @@ nassh.Stream.prototype.asyncWrite = function(data, onSuccess) {
  * Close a stream.
  */
 nassh.Stream.prototype.close = function() {
-  if (this.onClose)
+  if (this.onClose) {
     this.onClose();
+  }
 };

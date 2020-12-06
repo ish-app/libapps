@@ -9,7 +9,11 @@
  * so we do it like this instead.
  */
 window.addEventListener('DOMContentLoaded', (event) => {
-  lib.init(() => new popup());
+  nassh.loadWebFonts(document);
+  lib.init().then(() => {
+    // Save a handle for debugging.
+    window.popup_ = new popup();
+  });
 });
 
 /**
@@ -18,15 +22,21 @@ window.addEventListener('DOMContentLoaded', (event) => {
  * @constructor
  */
 function popup() {
-  // The nassh global pref manager.
+  // The nassh global preference managers.
   this.prefs_ = new nassh.PreferenceManager();
+  this.localPrefs_ = new nassh.LocalPreferenceManager();
   // The hterm pref manager.  We use the 'default' profile to theme.
   this.htermPrefs_ = new hterm.PreferenceManager('default');
 
   // Load the theme first so the style doesn't flicker.
   this.htermPrefs_.readStorage(() => {
     this.updateTheme_();
-    this.prefs_.readStorage(() => this.populateList_());
+    this.prefs_.readStorage(() => {
+      this.populateList_();
+      this.localPrefs_.readStorage(() => {
+        this.localPrefs_.syncProfiles(this.prefs_);
+      });
+    });
   });
 }
 
@@ -37,6 +47,18 @@ function popup() {
  */
 popup.prototype.openLink_ = function(e) {
   const id = e.target.id;
+  let profile;
+
+  // Figure out whether to open a window or a tab.
+  let mode;
+  if (e.ctrlKey) {
+    mode = 'tab';
+  } else if (e.shiftKey) {
+    mode = 'window';
+  } else {
+    // TODO: Get default from prefs.
+    mode = 'window';
+  }
 
   let url = lib.f.getURL('/html/nassh.html');
   switch (id) {
@@ -45,28 +67,53 @@ popup.prototype.openLink_ = function(e) {
     case 'options':
       nassh.openOptionsPage();
       return;
-    default:
-      url += `#profile-id:${id}`;
+    case 'feedback':
+      nassh.sendFeedback();
+      return;
+    default: {
+      profile = this.localPrefs_.getProfile(id);
+      let openas = '';
+      if (mode === 'window') {
+        const state = profile.get('win/state');
+        if (state !== 'normal') {
+          openas = `openas=${state}`;
+        }
+      }
+      url += `?promptOnReload=yes&${openas}#profile-id:${id}`;
       break;
+    }
   }
-
-  // Figure out whether to open a window or a tab.
-  let mode;
-  if (e.ctrlKey)
-    mode = 'tab';
-  else if (e.shiftKey)
-    mode = 'window';
-  else
-    mode = 'window';  // TODO: Get default from prefs.
 
   // Launch it.
   if (mode == 'tab') {
     // Should we offer a way to open tabs in the background?
     chrome.tabs.create({url: url, active: true});
   } else {
+    let top = 0;
+    let left = 0;
+    let height = 600;
+    let width = 900;
+    let profile;
+    try {
+      profile = this.localPrefs_.getProfile(id);
+    } catch (e) {
+      // Ignore errors here to make the UI more robust.  And this ignores the
+      // saved settings for connect-dialog which we don't track currently.
+    }
+    if (profile) {
+      const parseDim = (value, fallback) => {
+        const ret = parseInt(value, 10);
+        return isNaN(ret) ? fallback : ret;
+      };
+      top = parseDim(profile.get('win/top'), top);
+      left = parseDim(profile.get('win/left'), left);
+      height = parseDim(profile.get('win/height'), height);
+      width = parseDim(profile.get('win/width'), width);
+    }
     lib.f.openWindow(url, '',
                      'chrome=no,close=yes,resize=yes,scrollbars=yes,' +
-                     'minimizable=yes,width=900,height=600');
+                     `minimizable=yes,top=${top},left=${left},` +
+                     `height=${height},width=${width}`);
   }
 
   // Close the popup.  It happens automatically on some systems (e.g. Linux),
@@ -78,14 +125,17 @@ popup.prototype.openLink_ = function(e) {
  * Fill the popup with all the connections.
  */
 popup.prototype.populateList_ = function() {
-  const ids = this.prefs_.get('profile-ids');
+  // Create a copy since we're going to modify it in place below.
+  const ids = this.prefs_.get('profile-ids').slice();
   ids.unshift('connect-dialog');
   ids.push('options');
+  ids.push('feedback');
 
   for (let i = 0; i < ids.length; i++) {
     const id = ids[i];
 
     const link = document.createElement('div');
+    link.title = nassh.msg('POPUP_CONNECT_TOOLTIP');
     link.id = id;
     link.className = 'links';
     link.addEventListener('click',
@@ -97,14 +147,19 @@ popup.prototype.populateList_ = function() {
         link.style.textAlign = 'center';
         break;
       case 'options':
-        link.textContent = nassh.msg('OPTIONS_BUTTON_LABEL');
+        link.textContent = nassh.msg('HTERM_OPTIONS_BUTTON_LABEL');
         link.style.textAlign = 'center';
         break;
-      default:
+      case 'feedback':
+        link.textContent = nassh.msg('SEND_FEEDBACK_LABEL');
+        link.style.textAlign = 'center';
+        break;
+      default: {
         const profile = this.prefs_.getProfile(id);
         const desc = profile.get('description');
         link.textContent = desc;
         break;
+      }
     }
 
     document.body.appendChild(link);
@@ -136,8 +191,9 @@ popup.prototype.updateTheme_ = function() {
   style.backgroundColor = this.htermPrefs_.getString('background-color');
   style.fontSize = this.htermPrefs_.getNumber('font-size') + 'px';
   style.fontFamily = this.htermPrefs_.getString('font-family');
-  if (style.webkitFontSmoothing !== undefined)
+  if (style.webkitFontSmoothing !== undefined) {
     style.webkitFontSmoothing = this.htermPrefs_.getString('font-smoothing');
+  }
 
   style = document.createElement('style');
   style.textContent = (

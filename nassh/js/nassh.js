@@ -4,12 +4,14 @@
 
 'use strict';
 
-var nassh = {};
-
 /**
- * True if nassh is running as a v2 app.
+ * Namespace for the whole nassh project.
+ *
+ * We export this with 'var' as we access it across background pages.
+ * It's messy and probably should be cleaned up at some point.
  */
-nassh.v2 = !!(window.chrome && chrome.app && chrome.app.window);
+// eslint-disable-next-line no-var
+var nassh = {};
 
 /**
  * Non-null if nassh is running as an extension.
@@ -23,11 +25,8 @@ lib.registerInit(
     'nassh',
     /**
      * Register a static initializer for nassh.*.
-     *
-     * @param {function()} onInit The function lib.init() wants us to invoke
-     *     when initialization is complete.
      */
-    function(onInit) {
+    () => {
       if (!nassh.defaultStorage) {
         nassh.defaultStorage = hterm.defaultStorage;
       }
@@ -35,23 +34,44 @@ lib.registerInit(
       // Since our translation process only preserves \n (and discards \r), we
       // have to manually insert them ourselves.
       hterm.messageManager.useCrlf = true;
-
-      onInit();
     });
+
+/**
+ * Modify if running in chrome-untrusted://.  We will use
+ * lib.Storage.TerminalPrivate as the default storage, load messages via XHR,
+ * and polyfill chrome.runtime.getManifest.
+ */
+nassh.setupForWebApp = function() {
+  // Modifications if running as a web app.
+  if (location.href.startsWith('chrome-untrusted://')) {
+    lib.registerInit('terminal-private-storage', () => {
+      hterm.defaultStorage = new lib.Storage.TerminalPrivate();
+    });
+    lib.registerInit('messages', nassh.loadMessages);
+    // Polyfill chrome.runtime.getManifest since it is not available when
+    // We require name, version, and icons.
+    if (chrome && chrome.runtime && !chrome.runtime.getManifest) {
+      chrome.runtime.getManifest = () => {
+        return /** @type {!chrome.runtime.Manifest} */ ({
+          'name': 'Terminal',
+          'version': 'system',
+          'icons': {'192': '/images/dev/crostini-192.png'},
+        });
+      };
+    }
+  }
+};
 
 /**
  * Loads messages for when chrome.i18n is not available.
  *
  * This should only be used in contexts outside of extensions/apps.
- *
- * @param {function()} callback Invoked when message loading is complete.
  */
-nassh.loadMessages = async function(callback) {
+nassh.loadMessages = async function() {
   // Load hterm.messageManager from /_locales/<lang>/messages.json.
   hterm.messageManager.useCrlf = true;
   const url = lib.f.getURL('/_locales/$1/messages.json');
   await hterm.messageManager.findAndLoadMessages(url);
-  callback();
 };
 
 /**
@@ -88,7 +108,10 @@ nassh.getFileSystem = function() {
     requestFS(window.PERSISTENT,
               16 * 1024 * 1024,
               onFileSystem,
-              lib.fs.err('Error initializing filesystem', reject));
+              (e) => {
+                console.error(`Error initializing filesystem: ${e}`);
+                reject(e);
+              });
   });
 };
 
@@ -106,19 +129,20 @@ nassh.getFileSystem = function() {
  *   nassh.importPreferences.
  */
 nassh.exportPreferences = function(onComplete) {
-  var pendingReads = 0;
-  var rv = {};
+  let pendingReads = 0;
+  const rv = {};
 
-  var onReadStorage = function(profile, prefs) {
+  const onReadStorage = function(profile, prefs) {
     rv.hterm[profile] = prefs.exportAsJson();
-    if (--pendingReads < 1)
+    if (--pendingReads < 1) {
       onComplete(rv);
+    }
   };
 
   rv.magic = 'nassh-prefs';
   rv.version = 1;
 
-  var nasshPrefs = new nassh.PreferenceManager();
+  const nasshPrefs = new nassh.PreferenceManager();
   nasshPrefs.readStorage(function() {
     // Export all the connection settings.
     rv.nassh = nasshPrefs.exportAsJson();
@@ -133,8 +157,9 @@ nassh.exportPreferences = function(onComplete) {
         pendingReads++;
       });
 
-      if (profiles.length == 0)
+      if (profiles.length == 0) {
         onComplete(rv);
+      }
     });
   });
 };
@@ -150,25 +175,27 @@ nassh.exportPreferences = function(onComplete) {
  *     complete.
  */
 nassh.importPreferences = function(prefsObject, onComplete) {
-  var pendingReads = 0;
+  let pendingReads = 0;
 
-  var onReadStorage = function(terminalProfile, prefs) {
+  const onReadStorage = function(terminalProfile, prefs) {
     prefs.importFromJson(prefsObject.hterm[terminalProfile]);
     if (--pendingReads < 1 && onComplete) {
       onComplete();
     }
   };
 
-  if (prefsObject.magic != 'nassh-prefs')
+  if (prefsObject.magic != 'nassh-prefs') {
     throw new Error('Not a JSON object or bad value for \'magic\'.');
+  }
 
-  if (prefsObject.version != 1)
+  if (prefsObject.version != 1) {
     throw new Error('Bad version, expected 1, got: ' + prefsObject.version);
+  }
 
-  var nasshPrefs = new nassh.PreferenceManager();
+  const nasshPrefs = new nassh.PreferenceManager();
   nasshPrefs.importFromJson(prefsObject.nassh, () => {
-    for (var terminalProfile in prefsObject.hterm) {
-      var prefs = new hterm.PreferenceManager(terminalProfile);
+    for (const terminalProfile in prefsObject.hterm) {
+      const prefs = new hterm.PreferenceManager(terminalProfile);
       prefs.readStorage(onReadStorage.bind(null, terminalProfile, prefs));
       pendingReads++;
     }
@@ -177,13 +204,16 @@ nassh.importPreferences = function(prefsObject, onComplete) {
 
 /**
  * Create a new window to the options page for customizing preferences.
+ *
+ * @param {string=} page The specific options page to navigate to.
  */
-nassh.openOptionsPage = function() {
+nassh.openOptionsPage = function(page = '') {
   const fallback = () => {
-    lib.f.openWindow('/html/nassh_preferences_editor.html');
+    lib.f.openWindow(`/html/nassh_preferences_editor.html#${page}`);
   };
 
-  if (window.chrome && chrome.runtime && chrome.runtime.openOptionsPage) {
+  if (!page && window.chrome && chrome.runtime &&
+      chrome.runtime.openOptionsPage) {
     // This is a bit convoluted because, in some scenarios (e.g. crosh), the
     // openOptionsPage helper might fail.  If it does, fallback to a tab.
     chrome.runtime.openOptionsPage(() => {
@@ -193,44 +223,22 @@ nassh.openOptionsPage = function() {
         fallback();
       }
     });
-  } else
+  } else {
     fallback();
+  }
+};
+
+/**
+ * Trigger the flow for sending feedback.
+ */
+nassh.sendFeedback = function() {
+  lib.f.openWindow('https://goo.gl/vb94JY');
 };
 
 /** Reload window. */
 nassh.reloadWindow = function() {
-  if (!nassh.v2) {
-    document.location.hash = '';
-    document.location.reload();
-  } else {
-    // Sometimes current() can't return the window.  Not clear why.  Fallback
-    // to the defaults so we at least get a new window.
-    const win = chrome.app.window.current();
-    let opts = {
-      innerBounds: {
-        width: 900,
-        height: 600,
-      },
-    };
-    if (win) {
-      // We have to make sure to not re-use the id field as Chrome won't open a
-      // new window if it already exists with the same id.
-      opts = {
-        alwaysOnTop: win.isAlwaysOnTop(),
-        focused: true,
-        innerBounds: win.innerBounds,
-        state: win.isFullscreen() ? 'fullscreen' :
-                 win.isMaximized() ? 'maximized' :
-                 win.isMinimized() ? 'minimized' :
-                 'normal',
-      };
-    }
-    // We have to wait to close this window in the callback as Chrome is unable
-    // to fully initialize the new window if we close ourselves too fast.
-    chrome.app.window.create(
-        window.document.location.pathname, opts,
-        () => window.close());
-  }
+  document.location.hash = '';
+  document.location.reload();
 };
 
 /**
@@ -390,4 +398,108 @@ nassh.getBackgroundPage = function() {
       checkInitialized();
     });
   });
+};
+
+/**
+ * Generate an SGR escape sequence.
+ *
+ * @param {!Object=} settings
+ * @return {string} The SGR escape sequence.
+ */
+nassh.sgrSequence = function({bold, faint, italic, underline, fg, bg} = {}) {
+  const parts = [];
+  if (bold) {
+    parts.push('1');
+  }
+  if (faint) {
+    parts.push('2');
+  }
+  if (italic) {
+    parts.push('3');
+  }
+  if (underline) {
+    parts.push('4');
+  }
+  if (fg) {
+    parts.push(fg);
+  }
+  if (bg) {
+    parts.push(bg);
+  }
+  return `\x1b[${parts.join(';')}m`;
+};
+
+/**
+ * Apply SGR styling to text.
+ *
+ * This will reset the SGR style to the default.
+ *
+ * @param {string} text The text to be stylized.
+ * @param {!Object=} settings The SGR settings to apply.
+ * @return {string} The text wrapped in SGR escape sequences.
+ */
+nassh.sgrText = function(text, settings) {
+  return nassh.sgrSequence(settings) + text + nassh.sgrSequence();
+};
+
+/**
+ * Generate a hyperlink using OSC-8 escape sequence.
+ *
+ * @param {string} url The link target.
+ * @param {string=} text The user visible text.
+ * @return {string} The hyperlink with OSC-8 escape sequences.
+ */
+nassh.osc8Link = function(url, text = url) {
+  if (url.startsWith('/')) {
+    url = lib.f.getURL(url);
+  }
+  return `\x1b]8;;${url}\x07${text}\x1b]8;;\x07`;
+};
+
+/**
+ * @typedef {{
+ *     name: string,
+ *     isWebFont: boolean,
+ * }}
+ */
+nassh.Font;
+
+/** @type {!Array<!nassh.Font>} */
+nassh.FONTS = [
+  {name: 'Noto Sans Mono', isWebFont: false},
+  {name: 'Cousine', isWebFont: true},
+  {name: 'Inconsolata', isWebFont: true},
+  {name: 'Roboto Mono', isWebFont: true},
+  {name: 'Source Code Pro', isWebFont: true},
+];
+
+/**
+ * Add css to load web fonts from fonts.googleapis.com.
+ *
+ * @param {!Document} document The document to load into.
+ */
+nassh.loadWebFonts = function(document) {
+  const imports = [];
+  const fontFaces = [];
+  for (const font of nassh.FONTS) {
+    if (font.isWebFont) {
+      // Load normal (400) and bold (700).
+      imports.push(`@import url('https://fonts.googleapis.com/css2?family=` +
+        `${encodeURIComponent(font.name)}:wght@400;700&display=swap');`);
+    }
+    fontFaces.push(`
+      @font-face {
+        font-family: 'Powerline For ${font.name}';
+        src: url('../fonts/PowerlineFor${font.name.replace(/\s/g, '')}.woff2')
+             format('woff2');
+        font-weight: normal bold;
+        unicode-range:
+            U+2693,U+26A1,U+2699,U+270E,U+2714,U+2718,U+273C,U+279C,U+27A6,
+            U+2B06-2B07,U+E0A0-E0D4;
+      }`);
+  }
+
+  const style = document.createElement('style');
+  style.textContent = imports.join('\n') + fontFaces.join('');
+  document.head.appendChild(style);
 };

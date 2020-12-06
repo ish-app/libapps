@@ -17,7 +17,7 @@ nassh.Stream.SSHAgentRelay = function(fd) {
   this.authAgentAppID_ = null;
   this.port_ = null;
   this.pendingMessageSize_ = null;
-  this.writeBuffer_ = new Uint8Array(0);
+  this.writeBuffer_ = nassh.buffer.new(/* autoack= */ true);
 };
 
 /**
@@ -41,7 +41,7 @@ nassh.Stream.SSHAgentRelay.prototype.asyncOpen = function(
 
   // The other extension (e.g. gnubby) sent us a raw ssh-agent message.
   // Forward it along to the ssh process.
-  var normalOnMessage = (msg) => {
+  const normalOnMessage = (msg) => {
     if (msg.data) {
       // The ssh-agent protocol requires a 4-byte length header, so add that
       // to the buffer before sending to the ssh process.
@@ -64,13 +64,13 @@ nassh.Stream.SSHAgentRelay.prototype.asyncOpen = function(
     }
   };
 
-  var normalDisconnect = () => {
+  const normalDisconnect = () => {
     this.port_.onMessage.removeListener(normalOnMessage);
     this.port_.onDisconnect.removeListener(normalDisconnect);
     this.close();
   };
 
-  var initialOnMessage = (msg) => {
+  const initialOnMessage = (msg) => {
     this.port_.onMessage.removeListener(initialOnMessage);
     this.port_.onDisconnect.removeListener(initialDisconnect);
     this.port_.onMessage.addListener(normalOnMessage);
@@ -78,7 +78,7 @@ nassh.Stream.SSHAgentRelay.prototype.asyncOpen = function(
     onComplete(true);
   };
 
-  var initialDisconnect = () => {
+  const initialDisconnect = () => {
     this.port_.onMessage.removeListener(initialOnMessage);
     this.port_.onDisconnect.removeListener(initialDisconnect);
     onComplete(false, lib.f.lastError());
@@ -86,14 +86,16 @@ nassh.Stream.SSHAgentRelay.prototype.asyncOpen = function(
 
   this.port_.onMessage.addListener(initialOnMessage);
   this.port_.onDisconnect.addListener(initialDisconnect);
-  this.port_.postMessage({'type':'auth-agent@openssh.com','data':[0]});
+  this.port_.postMessage({'type': 'auth-agent@openssh.com', 'data': [0]});
 };
 
 /**
  * @override
  */
 nassh.Stream.SSHAgentRelay.prototype.close = function() {
-  if (this.port_) this.port_.disconnect();
+  if (this.port_) {
+    this.port_.disconnect();
+  }
   nassh.Stream.prototype.close.call(this);
 };
 
@@ -104,26 +106,24 @@ nassh.Stream.SSHAgentRelay.prototype.close = function() {
 nassh.Stream.SSHAgentRelay.prototype.trySendPacket_ = function() {
   // See if we've scanned the message length yet (first 4 bytes).
   if (this.pendingMessageSize_ === null) {
-    if (this.writeBuffer_.length < 4) {
+    if (this.writeBuffer_.getUnreadCount() < 4) {
       return;
     }
 
     // Pull out the 32-bit message length.
-    const dv = new DataView(
-        this.writeBuffer_.buffer, this.writeBuffer_.byteOffset);
+    const bytes = this.writeBuffer_.read(4);
+    const dv = new DataView(bytes.buffer, bytes.byteOffset);
     this.pendingMessageSize_ = dv.getUint32(0);
-    this.writeBuffer_ = this.writeBuffer_.subarray(4);
   }
 
   // See if we've got the message body yet.
-  if (this.writeBuffer_.length < this.pendingMessageSize_) {
+  if (this.writeBuffer_.getUnreadCount() <
+      lib.notNull(this.pendingMessageSize_)) {
     return;
   }
 
   // Send the body to the extension.
-  const data =
-      this.writeBuffer_.subarray(0, lib.notNull(this.pendingMessageSize_));
-  this.writeBuffer_ = this.writeBuffer_.subarray(this.pendingMessageSize_);
+  const data = this.writeBuffer_.read(this.pendingMessageSize_);
   // Restart the message process.
   this.pendingMessageSize_ = null;
 
@@ -150,8 +150,7 @@ nassh.Stream.SSHAgentRelay.prototype.asyncWrite = function(data, onSuccess) {
     return;
   }
 
-  this.writeBuffer_ = lib.array.concatTyped(
-      this.writeBuffer_, new Uint8Array(data));
+  this.writeBuffer_.write(data);
 
   setTimeout(this.trySendPacket_.bind(this), 0);
 

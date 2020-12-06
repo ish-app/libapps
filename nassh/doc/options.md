@@ -31,6 +31,14 @@ server.
 
 The port to connect to on the relay server.
 
+## `--proxy-user=<username>`
+
+The username to use when talking to the relay server itself.
+This is not the same username used to connect to the ssh server.
+
+Not all relay servers need or use this setting.
+If not specified, it will default to the ssh server username.
+
 ## `--use-ssl=<bool>`
 
 Whether to use HTTPS (the default) or HTTP when communicating with the relay
@@ -99,6 +107,17 @@ Here are some versions that might be available:
 
 * `pnacl`: The default OpenSSH version built for NaCl most people should use.
 * `pnacl-openssh-7.5p1`: An older OpenSSH release.
+
+## `--welcome`
+
+Display the normal welcome/tips/etc... messages when loading a connection.
+Users are probably interested in the `--no-welcome` inverse to automatically
+clear all of this when connecting.
+
+## `--field-trial-xxx`
+
+Control internal field trial settings.
+These are not currently documented as they aren't meant for normal users.
 
 
 [Relay Protocol]: relay-protocol.md

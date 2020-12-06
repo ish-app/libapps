@@ -7,29 +7,71 @@
 /**
  * Storage implementation using chrome.settingsPrivate.
  *
- * @param {function()} callback Callback invoked when object is ready.
+ * @param {{
+ *  getSettings: function(function(?Object)),
+ *  setSettings: function(!Object, function()),
+ *  onSettingsChanged: !ChromeEvent,
+ * }=} storage
  * @constructor
  * @implements {lib.Storage}
  */
-lib.Storage.TerminalPrivate = function(callback) {
+lib.Storage.TerminalPrivate = function(storage = chrome.terminalPrivate) {
   /**
    * @const
    * @private
    */
   this.observers_ = [];
-  /** @private {!Object<string, *>} */
+
+  /**
+   * Local cache of terminalPrivate.getSettings.
+   *
+   * @private {!Object<string, *>}
+   */
   this.prefValue_ = {};
 
-  // Load.
-  chrome.terminalPrivate.getSettings((settings) => {
-    if (chrome.runtime.lastError) {
-      console.error(chrome.runtime.lastError.message);
-    } else {
-      this.prefValue_ = settings;
+  /**
+   * We do async writes to terminalPrivate.setSettings to allow multiple sync
+   * writes to be batched.  This array holds the list of pending resolve calls
+   * that we'll invoke when the current write finishes.
+   *
+   * @private {!Array<function()>}
+   */
+  this.prefValueWriteToResolve_ = [];
+
+  /** @type {boolean} */
+  this.prefsLoaded_ = false;
+
+  /** @const */
+  this.storage_ = storage;
+
+  this.storage_.onSettingsChanged.addListener(
+      this.onSettingsChanged_.bind(this));
+};
+
+/**
+ * Load the settings into our local cache.
+ *
+ * @return {!Promise<void>} Resolves when settings have been loaded.
+ */
+lib.Storage.TerminalPrivate.prototype.initCache_ = function() {
+  return new Promise((resolve) => {
+    // NB: This doesn't return Promise.resolve so we're guaranteed to have the
+    // initCache_ call always return deferred execution.
+    if (this.prefsLoaded_) {
+      resolve();
+      return;
     }
-    chrome.terminalPrivate.onSettingsChanged.addListener(
-        this.onSettingsChanged_.bind(this));
-    callback();
+
+    this.storage_.getSettings((settings) => {
+      const err = lib.f.lastError();
+      if (err) {
+        console.error(err);
+      } else {
+        this.prefValue_ = lib.notNull(settings);
+      }
+      this.prefsLoaded_ = true;
+      resolve();
+    });
   });
 };
 
@@ -41,44 +83,46 @@ lib.Storage.TerminalPrivate = function(callback) {
  */
 lib.Storage.TerminalPrivate.prototype.onSettingsChanged_ = function(settings) {
   // Check what is deleted.
-  const e = {};
-  for (const key in this.prefValue_) {
-    if (!settings.hasOwnProperty(key)) {
-      e[key] = {oldValue: this.prefValue_[key], newValue: undefined};
-    }
-  }
-  // Check what has changed.
-  for (const key in settings) {
-    const oldValue = this.prefValue_[key];
-    const newValue = settings[key];
-    if (newValue === oldValue ||
-        JSON.stringify(newValue) === JSON.stringify(oldValue)) {
-      continue;
-    }
-    e[key] = {oldValue, newValue};
-  }
+  const changes = lib.Storage.generateStorageChanges(this.prefValue_, settings);
+  this.prefValue_ = settings;
 
-  setTimeout(() => {
-    for (const observer of this.observers_) {
-      observer(e);
-    }
-  }, 0);
+  // Don't bother notifying if there are no changes.
+  if (Object.keys(changes).length) {
+    setTimeout(() => {
+      this.observers_.forEach((o) => o(changes));
+    });
+  }
 };
 
 /**
- * Set pref then run callback.
+ * Set pref then run callback.  Writes are done async to allow multiple
+ * concurrent calls to this function to be batched into a single write.
  *
- * @param {function()=} callback Callback to run once pref is set.
+ * @return {!Promise<void>} Resolves once the pref is set.
  * @private
  */
-lib.Storage.TerminalPrivate.prototype.setPref_ = function(callback) {
-  chrome.terminalPrivate.setSettings(this.prefValue_, () => {
-    if (chrome.runtime.lastError) {
-      console.error(chrome.runtime.lastError.message);
+lib.Storage.TerminalPrivate.prototype.setPref_ = function() {
+  lib.assert(this.prefsLoaded_);
+
+  return new Promise((resolve) => {
+    this.prefValueWriteToResolve_.push(resolve);
+    if (this.prefValueWriteToResolve_.length > 1) {
+      return;
     }
-    if (callback) {
-      callback();
-    }
+
+    // Force deferment to help coalesce.
+    setTimeout(() => {
+      this.storage_.setSettings(this.prefValue_, () => {
+        const err = lib.f.lastError();
+        if (err) {
+          console.error(err);
+        }
+        // Resolve all the pending promises so their callbacks will be invoked
+        // once this function returns.
+        this.prefValueWriteToResolve_.forEach((r) => r());
+        this.prefValueWriteToResolve_ = [];
+      });
+    });
   });
 };
 
@@ -107,38 +151,53 @@ lib.Storage.TerminalPrivate.prototype.removeObserver = function(callback) {
 };
 
 /**
+ * Update the internal storage state and generate change events for it.
+ *
+ * @param {!Object<string, *>} newStorage
+ */
+lib.Storage.TerminalPrivate.prototype.update_ = async function(newStorage) {
+  const changes = lib.Storage.generateStorageChanges(
+      this.prefValue_, newStorage);
+  this.prefValue_ = newStorage;
+
+  await this.setPref_();
+
+  // Don't bother notifying if there are no changes.
+  if (Object.keys(changes).length) {
+    this.observers_.forEach((o) => o(changes));
+  }
+};
+
+/**
  * Delete everything in this storage.
  *
- * @param {function()=} callback The function to invoke when the delete has
- *     completed.
  * @override
  */
-lib.Storage.TerminalPrivate.prototype.clear = function(callback) {
-  this.prefValue_= {};
-  this.setPref_(callback);
+lib.Storage.TerminalPrivate.prototype.clear = async function() {
+  await this.initCache_();
+  return this.update_({});
 };
 
 /**
  * Return the current value of a storage item.
  *
  * @param {string} key The key to look up.
- * @param {function(*)} callback The function to invoke when the value has
- *     been retrieved.
  * @override
  */
-lib.Storage.TerminalPrivate.prototype.getItem = function(key, callback) {
-  setTimeout(() => callback(this.prefValue_[key]), 0);
+lib.Storage.TerminalPrivate.prototype.getItem = async function(key) {
+  await this.initCache_();
+  return this.prefValue_[key];
 };
 
 /**
  * Fetch the values of multiple storage items.
  *
  * @param {?Array<string>} keys The keys to look up.  Pass null for all keys.
- * @param {function(!Object)} callback The function to invoke when the values
- *     have been retrieved.
  * @override
  */
-lib.Storage.TerminalPrivate.prototype.getItems = function(keys, callback) {
+lib.Storage.TerminalPrivate.prototype.getItems = async function(keys) {
+  await this.initCache_();
+
   const rv = {};
   if (!keys) {
     keys = Object.keys(this.prefValue_);
@@ -150,7 +209,7 @@ lib.Storage.TerminalPrivate.prototype.getItems = function(keys, callback) {
     }
   }
 
-  setTimeout(() => callback(rv), 0);
+  return rv;
 };
 
 /**
@@ -159,66 +218,42 @@ lib.Storage.TerminalPrivate.prototype.getItems = function(keys, callback) {
  * @param {string} key The key for the value to be stored.
  * @param {*} value The value to be stored.  Anything that can be serialized
  *     with JSON is acceptable.
- * @param {function()=} callback Function to invoke when the set is complete.
- *     You don't have to wait for the set to complete in order to read the value
- *     since the local cache is updated synchronously.
  * @override
  */
-lib.Storage.TerminalPrivate.prototype.setItem = function(key, value, callback) {
-  this.setItems({[key]: value}, callback);
+lib.Storage.TerminalPrivate.prototype.setItem = async function(key, value) {
+  return this.setItems({[key]: value});
 };
 
 /**
  * Set multiple values in storage.
  *
  * @param {!Object} obj A map of key/values to set in storage.
- * @param {function()=} callback Function to invoke when the set is complete.
- *     You don't have to wait for the set to complete in order to read the value
- *     since the local cache is updated synchronously.
  * @override
  */
-lib.Storage.TerminalPrivate.prototype.setItems = function(obj, callback) {
-  const e = {};
-
-  for (const key in obj) {
-    e[key] = {oldValue: this.prefValue_[key], newValue: obj[key]};
-    this.prefValue_[key] = obj[key];
-  }
-
-  setTimeout(() => {
-    for (const observer of this.observers_) {
-      observer(e);
-    }
-  });
-
-  this.setPref_(callback);
+lib.Storage.TerminalPrivate.prototype.setItems = async function(obj) {
+  await this.initCache_();
+  return this.update_(Object.assign({}, this.prefValue_, obj));
 };
 
 /**
  * Remove an item from storage.
  *
  * @param {string} key The key to be removed.
- * @param {function()=} callback Function to invoke when the remove is complete.
- *     The local cache is updated synchronously, so reads will immediately
- *     return undefined for this item even before removeItem completes.
  * @override
  */
-lib.Storage.TerminalPrivate.prototype.removeItem = function(key, callback) {
-  this.removeItems([key], callback);
+lib.Storage.TerminalPrivate.prototype.removeItem = async function(key) {
+  return this.removeItems([key]);
 };
 
 /**
  * Remove multiple items from storage.
  *
  * @param {!Array<string>} keys The keys to be removed.
- * @param {function()=} callback Function to invoke when the remove is complete.
- *     The local cache is updated synchronously, so reads will immediately
- *     return undefined for these items even before removeItems completes.
  * @override
  */
-lib.Storage.TerminalPrivate.prototype.removeItems = function(keys, callback) {
-  for (const key of keys) {
-    delete this.prefValue_[key];
-  }
-  this.setPref_(callback);
+lib.Storage.TerminalPrivate.prototype.removeItems = async function(keys) {
+  await this.initCache_();
+  const newStorage = Object.assign({}, this.prefValue_);
+  keys.forEach((key) => delete newStorage[key]);
+  return this.update_(newStorage);
 };

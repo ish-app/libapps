@@ -9,7 +9,7 @@
  */
 import {LitElement, html} from './lit_element.js';
 
-const PASSED_THROUGH_OPTION = Symbol("PASSED_THROUGH_OPTION");
+const PASSED_THROUGH_OPTION = Symbol('PASSED_THROUGH_OPTION');
 
 export class TerminalSettingsCategoryOptionElement extends LitElement {
   static get is() { return 'terminal-settings-category-option'; }
@@ -101,7 +101,7 @@ export class TerminalSettingsCategorySelectorElement extends LitElement {
 
   /** @param {!Element} element */
   activate_(element) {
-    this.querySelectorAll('[active]').forEach(active => {
+    this.querySelectorAll('[active]').forEach((active) => {
       active.removeAttribute('active');
     });
 

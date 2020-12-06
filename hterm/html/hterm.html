@@ -12,6 +12,7 @@
 <script src='../js/hterm.js'></script>
 <script src='../js/hterm_accessibility_reader.js'></script>
 <script src='../js/hterm_contextmenu.js'></script>
+<script src='../js/hterm_find_bar.js'></script>
 <script src='../js/hterm_frame.js'></script>
 <script src='../js/hterm_keyboard.js'></script>
 <script src='../js/hterm_keyboard_bindings.js'></script>
@@ -57,9 +58,10 @@ body {
 <div id='terminal'></div>
 <script>
 function initContent(io) {
-  const ver = lib.resource.getData('libdot/changelog/version');
-  const date = lib.resource.getData('libdot/changelog/date');
-  const pkg = `libdot ${ver} (${date})`;
+  const ver = lib.resource.getData('hterm/changelog/version');
+  const date = lib.resource.getData('hterm/changelog/date');
+  const pkg = `hterm ${ver} (${date})`;
+  /* eslint-disable quotes */
   io.println("\r\n\
                             .--~~~~~~~~~~~~~------.\r\n\
                            /--===============------\\\r\n\
@@ -79,7 +81,19 @@ function initContent(io) {
                 Press F11 to go fullscreen to use all shortcuts.\r\n\
                        Running " + pkg + ".\r\n\
 ");
-};
+  /* eslint-enable quotes */
+}
+
+// Load translations if available.
+lib.registerInit('load messages', async () => {
+  // Try to load the messages database from nassh.  This isn't strictly needed
+  // (so if it fails, it should be fine), but does help when testing locally.
+  // $1 here means we search the user's language.  Change it to 'en' or another
+  // specific language to test those specifically.
+  const lang = '$1';
+  await hterm.messageManager.findAndLoadMessages(
+      lib.f.getURL(`../../nassh/_locales/${lang}/messages.json`));
+});
 
 function setupHterm() {
   const term = new hterm.Terminal();
@@ -119,7 +133,7 @@ function setupHterm() {
 
     this.keyboard.characterEncoding = 'raw';
     this.keyboard.bindings.addBinding('F11', 'PASS');
-    this.keyboard.bindings.addBinding('Ctrl-R', 'PASS');
+    this.keyboard.bindings.addBinding('Ctrl+R', 'PASS');
   };
   term.decorate(document.querySelector('#terminal'));
   term.installKeyboard();
@@ -127,25 +141,24 @@ function setupHterm() {
   term.contextMenu.setItems([
     {name: 'Terminal Reset', action: () => term.reset()},
     {name: 'Terminal Clear', action: () => term.clear()},
-    {name: 'hterm.ContextMenu.SEPARATOR'},
+    {name: hterm.ContextMenu.SEPARATOR},
     {name: 'Homepage', action: function() {
         lib.f.openWindow(
             'https://chromium.googlesource.com/apps/libapps/+/HEAD/hterm/README.md',
             '_blank');
-      }
-    },
+      }},
     {name: 'FAQ', action: function() {
-        lib.f.openWindow('https://goo.gl/muppJj', '_blank'); 
-      }
-    },
+        lib.f.openWindow('https://goo.gl/muppJj', '_blank');
+      }},
   ]);
 
   // Useful for console debugging.
   window.term_ = term;
 }
 
-window.onload = function() {
-  lib.init(setupHterm);
+window.onload = async function() {
+  await lib.init();
+  setupHterm();
 };
 </script>
 

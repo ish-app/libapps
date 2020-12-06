@@ -7,51 +7,100 @@
  *
  * @suppress {moduleLoad}
  */
-import {css, html} from './lit_element.js';
+import {LitElement, css, html} from './lit_element.js';
 import {TerminalSettingsElement} from './terminal_settings_element.js';
+import {stylesButtonContainer, stylesDialog}
+    from './terminal_settings_styles.js';
+import './terminal_settings_button.js';
+import './terminal_settings_hue_slider.js';
+import './terminal_settings_saturation_value_picker.js';
+import './terminal_textfield.js';
 
-export class TerminalSettingsColorpickerElement extends
-    TerminalSettingsElement {
-  static get is() { return 'terminal-settings-colorpicker'; }
+export const TOO_WHITE_BOX_SHADOW = 'inset 0 0 0 1px black';
+export const FOCUS_BOX_SHADOW =
+    '0 0 0 2px rgba(var(--google-blue-600-rgb), .4)';
+
+/**
+ * Convert CSS color to hex color.  Always use uppercase for display.
+ *
+ * @param {string} css
+ * @return {string} hex color
+ */
+function cssToHex(css) {
+  return lib.notNull(lib.colors.rgbToHex(
+      lib.notNull(lib.colors.normalizeCSS(css)))).toUpperCase();
+}
+
+/**
+ * Return a css string for the swatch's style attribute.
+ *
+ * @param {string} color the css color.
+ * @param {boolean} dialogIsOpened whether dialog is opened.
+ * @return {string}
+ */
+function swatchStyle(color, dialogIsOpened) {
+  const boxShadows = [];
+
+  if (color) {
+    const c = lib.colors;
+    const contrastRatio = c.contrastRatio(1, c.luminance(
+        ...lib.notNull(c.crackRGB(lib.notNull(c.normalizeCSS(color))))));
+    if (contrastRatio < 1.25) {
+      // The color is too white. Put a "border" to make it stands out from the
+      // background.
+      boxShadows.push(TOO_WHITE_BOX_SHADOW);
+    }
+  }
+
+  if (dialogIsOpened) {
+    boxShadows.push(FOCUS_BOX_SHADOW);
+  }
+
+  return `background-color: ${color}; box-shadow: ${boxShadows.join(',')}`;
+}
+
+export class TerminalColorpickerElement extends LitElement {
+  static get is() { return 'terminal-colorpicker'; }
 
   /** @override */
   static get properties() {
     return {
-      preference: {
-        type: String,
-      },
       value: {
         type: String,
         reflect: true,
       },
-      expanded: {
+      inputInDialog: {
+        type: Boolean,
+      },
+      disableTransparency: {
         type: Boolean,
       },
       hue_: {
-        type: Number
+        type: Number,
       },
       saturation_: {
-        type: Number
+        type: Number,
       },
-      lightness_: {
-        type: Number
+      hsvValue_: {
+        type: Number,
       },
       transparency_: {
-        type: Number
+        type: Number,
+      },
+      dialogIsOpened_: {
+        type: Boolean,
       },
     };
   }
 
   /** @override */
   static get styles() {
-    return css`
+    return [stylesButtonContainer, stylesDialog, css`
         #smallview {
           align-items: center;
           display: flex;
           flex-wrap: nowrap;
           justify-content: space-between;
-          min-width: 200px;
-          padding: 4px;
         }
 
         #swatch {
@@ -70,15 +119,14 @@ export class TerminalSettingsColorpickerElement extends
               rgba(0,0,0,0.1) 0);
           background-position: 0px 0, 5px 5px;
           background-size: 10px 10px, 10px 10px;
-          border-radius: 100%;
-          box-shadow: 1px 1px 2px rgba(0,0,0,0.3);
+          border-radius: 50%;
           cursor: pointer;
           display: inline-block;
-          height: 30px;
-          margin: 4px;
+          height: 24px;
+          margin: 6px;
           position: relative;
           user-select: none;
-          width: 30px;
+          width: 24px;
         }
 
         #swatchdisplay {
@@ -89,86 +137,119 @@ export class TerminalSettingsColorpickerElement extends
         }
 
         #hexinput {
-          background-color: lightgrey;
-          border-radius: 4px;
-          border: none;
-          box-shadow: 1px 1px 2px rgba(0,0,0,0.3);
-          margin: 4px;
-          padding: 5px;
-          width: 17ch;
+          margin-left: 6px;
+          width: 140px;
+          --terminal-textfield-text-transform: uppercase;
         }
 
-        #largeview {
-          display: none;
-          padding: 4px;
+        hue-slider, transparency-slider {
+          margin: 24px 0;
         }
 
-        #largeview[aria-expanded="true"] {
-          display: block;
+        dialog #hexinput {
+          margin: 0;
         }
-    `;
+    `];
   }
 
   /** @override */
   render() {
+    const msg = hterm.messageManager.get.bind(hterm.messageManager);
+    const transparency = this.disableTransparency ? '' : html`
+        <transparency-slider hue="${this.hue_}"
+            @updated="${this.onTransparency_}"
+            transparency="${this.transparency_}">
+        </transparency-slider>`;
+    const input = html`
+        <terminal-textfield id="hexinput"
+            .value="${cssToHex(/** @type {string} */(this.value))}"
+            @change="${this.onInputChange_}"
+            @keydown="${this.onInputKeydown_}"/>`;
     return html`
         <div id="smallview">
           <div id="swatch" @click="${this.onSwatchClick_}">
-            <div id="swatchdisplay" style="background-color: ${this.value}">
+            <div id="swatchdisplay"
+                style="${swatchStyle(this.value, this.dialogIsOpened_)}">
             </div>
           </div>
-          <input id="hexinput" type="text" .value="${this.value}"
-              @blur="${this.onInputBlur_}"/>
+          ${this.inputInDialog ? '' : input}
         </div>
-        <div id="largeview" aria-expanded="${this.expanded}">
-          <saturation-lightness-picker @updated="${this.onSaturationLightness_}"
+        <dialog>
+          <saturation-value-picker
+              @updated="${this.onSaturationValue_}"
               hue="${this.hue_}" saturation="${this.saturation_}"
-              lightness="${this.lightness_}">
-          </saturation-lightness-picker>
-          Hue
-          <hue-slider hue="${this.hue_}" @updated="${this.onHue_}">
+              value="${this.hsvValue_}">
+          </saturation-value-picker>
+          <hue-slider hue="${this.hue_}" @updated="${this.onHue_}" >
           </hue-slider>
-          Transparency
-          <transparency-slider hue="${this.hue_}"
-              @updated="${this.onTransparency_}"
-              transparency="${this.transparency_}">
-          </transparency-slider>
-        </div>
+          ${transparency}
+          ${this.inputInDialog ? input : ''}
+          <div class="button-container">
+            <terminal-settings-button class="cancel"
+                @click="${this.onCancelClick_}">
+              ${msg('CANCEL_BUTTON_LABEL')}
+            </terminal-settings-button>
+            <terminal-settings-button class="action"
+                @click="${this.onOkClick_}">
+              ${msg('OK_BUTTON_LABEL')}
+            </terminal-settings-button>
+          </div>
+        </dialog>
     `;
   }
 
   constructor() {
     super();
 
-    this.expanded = false;
+    /** If true, hex input is shown in dialog rather than next to swatch. */
+    this.inputInDialog = false;
+    /** If true, transparency is not shown. */
+    this.disableTransparency = false;
+    /** @private {string} */
+    this.value_;
     /** @private {number} */
     this.hue_;
     /** @private {number} */
     this.saturation_;
     /** @private {number} */
-    this.lightness_;
+    this.hsvValue_;
     /** @private {number} */
     this.transparency_;
-  }
-
-  onUiChanged_() {
-    super.uiChanged_(
-        lib.notNull(lib.colors.rgbToHex(lib.notNull(lib.colors.hslToRGB(
-            `hsla(${Math.round(this.hue_)}, ${Math.round(this.saturation_)}%, ${
-                Math.round(this.lightness_)}%, ${this.transparency_})`)))));
+    /** @private {string} */
+    this.cancelValue_;
+    /** @private {boolean} */
+    this.dialogIsOpened_ = false;
   }
 
   /**
-   * @override
+   * UI changed and we should update value with rgb provided, or
+   * recalculate value from hslt components.
+   *
+   * @param {string=} value New value from hex input.
+   * @private
    */
-  preferenceChanged_(value) {
-    /** @suppress {checkTypes} The color preferences will always be strings. */
-    const norm = lib.notNull(lib.colors.normalizeCSS(value));
+  onUiChanged_(value) {
+    if (value !== undefined) {
+      this.value = value;
+    } else {
+      const hslaArray = lib.colors.hsvxArrayToHslaArray([this.hue_,
+          this.saturation_, this.hsvValue_, this.transparency_]);
+      this.value = lib.colors.arrayToHSLA(hslaArray);
+    }
+    this.dispatchEvent(new CustomEvent('updated'));
+  }
 
-    super.preferenceChanged_(lib.notNull(lib.colors.rgbToHex(norm)));
-
-    const [h, s, l, a] =
-        lib.colors.rgbxArrayToHslaArray(lib.notNull(lib.colors.crackRGB(norm)));
+  /** @param {string} value */
+  set value(value) {
+    if (value === this.value_) {
+      return;
+    }
+    const oldValue = this.value_;
+    this.value_ = value;
+    const hsl = lib.notNull(lib.colors.normalizeCSSToHSL(value));
+    const hslaArray = lib.notNull(lib.colors.crackHSL(hsl)).map(
+        Number.parseFloat);
+    const [h, s, v, a] = lib.colors.hslxArrayToHsvaArray(hslaArray);
     // Only update the preferences if they have changed noticably, as minor
     // updates due to rounding can move the picker around by small perceptible
     // amounts when clicking the same spot.
@@ -178,21 +259,28 @@ export class TerminalSettingsColorpickerElement extends
     if (Math.round(this.saturation_) !== Math.round(s)) {
       this.saturation_ = s;
     }
-    if (Math.round(this.lightness_) !== Math.round(l)) {
-      this.lightness_ = l;
+    if (Math.round(this.hsvValue_) !== Math.round(v)) {
+      this.hsvValue_ = v;
     }
     this.transparency_ = a;
+    this.requestUpdate('value', oldValue);
+  }
+
+  /** @return {string} */
+  get value() {
+    return this.value_;
   }
 
   /** @param {!Event} event */
   onSwatchClick_(event) {
-    this.expanded = !this.expanded;
+    this.openDialog();
+    this.cancelValue_ = this.value;
   }
 
   /** @param {!Event} event */
-  onSaturationLightness_(event) {
+  onSaturationValue_(event) {
     this.saturation_ = event.target.saturation;
-    this.lightness_ = event.target.lightness;
+    this.hsvValue_ = event.target.value;
     this.onUiChanged_();
   }
 
@@ -209,12 +297,117 @@ export class TerminalSettingsColorpickerElement extends
   }
 
   /** @param {!Event} event */
-  onInputBlur_(event) {
-    const css = lib.colors.normalizeCSS(event.target.value);
-    if (!css) {
-      event.target.value = this.value;
+  onInputChange_(event) {
+    const rgb = lib.colors.normalizeCSS(event.target.value);
+    if (!rgb) {
+      event.target.value = cssToHex(/** @type {string} */(this.value));
     } else {
-      super.uiChanged_(css);
+      // Store uppercase hex to help detect when a value is set to default.
+      this.onUiChanged_(cssToHex(event.target.value));
+    }
+  }
+
+  /** @param {!KeyboardEvent} event */
+  onInputKeydown_(event) {
+    if (event.key === 'Enter') {
+      this.onInputChange_(event);
+      this.onOkClick_();
+    }
+  }
+
+  /**
+   * Detects clicks on the dialog cancel button.
+   *
+   * @param {!Event} event
+   */
+  onCancelClick_(event) {
+    this.closeDialog();
+    this.onUiChanged_(this.cancelValue_);
+  }
+
+  /**
+   * Detects clicks on the dialog cancel button.
+   */
+  onOkClick_() {
+    this.closeDialog();
+  }
+
+  openDialog() {
+    this.dialogIsOpened_ = true;
+    this.shadowRoot.querySelector('dialog').showModal();
+  }
+
+  closeDialog() {
+    this.dialogIsOpened_ = false;
+    this.shadowRoot.querySelector('dialog').close();
+  }
+}
+
+customElements.define(TerminalColorpickerElement.is,
+    TerminalColorpickerElement);
+
+export class TerminalSettingsColorpickerElement extends
+    TerminalSettingsElement {
+  static get is() { return 'terminal-settings-colorpicker'; }
+
+  /** @override */
+  static get properties() {
+    return {
+      preference: {
+        type: String,
+      },
+      value: {
+        type: String,
+        reflect: true,
+      },
+      disableTransparency: {
+        type: Boolean,
+      },
+    };
+  }
+
+  /** @override */
+  render() {
+    return html`
+        <terminal-colorpicker @updated="${this.scheduleUpdate_}"
+            value="${this.value}"
+            ?disableTransparency="${this.disableTransparency}"/>
+    `;
+  }
+
+  constructor() {
+    super();
+
+    /** If true, transparency is not shown. */
+    this.disableTransparency = false;
+    /** @private {string} */
+    this.pendingValue_ = '';
+    /** @private {?Promise<void>} */
+    this.pendingUpdate_ = null;
+    /** @public {number} */
+    this.updateDelay = 100;
+  }
+
+  /**
+   * Schedule to update the preference (and thus also this.value). The reason
+   * that we do not do the update immediately is to avoid flooding the
+   * preference manager, in which case the user might see the color picker knob
+   * jumping around by itself after dragging the knob quickly.
+   *
+   * @param {!CustomEvent} event Event with value.
+   * @private
+   */
+  scheduleUpdate_(event) {
+    this.pendingValue_ = event.target.value;
+    if (this.pendingUpdate_ === null) {
+      // We need to use a promise so that tests can wait on this.
+      this.pendingUpdate_ = new Promise((resolve) => {
+        setTimeout(() => {
+          this.pendingUpdate_ = null;
+          super.uiChanged_(this.pendingValue_);
+          resolve();
+        }, this.updateDelay);
+      });
     }
   }
 }

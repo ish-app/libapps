@@ -1,3 +1,288 @@
+# 0.33, 2020-07-06, OpenSSH 8.3p1, UI tweaks, bug fixes, and internal cleanups.
+
+* Update to hterm 1.90.  Material design theming.
+* Update to libdot 7.0.0.  Tooling updates.
+* storage: Convert get APIs to promises.
+* storage: Convert set APIs to promises.
+* fonts: Load web fonts in css and package powerline fonts.
+* npm: Refresh tool versions.
+* lib.init: Rewrite from callbacks to promises.
+* gnubby: Give it a dedicated namespace.
+* terminal: Pull init out of constructor.
+* i18n: change getAcceptLanguages from callbacks to promises.
+* Make ES2018 requirement official.
+* command: Remove unused FS helpers.
+* contextmenu: Send known_hosts context menu to options page.
+* google: Split common logic out of the relay module.
+* omnibox: Read storage at startup.
+* connect: Move lastProfileId to local prefs.
+* omnibox: Use arrow funcs.
+* connect: Make focused inputs less confusing.
+* connect: Fix button init on first run.
+* connect: Make DEL button enablement more robust.
+* l10n: Improve some descriptions and translation tips.
+* ssh_client: Upgrade to OpenSSH 8.3p1.
+* command: Fix --no-proxy-host handling.
+* docs: Fix the `/v4/connect` path on documentation.
+* google: Default internal Google Cloud VM users to new proxy protocol.
+* icons: Refresh stable icon themes.
+* fsp: Switch to Chrome error constants.
+* nasftp: Drop Event.reason externs workaround.
+* licenses: Fix to be able to load in chrome-untrusted.
+* ssh_client: Clean up cpplint warnings.
+* SSHAgentRelay: Use new nassh.buffer API.
+* l10n: Update translations.
+* l10n: Rename the OPTIONS_BUTTON_LABEL to HTERM_OPTIONS_BUTTON_LABEL.
+
+# 0.32, 2020-05-16, Fix relay buffer accumulation.
+
+* corp relay: Fix ack-vs-read typo.
+* l10n: Improve some descriptions and translation tips.
+* popup: Add missing <meta charset=utf-8/> tag.
+* npm: Rework how we invoke node programs.
+* crosh: Use terminalPrivate a11y functions.
+* crosh: No open as window tip for chrome-untrusted.
+* doc: Switch docs to Secure Shell extension variant.
+* crosh: gzip resources in dist to save rootfs space.
+* closure: Update to v20200504.
+* crosh: Modify to run as chrome-untrusted://crosh/.
+
+# 0.31, 2020-05-07, Fresh extension dialog regression fix.
+
+* popup: Save a handle for live debugging.
+* popup: Filter out connection dialog from saved settings.
+* Add Send Feedback buttons everywhere.
+* import-translations: Avoid deleting en locale.
+* kokoro: Use tot translations if available.
+* eslint: Enable no-multi-spacesfix checks.
+* omnibox: Workaround bugs in incognito mode.
+
+# 0.30, 2020-04-30, SFTP regression fix.
+
+* sftp: Fix DataView loading.
+* sftp: Fix typo in packet name.
+* externs: Update chrome.runtime.onMessage APIs.
+
+# 0.29, 2020-04-29, Linting cleanups, new buffer logic, and restore window settings.
+
+* prefs: Remember & restore window dimensions per-profile.
+* prefs: Extend openas for fullscreen/maximized state.
+* prefs: Add framework for local (non-syncable) prefs.
+* command_instance: Save active profile id.
+* lit-element: Update to 2.3.1 to get live().
+* mkdeps: Add basic license checking.
+* closure: Update to v20200204.
+* closure: Update to v20191027.
+* sftp: Formalize nassh.sftp.fsp.sftpInstances structure.
+* sftp: Fix outdated string->arraybuffer types.
+* sftp: Tweak FileAttrs/File handling.
+* lint: Fix up various number handling.
+* lint: Avoid date->number coercion.
+* externs: Avoid "const".
+* eslint: Enable default-param-last check.
+* eslint: Enable no-case-declarations checks.
+* eslint: Enable no-throw-literal check.
+* lint: Add missing dangling commas.
+* eslint: Enable prefer-rest-params check.
+* mocha: Upgrade to v7.
+* eslint: Enable no-var & prefer-const checks.
+* lint: Convert var to let/const.
+* docs: Update processes/translations document.
+* prefs: Delete relay-options migration.
+* prefs: Clarify the terminal settings header.
+* import-translations: Handle more edge cases.
+* l10n: Improve some descriptions and translation tips.
+* sftp: Use new nassh.buffer API.
+* corp relay: Use new nassh.buffer API.
+* corpv4 relay: Use new nassh.buffer API.
+* prefs: Fix unselected panels bleeding through.
+* prefs: Fix navigation panel in small windows.
+* identity: Fix refresh when importing.
+* identity: Handle -cert.pub files.
+* prefs: Drop unused auth-agent-appid preference.
+* buffer: Add a scatter/gather buffer.
+* popup: Add tooltip hint for opening in a tab.
+* buffer: New API for managing byte buffers.
+* nassh: Add a basic framework for field trials.
+* streams: Throttle WebSocket sending as needed.
+
+# 0.28, 2020-04-14, Linting & perf fixes for corpv4 relay.
+
+* relay: corp: Rename original corp relay.
+* relay: Rename class to match style guide.
+* preferences: Add UI for managing identify files.
+* nasftp: Fix bad command lookups.
+* nasftp: help: Support displaying specific commands.
+* corpv4: Fix plugin ack logic.
+* doc: hack: Update release version.
+* background: Add new corp v4 scripts.
+* lint: Enable object-curly-spacing checks.
+* ssh_client: wasmtime: Version bump to 0.15.0.
+* ssh_client: wasi-sdk: Version bump to 10.0.
+* ssh_client: binaryen: Version bump to 91.
+* lint: Enable func-call-spacing checks.
+* lint: Enable space-before-function-paren checks.
+* lint: Enable arrow-parens checks.
+* lint: Enable comma-dangle checks.
+* lint: Enable space-infix-ops checks.
+* lint: Enable comma-spacing checks.
+* lint: Enable keyword-spacing checks.
+* lint: Enable spaced-comment checks.
+* lint: Use const with for...of loops.
+* lint: Add missing braces everywhere per our style guide.
+
+# 0.27, 2020-04-05, Better options page.
+
+* Update to hterm 1.88.  Better word breaks, more keyboard prefs, and dynamic colors.
+* Update to libdot 5.0.0.  Unicode 13.0.0 update, and minor tooling improvements.
+* ssh_client: Fix tty echo handling.
+* preferences: Remove unused label text.
+* preferences: Add sidebar links to subsections.
+* import-translations: Fix handling of new translations.
+* preferences: Add UI for managing .ssh/ files.
+* preferences: Support multiple pages of settings.
+* l10n: Pull in some minor translation updates.
+* l10n: Improve translation import process.
+* l10n: Update translations with renamed/deleted fields.
+* preferences: Switch from i18n-content to i18n tag.
+* licenses: Localize all fixed content.
+* l10n: Support translating the official name.
+* uri: Add a helper page for registering protocol handlers.
+* api: Switch to using a Map.
+* uri: Handle IPv6 relay hosts.
+
+# 0.26, 2020-03-25, SSH-FE & SFTP fixes & keybinding & copy/paste tweaks.
+
+* changelog: Point people to local changelog.
+* nassh: Make all links clickable via OSC-8 link sequences.
+* nassh: Add helper for generating SGR style sequences.
+* sshfe: Add dedicated --proxy-user setting.
+* nassh: Always use legacy pasting for nassh and crosh.
+* nasftp: ls: Fix fake file listings.
+* nasftp: truncate: Support truncating to a specific size.
+* nasftp: Support numeric units on sizes.
+* nasftp: Make command loop more robust with rejected promises.
+* nasftp: Fix rm/del subcommand ordering.
+* nasftp: Implement upload resume.
+* ssh_client: Handle streams larger than 2GB.
+* changelog: Autogenerate a bundled copy.
+
+# 0.25, 2020-03-15, hterm tweaks & URI reconnect fixes.
+
+* nassh: Retain the original destination in the location.
+* Replace minus with plus for key shortcuts.
+
+# 0.24, 2020-03-08, Relay fixes.
+
+* relay corpv4/sshfe: Fix write ack confusion.
+* relay corpv4: Use discovered relay.
+* mkzip: Start building versions for stable rollback.
+
+# 0.23, 2020-03-03, OpenSSH 8.2p1.
+
+* nassh: Enable metrics/crash APIs for crosh/Terminal.
+* ssh_client: openssh: Update to 8.2p1 release.
+
+# 0.22, 2020-02-05, New relay protocol & minor SSH-FE & SSH fixes.
+
+* corp relay: Port cleanups from new corpv4 code.
+* grue: Implement new corp-ssh-v4@google.com protocol.
+* ssh_client: Fix hang in openssh with broken connections.
+* ssh_client: Have select return EBADFD with invalid fds.
+* app: Start encouraging people to move to the extension.
+* extension: Have Ctrl-Shift-N open connect dialog.
+* sshfe: Fix error after closure compilation change.
+* sshfe: Make connection parsing a little more robust.
+* ssh_client: wabt: Update to 1.0.13 release.
+* hterm: word-breaks: Add more quote marks.
+* ssh_client: binaryen: Update to 90 release.
+* nassh: Auto-sync prefs on install.
+* api: Add prefereneces import/export commands.
+* nassh: Fix favicon usage with shortcuts.
+* extension: Add crosh & socket APIs.
+* connect dialog: Drop from web_accessible_resources.
+* nassh: Drop Chrome Apps (v2) support.
+* api: Add a simple hello message.
+* api: Rework to better handle startup.
+* extension: Drop "Extension" from the name.  It's cleaner.
+* omnibox: Fix opening windows.
+* extension: Enable FSP support.
+
+# 0.21, 2019-12-02, SFTP mount fix.
+
+* nassh: Fix up new --welcome setting.
+* eslint: Enable single quote checking.
+* mkdist: Update extension icons too.
+
+# 0.20, 2019-11-28, OpenSSH 8.1p1 & code cleanups.
+
+* Update to hterm 1.87.  Tons of linting/cleanups.
+* Update to libdot 4.0.0.  Tons of tooling improvements & linting cleanups.
+* nassh: Use hterm default storage.
+* mkdist: Gzip crosh files.
+* crosh: Fix preferences page to run in chrome://terminal.
+* l10n: Add loadMessages, reuse hterm messageManager.
+* ssh_client: openssh: Initial wasm port.
+* ssh_client: wassh-libc-sup: Custom C library additions.
+* uri: Add option -nassh-args=--no-welcome.
+* mkdist: Minify CSS/JS files for crosh.
+* mkdist: Improve minification a bit.
+* mkdist: Filter out more unused files.
+* ssh_client: wasi-sdk: Update to 8.0.
+* mkcrosh/mkzip/promote: Drop shell scripts.
+* mkdist: Rewrite release generation.
+* doc: FAQ: Correct docs to note that osc52.vim supports screen/tmux.
+* ssh_client: naclsdk: Switch to tar.xz.
+* nasftp: ls: Support listing files.
+* js: Replace libdot.fs.FileReader with Blob.arrayBuffer/text.
+* ssh_client: wasi-sdk: Add patch for fifo defines.
+* bin: Unify argument parsing & log setup.
+* nassh.getFileSystem: Fix to return single object in Promise.
+* stream: Drop /dev/random handler.
+* ssh_client: Move glibc-compat to nacl toolchain.
+* ssh_client: openssh: Update to 8.1p1 release.
+* ssh_client: openssh: Disable some more unused code.
+* npm/rollup: Depend on lit-element for Terminal.
+* ssh_client: openssh-8.0: Add upstream fix for chown/chmod fallbacks.
+* ssh_client: ldns: Force some struct tests.
+* ssh_client: openssl: Initial wasm port.
+* ssh_client: build.sh: Refactor a bit to build nacl & wasm.
+* ssh_client: Initial wasm toolchain support.
+* ssh_client: Import wasm tools.
+* js: Fill out remaining jsdocs & update APIs.
+* eslint: Enable more jsdoc checks.
+* eslint: Set max-len 80.
+* js: Rewrite code for jsdoc usage.
+* ssh_client: Support multiple versions of openssh.
+* eslint: Enable jsdoc plugin & tag naming.
+* ssh_client: improve --host/--build handling.
+* ssh_client: gnuconfig: Add build package.
+* kokoro: Slim down container.
+* ssh_client: Move openssh libs into the sysroot.
+* ssh_client: Overhaul toolchain management to support multiple types.
+* mkdeps: Add option to skip rollup.
+* nassh: Get v2 app working again.
+* fs: Migrate lib.fs APIs to Promises.
+* kokoro: Add ssh client archive to output.
+* tests: Drop support for node testing.
+* lint: Fix chdir logic with default paths.
+* docker: Upgrade build to buster.
+* pylint: Clean up various pylint issues in the code base.
+* google-smart-card: Port helper script to Python 3.
+* lint: Unify helper program.
+* crosh: Use lib.MessageManager rather than chrome.i18n.
+* eslint: Turn on more rules.
+* filter_translations: Fix inplace usage.
+* js: Fix lint and closure-compile errors.
+* lint: Use new closure-compiler wrapper.
+* crosh/nassh: Pass commandName in Command constructor.
+* nassh: openNewWindow: Use new API to open new windows.
+* external api: Add an "nassh" API.
+* doc: Split api doc out.
+* gsc: Allow non-numeric PIV PINs to be sent to the card.
+* openWindow: use absolute html paths everywhere.
+* mkcrosh: Support for bundling chrome://terminal.
+
 # 0.19, 2019-08-06, Minor bug fixes & better licensing info.
 
 * Update to hterm 1.86.  Very minor improvements.

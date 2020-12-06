@@ -51,4 +51,36 @@ it('nassh.base64-to-base64url', () => {
   assert.equal('-_-_', nassh.base64ToBase64Url('-_+/'));
 });
 
+/**
+ * Test SGR helper.
+ */
+it('nassh.SGR-sequence', () => {
+  assert.equal('\x1b[m', nassh.sgrSequence());
+  assert.equal('\x1b[1m', nassh.sgrSequence({bold: true}));
+  assert.equal('\x1b[4m', nassh.sgrSequence({underline: true}));
+  assert.equal('\x1b[1;4m', nassh.sgrSequence({bold: true, underline: true}));
+  assert.equal('\x1b[33;40m', nassh.sgrSequence({fg: 33, bg: 40}));
+  assert.equal('\x1b[1;33;40m',
+               nassh.sgrSequence({bold: true, fg: 33, bg: 40}));
+});
+
+/**
+ * Test SGR text helper.
+ */
+it('nassh.SGR-text', () => {
+  // NB: We lightly test this func as most logic is in nassh.sgrSequence().
+  assert.equal('\x1b[mfoo\x1b[m', nassh.sgrText('foo'));
+  assert.equal('\x1b[1mfoo\x1b[m', nassh.sgrText('foo', {bold: true}));
+});
+
+/**
+ * Test OSC-8 text helper.
+ */
+it('nassh.OSC-8-link', () => {
+  assert.equal('\x1b]8;;https://example.com\x07https://example.com\x1b]8;;\x07',
+               nassh.osc8Link('https://example.com'));
+  assert.equal('\x1b]8;;https://example.com\x07foo\x1b]8;;\x07',
+               nassh.osc8Link('https://example.com', 'foo'));
+});
+
 });

@@ -41,11 +41,11 @@ hterm.Parser.prototype.isComplete = function() {
 
 /**
  * @param {string} source
- * @param {number=} opt_pos
+ * @param {number=} pos
  */
-hterm.Parser.prototype.reset = function(source, opt_pos) {
+hterm.Parser.prototype.reset = function(source, pos = 0) {
   this.source = source;
-  this.pos = opt_pos || 0;
+  this.pos = pos;
   this.ch = source.substr(0, 1);
 };
 
@@ -65,39 +65,40 @@ hterm.Parser.prototype.reset = function(source, opt_pos) {
  *   A: Matches only an unmodified "A" character.
  *   65: Same as above.
  *   0x41: Same as above.
- *   Ctrl-A: Matches only Ctrl-A.
- *   Ctrl-65: Same as above.
- *   Ctrl-0x41: Same as above.
- *   Ctrl-Shift-A: Matches only Ctrl-Shift-A.
- *   Ctrl-*-A: Matches Ctrl-A, as well as any other key sequence that includes
+ *   Ctrl+A: Matches only Ctrl+A.
+ *   Ctrl+65: Same as above.
+ *   Ctrl+0x41: Same as above.
+ *   Ctrl+Shift+A: Matches only Ctrl+Shift+A.
+ *   Ctrl+*+A: Matches Ctrl+A, as well as any other key sequence that includes
  *     at least the Ctrl and A keys.
  *
  * @return {!hterm.Keyboard.KeyDown} An object with shift, ctrl, alt, meta,
  *     keyCode properties.
  */
 hterm.Parser.prototype.parseKeySequence = function() {
-  var rv = {
-    keyCode: null
+  const rv = {
+    keyCode: null,
   };
 
-  for (var k in hterm.Parser.identifiers.modifierKeys) {
+  for (const k in hterm.Parser.identifiers.modifierKeys) {
     rv[hterm.Parser.identifiers.modifierKeys[k]] = false;
   }
 
   while (this.pos < this.source.length) {
     this.skipSpace();
 
-    var token = this.parseToken();
+    const token = this.parseToken();
     if (token.type == 'integer') {
       rv.keyCode = token.value;
 
     } else if (token.type == 'identifier') {
-      var ucValue = token.value.toUpperCase();
+      const ucValue = token.value.toUpperCase();
       if (ucValue in hterm.Parser.identifiers.modifierKeys &&
           hterm.Parser.identifiers.modifierKeys.hasOwnProperty(ucValue)) {
-        var mod = hterm.Parser.identifiers.modifierKeys[ucValue];
-        if (rv[mod] && rv[mod] != '*')
+        const mod = hterm.Parser.identifiers.modifierKeys[ucValue];
+        if (rv[mod] && rv[mod] != '*') {
           throw this.error('Duplicate modifier: ' + token.value);
+        }
         rv[mod] = true;
 
       } else if (ucValue in hterm.Parser.identifiers.keyCodes &&
@@ -110,10 +111,11 @@ hterm.Parser.prototype.parseKeySequence = function() {
 
     } else if (token.type == 'symbol') {
       if (token.value == '*') {
-        for (var id in hterm.Parser.identifiers.modifierKeys) {
-          var p = hterm.Parser.identifiers.modifierKeys[id];
-          if (!rv[p])
-            rv[p] =  '*';
+        for (const id in hterm.Parser.identifiers.modifierKeys) {
+          const p = hterm.Parser.identifiers.modifierKeys[id];
+          if (!rv[p]) {
+            rv[p] = '*';
+          }
         }
       } else {
         throw this.error('Unexpected symbol: ' + token.value);
@@ -124,17 +126,20 @@ hterm.Parser.prototype.parseKeySequence = function() {
 
     this.skipSpace();
 
-    if (this.ch != '-')
+    if (this.ch !== '-' && this.ch !== '+') {
       break;
+    }
 
-    if (rv.keyCode != null)
+    if (rv.keyCode != null) {
       throw this.error('Extra definition after target key');
+    }
 
     this.advance(1);
   }
 
-  if (rv.keyCode == null)
+  if (rv.keyCode == null) {
     throw this.error('Missing target key');
+  }
 
   return rv;
 };
@@ -143,15 +148,17 @@ hterm.Parser.prototype.parseKeySequence = function() {
 hterm.Parser.prototype.parseKeyAction = function() {
   this.skipSpace();
 
-  var token = this.parseToken();
+  const token = this.parseToken();
 
-  if (token.type == 'string')
+  if (token.type == 'string') {
     return token.value;
+  }
 
   if (token.type == 'identifier') {
     if (token.value in hterm.Parser.identifiers.actions &&
-        hterm.Parser.identifiers.actions.hasOwnProperty(token.value))
+        hterm.Parser.identifiers.actions.hasOwnProperty(token.value)) {
       return hterm.Parser.identifiers.actions[token.value];
+    }
 
     throw this.error('Unknown key action: ' + token.value);
   }
@@ -178,28 +185,31 @@ hterm.Parser.prototype.peekInteger = function() {
 /** @return {!Object} */
 hterm.Parser.prototype.parseToken = function() {
   if (this.ch == '*') {
-    var rv = {type: 'symbol', value: this.ch};
+    const rv = {type: 'symbol', value: this.ch};
     this.advance(1);
     return rv;
   }
 
-  if (this.peekIdentifier())
+  if (this.peekIdentifier()) {
     return {type: 'identifier', value: this.parseIdentifier()};
+  }
 
-  if (this.peekString())
+  if (this.peekString()) {
     return {type: 'string', value: this.parseString()};
+  }
 
-  if (this.peekInteger())
+  if (this.peekInteger()) {
     return {type: 'integer', value: this.parseInteger()};
-
+  }
 
   throw this.error('Unexpected token');
 };
 
 /** @return {string} */
 hterm.Parser.prototype.parseIdentifier = function() {
-  if (!this.peekIdentifier())
+  if (!this.peekIdentifier()) {
     throw this.error('Expected identifier');
+  }
 
   return this.parsePattern(/[a-z0-9_]+/ig);
 };
@@ -208,6 +218,7 @@ hterm.Parser.prototype.parseIdentifier = function() {
 hterm.Parser.prototype.parseInteger = function() {
   if (this.ch == '0' && this.pos < this.source.length - 1 &&
       this.source.substr(this.pos + 1, 1) == 'x') {
+    /* eslint-disable radix */
     return parseInt(this.parsePattern(/0x[0-9a-f]+/gi), undefined);
   }
 
@@ -225,20 +236,22 @@ hterm.Parser.prototype.parseInteger = function() {
  * @return {string}
  */
 hterm.Parser.prototype.parseString = function() {
-  var result = '';
+  let result = '';
 
-  var quote = this.ch;
-  if (quote != '"' && quote != '\'')
+  const quote = this.ch;
+  if (quote != '"' && quote != '\'') {
     throw this.error('String expected');
+  }
 
   this.advance(1);
 
-  var re = new RegExp('[\\\\' + quote + ']', 'g');
+  const re = new RegExp('[\\\\' + quote + ']', 'g');
 
   while (this.pos < this.source.length) {
     re.lastIndex = this.pos;
-    if (!re.exec(this.source))
+    if (!re.exec(this.source)) {
       throw this.error('Unterminated string literal');
+    }
 
     result += this.source.substring(this.pos, re.lastIndex - 1);
 
@@ -273,7 +286,7 @@ hterm.Parser.prototype.parseString = function() {
  * @return {string}
  */
 hterm.Parser.prototype.parseEscape = function() {
-  var map = {
+  const map = {
     '"': '"',
     '\'': '\'',
     '\\': '\\',
@@ -286,23 +299,25 @@ hterm.Parser.prototype.parseEscape = function() {
     't': '\x09',
     'v': '\x0b',
     'x': function() {
-      var value = this.parsePattern(/[a-z0-9]{2}/ig);
+      const value = this.parsePattern(/[a-z0-9]{2}/ig);
       return String.fromCharCode(parseInt(value, 16));
     },
     'u': function() {
-      var value = this.parsePattern(/[a-z0-9]{4}/ig);
+      const value = this.parsePattern(/[a-z0-9]{4}/ig);
       return String.fromCharCode(parseInt(value, 16));
-    }
+    },
   };
 
-  if (!(this.ch in map && map.hasOwnProperty(this.ch)))
+  if (!(this.ch in map && map.hasOwnProperty(this.ch))) {
     throw this.error('Unknown escape: ' + this.ch);
+  }
 
-  var value = map[this.ch];
+  let value = map[this.ch];
   this.advance(1);
 
-  if (typeof value == 'function')
+  if (typeof value == 'function') {
     value = value.call(this);
+  }
 
   return value;
 };
@@ -315,14 +330,16 @@ hterm.Parser.prototype.parseEscape = function() {
  * @return {string}
  */
 hterm.Parser.prototype.parsePattern = function(pattern) {
-  if (!pattern.global)
+  if (!pattern.global) {
     throw this.error('Internal error: Span patterns must be global');
+  }
 
   pattern.lastIndex = this.pos;
-  var ary = pattern.exec(this.source);
+  const ary = pattern.exec(this.source);
 
-  if (!ary || pattern.lastIndex - ary[0].length != this.pos)
+  if (!ary || pattern.lastIndex - ary[0].length != this.pos) {
     throw this.error('Expected match for: ' + pattern);
+  }
 
   this.pos = pattern.lastIndex - 1;
   this.advance(1);
@@ -342,27 +359,28 @@ hterm.Parser.prototype.advance = function(count) {
 };
 
 /**
- * @param {string=} opt_expect A list of valid non-whitespace characters to
+ * @param {string=} expect A list of valid non-whitespace characters to
  *   terminate on.
  * @return {void}
  */
-hterm.Parser.prototype.skipSpace = function(opt_expect) {
-  if (!/\s/.test(this.ch))
+hterm.Parser.prototype.skipSpace = function(expect = undefined) {
+  if (!/\s/.test(this.ch)) {
     return;
+  }
 
-  var re = /\s+/gm;
+  const re = /\s+/gm;
   re.lastIndex = this.pos;
 
-  var source = this.source;
-  if (re.exec(source))
+  const source = this.source;
+  if (re.exec(source)) {
     this.pos = re.lastIndex;
+  }
 
   this.ch = this.source.substr(this.pos, 1);
 
-  if (opt_expect) {
-    if (this.ch.indexOf(opt_expect) == -1) {
-      throw this.error('Expected one of ' + opt_expect + ', found: ' +
-          this.ch);
+  if (expect) {
+    if (this.ch.indexOf(expect) == -1) {
+      throw this.error(`Expected one of ${expect}, found: ${this.ch}`);
     }
   }
 };
