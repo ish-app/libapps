@@ -43,7 +43,10 @@ window.addEventListener('DOMContentLoaded', (event) => {
     // Useful for console debugging.
     window.term_ = term;
 
-    const prefsEditor = new nassh.PreferencesEditor();
+    const params = new URLSearchParams(document.location.search);
+    const profileId = params.get('profileId') ??
+        nassh.msg('FIELD_TERMINAL_PROFILE_PLACEHOLDER');
+    const prefsEditor = new nassh.PreferencesEditor(profileId);
 
     let a = document.querySelector('#backup');
     a.download = nassh.msg('PREF_BACKUP_FILENAME');
@@ -88,7 +91,7 @@ window.addEventListener('DOMContentLoaded', (event) => {
             }
           });
       };
-    profile.value = nassh.msg('FIELD_TERMINAL_PROFILE_PLACEHOLDER');
+    profile.value = profileId;
 
     // Allow people to reset individual fields by pressing escape.
     document.onkeyup = function(e) {
@@ -389,8 +392,9 @@ nassh.PreferencesEditor.prototype.colorSync = function(key, pref) {
   const rgba = lib.colors.normalizeCSS(pref);
 
   if (rgba) {
-    cinput.value = lib.colors.rgbToHex(rgba);
-    ainput.value = parseFloat(lib.colors.crackRGB(rgba)[3]) * 100;
+    const ary = lib.colors.crackRGB(rgba);
+    cinput.value = lib.colors.rgbToHex(lib.colors.arrayToRGBA(ary.slice(0, 3)));
+    ainput.value = parseFloat(ary[3]) * 100;
   } else {
     // If pref could not be normalized, then reset.
     this.reset(cinput);

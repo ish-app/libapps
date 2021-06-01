@@ -1,12 +1,9 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 # Copyright 2018 The Chromium OS Authors. All rights reserved.
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
 """Run pylint with the right settings."""
-
-from __future__ import print_function
 
 import functools
 import json
@@ -70,15 +67,6 @@ def filter_known_files(paths: List[Path]) -> List[Path]:
     ret = []
     for path in paths:
         path = Path(path)
-
-        # TODO(vapier): Figure out why pylint hates us.  Running in the
-        # container on these modules fails with "internal errors:
-        # maximum recursion depth exceeded.".
-        spec = (path.parent.parent.name, path.parent.name, path.name)
-        if spec == ('libdot', 'bin', 'node'):
-            continue
-        elif spec == ('ssh_client', 'bin', 'ssh_client.py'):
-            continue
 
         if path.suffix == '.py':
             # Add all .py files as they should only be Python.

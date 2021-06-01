@@ -695,7 +695,7 @@ lib.colors.contrastRatio = function(l1, l2) {
  *
  * @type {!Array<string>}
  */
-lib.colors.stockColorPalette = [
+lib.colors.stockPalette = [
      // The "ANSI 16"...
     '#000000', '#CC0000', '#4E9A06', '#C4A000',
     '#3465A4', '#75507B', '#06989A', '#D3D7CF',
@@ -751,11 +751,6 @@ lib.colors.stockColorPalette = [
     '#808080', '#8A8A8A', '#949494', '#9E9E9E', '#A8A8A8', '#B2B2B2',
     '#BCBCBC', '#C6C6C6', '#D0D0D0', '#DADADA', '#E4E4E4', '#EEEEEE',
    ].map(lib.colors.hexToRGB);
-
-/**
- * The current color palette, possibly with user changes.
- */
-lib.colors.colorPalette = lib.colors.stockColorPalette;
 
 /**
  * Named colors according to the stock X11 rgb.txt file.

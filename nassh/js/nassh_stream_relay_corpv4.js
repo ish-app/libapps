@@ -54,7 +54,6 @@ nassh.Stream.RelayCorpv4.ServerPacket = class {
       }
 
       case nassh.Stream.RelayCorpv4.PacketTag.RECONNECT_SUCCESS:
-        /** @suppress {missingProperties} closure is missing BigInt */
         this.ack = dv.getBigUint64(2);
         break;
 
@@ -65,7 +64,6 @@ nassh.Stream.RelayCorpv4.ServerPacket = class {
         break;
 
       case nassh.Stream.RelayCorpv4.PacketTag.ACK:
-        /** @suppress {missingProperties} closure is missing BigInt */
         this.ack = dv.getBigUint64(2);
         break;
     }
@@ -99,15 +97,14 @@ nassh.Stream.RelayCorpv4.ClientDataPacket = class {
  */
 nassh.Stream.RelayCorpv4.ClientAckPacket = class {
   /**
-   * @param {!bigint} ack The ack to packetize.
-   * @suppress {missingProperties} closure is missing BigInt
+   * @param {bigint} ack The ack to packetize.
    */
   constructor(ack) {
     // Space for the tag (2 bytes) & ack (8 bytes).
     this.frame = new ArrayBuffer(10);
     const dv = new DataView(this.frame);
     this.tag = nassh.Stream.RelayCorpv4.PacketTag.ACK;
-    /** @const {!bigint} */
+    /** @const {bigint} */
     this.ack = ack;
 
     dv.setUint16(0, this.tag);
@@ -154,14 +151,14 @@ nassh.Stream.RelayCorpv4WS = function(fd) {
   /**
    * Data we've read so we can ack it to the server.
    *
-   * @type {!bigint}
+   * @type {bigint}
    */
   this.readCount_ = BigInt(0);
 
   /**
    * Data we've written that the server has acked.
    *
-   * @type {!bigint}
+   * @type {bigint}
    */
   this.writeAckCount_ = BigInt(0);
 
@@ -387,12 +384,6 @@ nassh.Stream.RelayCorpv4WS.prototype.onSocketData_ = function(e) {
       // Fallthrough.
 
     case nassh.Stream.RelayCorpv4.PacketTag.ACK: {
-      /**
-       * Closure compiler hasn't finished bigint support yet, so this expression
-       * between 2 bigints is unknown.  Disable for now.
-       *
-       * @suppress {strictPrimitiveOperators}
-       */
       const acked = Number(packet.ack - this.writeAckCount_);
       if (acked == 0) {
         // This can come up with reconnects, but should handle it either way.

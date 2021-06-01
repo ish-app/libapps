@@ -23,19 +23,6 @@ nassh.sftp.fsp = {};
 nassh.sftp.fsp.sftpInstances = {};
 
 /**
- * Creates a new SFTP CommandInstance in the background page and connects to
- * the provided connection. Utilizes the same hterm.Terminal.IO as the
- * foreground page to authenticate the user before commencing SFTP
- * communication.
- *
- * @param {!Object} args
- */
-nassh.sftp.fsp.createSftpInstance = function(args) {
-  const sftpInstance = new nassh.CommandInstance(args.argv);
-  sftpInstance.connectTo(args.connectOptions);
-};
-
-/**
  * Sanitizes the provided file's metadata to the requirements specified in
  * 'options'.
  *
@@ -708,9 +695,13 @@ nassh.sftp.fsp.providerMethods = [
   'onConfigureRequested',
 ];
 
-// Loop over the provider methods and link them to their handlers.
-if (window.chrome && chrome.fileSystemProvider) {
-  nassh.sftp.fsp.providerMethods.forEach(function(provider) {
-    chrome.fileSystemProvider[provider].addListener(nassh.sftp.fsp[provider]);
-  });
-}
+/**
+ * Loop over the provider methods and link them to their handlers.
+ */
+nassh.sftp.fsp.addListeners = function() {
+  if (window.chrome && chrome.fileSystemProvider) {
+    nassh.sftp.fsp.providerMethods.forEach(function(provider) {
+      chrome.fileSystemProvider[provider].addListener(nassh.sftp.fsp[provider]);
+    });
+  }
+};

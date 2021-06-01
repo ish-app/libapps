@@ -8,11 +8,15 @@
  * @suppress {moduleLoad}
  */
 import {css, html, LitElement, live} from './lit_element.js';
+import {redispatchEvent} from './terminal_common.js';
 
 export class TerminalTextfieldElement extends LitElement {
   /** @override */
   static get properties() {
     return {
+      placeholder: {
+        type: String,
+      },
       value: {
         type: String,
       },
@@ -77,6 +81,7 @@ export class TerminalTextfieldElement extends LitElement {
   constructor() {
     super();
 
+    this.placeholder = '';
     this.value = '';
     this.focused_ = false;
   }
@@ -86,24 +91,21 @@ export class TerminalTextfieldElement extends LitElement {
     return html`
         <div id="container">
           <input type="text"
+              .placeholder="${this.placeholder}"
               .value="${live(this.value)}"
               @blur=${() => this.focused_ = false}
               @focus=${() => this.focused_ = true}
               @change=${this.onChange_}
-              @keydown=${this.passThroughEvent_}
+              @keydown=${(e) => redispatchEvent(this, e)}
           />
           <div id="underline" ?data-focused="${this.focused_}"></div>
         </div>
     `;
   }
 
-  passThroughEvent_(event) {
-    this.dispatchEvent(new event.constructor(event.type, event));
-  }
-
   onChange_(event) {
     this.value = event.target.value;
-    this.passThroughEvent_(event);
+    redispatchEvent(this, event);
   }
 }
 

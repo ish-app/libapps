@@ -8,6 +8,10 @@
   let didLaunch = false;
   const onLaunched = () => { didLaunch = true; };
 
+  // We have to turn on listeners here so we can handle messages when first
+  // launched (but before lib.registerInit finishes).
+  nassh.External.addListeners();
+
   // Used to watch for launch events that occur before we're ready to handle
   // them.  We'll clean this up below during init.
   if (nassh.browserAction) {
@@ -28,6 +32,12 @@
       app.installOmnibox(chrome.omnibox);
     }
 
+    // Bind the FSP APIs.
+    app.installFsp();
+
+    // Register our context menus.
+    app.installContextMenus();
+
     // If we're running as an extension, finish setup.
     if (nassh.browserAction) {
       nassh.browserAction.onClicked.removeListener(onLaunched);
@@ -39,13 +49,8 @@
       app.onLaunched();
     }
 
-    // "Public" window.app will be retrieved by individual windows via
-    // chrome.getBackgroundPage().
-    window.app = app;
-
-    // A flag for people who need to load us dynamically to know we're ready.
-    // See nassh.getBackgroundPage for the user.
-    window.loaded = true;
+    // Help with live debugging.
+    window.app_ = app;
   });
 })();
 
@@ -83,20 +88,14 @@ chrome.runtime.onInstalled.addListener((details) => {
      * @param {string} srcId The extension to import from.
      * @param {function()=} onError Callback if extension doesn't exist.
      */
-    const migrate = (srcId, onError) => {
+    const migrate = (srcId, onError = () => {}) => {
       console.log(`Trying to sync prefs from ${srcId}`);
-      const cmdExport = {command: 'prefsExport'};
-      chrome.runtime.sendMessage(srcId, cmdExport, (response) => {
-        const err = lib.f.lastError();
-        if (err) {
-          if (onError) {
-            onError();
-          }
-        } else {
+      nassh.runtimeSendMessage(srcId, {command: 'prefsExport'})
+        .then((response) => {
           const {prefs} = response;
           nassh.importPreferences(prefs);
-        }
-      });
+        })
+        .catch(onError);
     };
 
     switch (chrome.runtime.id) {

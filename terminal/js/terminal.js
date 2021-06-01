@@ -2,8 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import {definePrefs, loadPowerlineWebFonts, loadWebFont, normalizeCSSFontFamily,
-  normalizePrefsInPlace, watchBackgroundColor} from './terminal_common.js';
+import {definePrefs, loadPowerlineWebFonts, loadWebFont, normalizeCSSFontFamily}
+    from './terminal_common.js';
+import {TerminalActiveTracker} from './terminal_active_tracker.js';
 
 export const terminal = {};
 
@@ -18,13 +19,12 @@ window.preferenceManager;
  * use the vmshell process on a Chrome OS machine.
  *
  * @param {{
-     commandName: string,
  *   args: !Array<string>,
+ *   io: !hterm.Terminal.IO,
  * }} argv The argument object passed in from the Terminal.
  * @constructor
  */
 terminal.Command = function(argv) {
-  this.commandName = argv.commandName;
   this.argv_ = argv;
   this.io = null;
   this.keyboard_ = null;
@@ -73,6 +73,35 @@ terminal.onCtrlN = function(e, k) {
 };
 
 /**
+ * Adds bindings for terminal such as options page and some extra Chrome OS
+ * system key bindings when 'keybindings-os-defaults' pref is set. Reloads
+ * current bindings if needed.
+ *
+ * @param {!hterm.Terminal} term
+ */
+terminal.addBindings = function(term) {
+  Object.assign(hterm.Keyboard.Bindings.OsDefaults['cros'], {
+    // Dock window left/right.
+    'Alt+BRACKET_LEFT': 'PASS',
+    'Alt+BRACKET_RIGHT': 'PASS',
+    // Maximize/minimize window.
+    'Alt+EQUAL': 'PASS',
+    'Alt+MINUS': 'PASS',
+  });
+  if (term.getPrefs().get('keybindings-os-defaults')) {
+    term.keyboard.bindings.clear();
+    term.keyboard.bindings.addBindings(
+        /** @type {!Object} */ (term.getPrefs().get('keybindings') || {}),
+        true);
+  }
+
+  term.keyboard.bindings.addBinding('Ctrl+Shift+P', function() {
+    terminal.openOptionsPage();
+    return hterm.Keyboard.KeyActions.CANCEL;
+  });
+};
+
+/**
  * Static initializer.
  *
  * This constructs a new hterm.Terminal instance and instructs it to run
@@ -87,13 +116,9 @@ terminal.init = function(element) {
 
   term.decorate(element);
   const runTerminal = function() {
-    term.keyboard.bindings.addBinding('Ctrl+Shift+P', function() {
-      terminal.openOptionsPage();
-      return hterm.Keyboard.KeyActions.CANCEL;
-    });
-
     term.onOpenOptionsPage = terminal.openOptionsPage;
     term.keyboard.keyMap.keyDefs[78].control = terminal.onCtrlN;
+    terminal.addBindings(term);
     term.setCursorPosition(0, 0);
     term.setCursorVisible(true);
     term.runCommandClass(
@@ -104,8 +129,8 @@ terminal.init = function(element) {
   term.onTerminalReady = function() {
     const prefs = term.getPrefs();
     definePrefs(prefs);
-    normalizePrefsInPlace(prefs);
-    watchBackgroundColor(prefs, /* updateBody= */ true);
+    terminal.watchBackgroundColor(prefs);
+    terminal.watchBackgroundImage(term);
 
     loadPowerlineWebFonts(term.getDocument());
     const onFontFamilyChanged = async (cssFontFamily) => {
@@ -196,10 +221,10 @@ terminal.Command.prototype.run = function() {
       this.onProcessOutput_.bind(this));
   document.body.onunload = this.close_.bind(this);
 
-  const pidInit = (id) => {
+  const pidInit = (id, activeTerminalTracker) => {
     if (id === undefined) {
       this.io.println(
-          `Launching ${this.commandName} failed: ${lib.f.lastError('')}`);
+          `Launching vmshell failed: ${lib.f.lastError('')}`);
       this.exit(1);
       return;
     }
@@ -212,16 +237,19 @@ terminal.Command.prototype.run = function() {
     this.onTerminalResize_(
         this.io.terminal_.screenSize.width,
         this.io.terminal_.screenSize.height);
+
+    activeTerminalTracker.terminalId = id;
   };
 
-  // TODO(crbug.com/1056049): Remove openTerminalProcess once chrome supports
-  // openVmshellProcess on all releases.
-  if (chrome.terminalPrivate.openVmshellProcess) {
-    chrome.terminalPrivate.openVmshellProcess(this.argv_.args, pidInit);
-  } else {
-    chrome.terminalPrivate.openTerminalProcess(
-        this.commandName, this.argv_.args, pidInit);
-  }
+  TerminalActiveTracker.get().then((tracker) => {
+    const args = [...this.argv_.args];
+    if (tracker.parentTerminal &&
+          !args.some((arg) => arg.startsWith('--cwd='))) {
+      args.push(`--cwd=terminal_id:${tracker.parentTerminal.terminalId}`);
+    }
+    chrome.terminalPrivate.openVmshellProcess(args,
+        (id) => pidInit(id, tracker));
+  });
 };
 
 /**
@@ -284,27 +312,37 @@ terminal.Command.prototype.exit = function(code) {
 };
 
 /**
- * Migrates settings from crosh.
- * TODO(crbug.com/1019021): Remove after M83.
+ * Add a listener to 'background-color' pref and set it on the outer body.
+ * to update tab and frame colors.
  *
- * @return {!Promise<void>} Resolves once settings have been migrated.
+ * @param {!lib.PreferenceManager} prefs The preference manager.
  */
-terminal.migrateSettings = async function() {
-  if (!chrome.terminalPrivate.getCroshSettings) {
-    return;
-  }
-
-  const migrated = await hterm.defaultStorage.getItem(
-      'crosh.settings.migrated');
-  if (migrated) {
-    return;
-  }
-
-  return new Promise((resolve) => {
-    chrome.terminalPrivate.getCroshSettings((settings) => {
-      settings['crosh.settings.migrated'] = true;
-      hterm.defaultStorage.setItems(settings).then(resolve);
-    });
+terminal.watchBackgroundColor = function(prefs) {
+  prefs.addObserver('background-color', (color) => {
+    document.body.style.backgroundColor = /** @type {string} */ (color);
   });
 };
 
+/**
+ * Set background image from local storage if exists, else use pref.
+ *
+ * @param {!hterm.Terminal} term
+ */
+terminal.watchBackgroundImage = function(term) {
+  const key = 'background-image';
+  const setBackgroundImage = (dataUrl) => {
+    term.setBackgroundImage(
+        dataUrl ? `url(${dataUrl})` : term.getPrefs().getString(key));
+  };
+  setBackgroundImage(window.localStorage.getItem(key));
+  window.addEventListener('storage', (e) => {
+    if (e.key === key) {
+      setBackgroundImage(e.newValue);
+    }
+  });
+  // hterm also observers pref, but we register after it, so we run after it,
+  // so terminal will always use a file from localStorage if it exists.
+  term.getPrefs().addObserver(key, () => {
+    setBackgroundImage(window.localStorage.getItem(key));
+  });
+};

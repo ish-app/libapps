@@ -10,9 +10,9 @@
 import {LitElement, css, html, unsafeCSS} from './lit_element.js';
 import {DEFAULT_THEME, DEFAULT_ANSI_COLORS, DEFAULT_BACKGROUND_COLOR,
     DEFAULT_CURSOR_COLOR, DEFAULT_FOREGROUND_COLOR} from './terminal_common.js';
-import {stylesVars, stylesButtonContainer, stylesDialog}
-    from './terminal_settings_styles.js';
+import {stylesVars} from './terminal_settings_styles.js';
 import './terminal_settings_button.js';
+import './terminal_dialog.js';
 
 /** @typedef {!Object<string, *>} */
 let ThemeVariation;
@@ -186,7 +186,7 @@ const THEMES = {
        '#1A73E8', '#AA00B8', '#009099', '#9AA0A6']),
   'classic': new Theme('classic',
       'TERMINAL_THEME_CLASSIC_LABEL', '#101010', '#FFFFFF', '#FF000080',
-      lib.colors.stockColorPalette.slice(0, 16)),
+      lib.colors.stockPalette.slice(0, 16)),
   'solarizedDark': new Theme('solarizedDark',
       'TERMINAL_THEME_SOLARIZED_DARK_LABEL', '#002B36', '#83949680',
       '#93A1A180',
@@ -268,7 +268,7 @@ export class TerminalSettingsThemeElement extends LitElement {
 
   /** @override */
   static get styles() {
-    return [stylesVars, stylesButtonContainer, stylesDialog, css`
+    return [stylesVars, css`
       #themes {
         display: flex;
         flex-wrap: wrap;
@@ -278,7 +278,6 @@ export class TerminalSettingsThemeElement extends LitElement {
       }
 
       .theme {
-        cursor: pointer;
         flex-basis: 25%;
         margin: 0;
         max-width: 150px;
@@ -290,8 +289,13 @@ export class TerminalSettingsThemeElement extends LitElement {
         cursor: pointer;
         height: 88px;
         margin: 8px 0 0 8px;
+        outline: none;
         overflow: hidden;
         position: relative;
+      }
+
+      .theme-inner:focus-visible {
+        box-shadow: 0 0 0 2px var(--focus-shadow-color);
       }
 
       .theme:nth-child(-n+4) > .theme-inner {
@@ -377,10 +381,11 @@ export class TerminalSettingsThemeElement extends LitElement {
     return html`
         <div id="themes">${Object.values(THEMES).map((t) => html`
           <div id="${t.id}" class="theme"
-              @click="${this.onClicked_.bind(this, t.id)}"
               ?active-theme="${this.theme_.id === t.id}"
               ?reset-theme="${this.theme_.hasVariations()}">
-            <div class="theme-inner">
+            <div class="theme-inner" tabindex="0"
+                @click="${this.onClicked_}"
+                @keydown="${this.onKeydown_}">
               <div class="preview" aria-hidden="true"
                   style="background-color:${t.background};color:${t.font}">
 <pre>drwxr-xr-x 1 joel 13:28 ${span(t.ansi[12], '.')}
@@ -398,24 +403,11 @@ ${span(t.ansi[10], 'joel@penguin')}:${span(t.ansi[12], '~')
             </div>
           </div>`)}
         </div>
-        <dialog>
-          <div id="dialog-title">
-            ${msg('TERMINAL_SETTINGS_RESET_DIALOG_TITLE')}
-          </div>
-          <div id="dialog-message">
-            ${msg('TERMINAL_SETTINGS_RESET_DIALOG_MESSAGE')}
-          </div>
-          <div class="button-container">
-            <terminal-settings-button class="cancel"
-                @click="${this.onCancelClick_}">
-              ${msg('CANCEL_BUTTON_LABEL')}
-            </terminal-settings-button>
-            <terminal-settings-button class="action"
-                @click="${this.onResetClick_}">
-              ${msg('TERMINAL_SETTINGS_RESET_LABEL')}
-            </terminal-settings-button>
-          </div>
-        </dialog>
+        <terminal-dialog acceptText="${msg('TERMINAL_SETTINGS_RESET_LABEL')}"
+            @close=${this.onDialogClose}>
+          <div slot="title">${msg('TERMINAL_SETTINGS_RESET_DIALOG_TITLE')}</div>
+          ${msg('TERMINAL_SETTINGS_RESET_DIALOG_MESSAGE')}
+        </terminal-dialog>
     `;
   }
 
@@ -423,16 +415,39 @@ ${span(t.ansi[10], 'joel@penguin')}:${span(t.ansi[12], '~')
    * @param {string} id Theme clicked.
    * @private
    */
-  onClicked_(id) {
+  onActivated_(id) {
     if (!THEMES.hasOwnProperty(id)) {
       console.error(`Unknown theme: ${id}`);
       return;
     }
     if (this.theme_.id === id && this.theme_.hasVariations()) {
-      this.shadowRoot.querySelector('dialog').showModal();
+      this.shadowRoot.querySelector('terminal-dialog').show();
     } else {
       this.theme_ = THEMES[id];
       this.theme_.writeToPrefs();
+    }
+  }
+
+  /**
+   * @param {!Event} event
+   * @private
+   */
+  onClicked_(event) {
+    this.onActivated_(event.currentTarget.parentNode.id);
+    event.preventDefault();
+  }
+
+  /**
+   * @param {!Event} event
+   * @private
+   */
+  onKeydown_(event) {
+    switch (event.code) {
+      case 'Enter':
+      case 'Space':
+        this.onActivated_(event.currentTarget.parentNode.id);
+        event.preventDefault();
+        break;
     }
   }
 
@@ -453,23 +468,10 @@ ${span(t.ansi[10], 'joel@penguin')}:${span(t.ansi[12], '~')
     this.requestUpdate();
   }
 
-  /**
-   * Detects clicks on the dialog cancel button.
-   *
-   * @param {!Event} event
-   */
-  onCancelClick_(event) {
-    this.shadowRoot.querySelector('dialog').close();
-  }
-
-  /**
-   * Detects clicks on the dialog cancel button.
-   *
-   * @param {!Event} event
-   */
-  onResetClick_(event) {
-    this.shadowRoot.querySelector('dialog').close();
-    this.theme_.clearVariations();
+  onDialogClose(event) {
+    if (event.detail.accept) {
+      this.theme_.clearVariations();
+    }
   }
 }
 

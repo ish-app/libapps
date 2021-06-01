@@ -224,34 +224,6 @@ MockTerminalPrivate.prototype.onTerminalResize = function(
 };
 
 /**
- * Called from |onProcessOutput| when the event is dispatched to terminal
- * extension. Observing the terminal process output will be paused after
- * |onProcessOutput| is dispatched until this method is called.
- *
- * @param {number} tabId Tab ID from |onProcessOutput| event.
- * @param {string} id The id of the process to which |onProcessOutput| was
- *     dispatched.
- */
-MockTerminalPrivate.prototype.ackOutput = function(tabId, id) {
-  this.notifyObservers_('ackOutput', [tabId, id]);
-};
-
-/**
- * Returns settings used by the crosh extension.  This function is called by
- * the terminal system app the first time it is run to migrate any previously
- * settings.
- *
- * @param {function(!Object<string, *>)} callback Callback that will be called
- *     with settings.
- */
-MockTerminalPrivate.prototype.getCroshSettings = function(callback) {
-  setTimeout(() => {
-    callback(this.croshSettings);
-    this.notifyObservers_('getCroshSettings', [callback]);
-  }, 0);
-};
-
-/**
  * Returns the current a11y status.
  *
  * @param {function(boolean)} callback Callback that will be called
@@ -356,3 +328,42 @@ class MockLocation {
 MockLocation.prototype.replace = function(url) {
   this.url = new URL(`${url}`, this.url);
 };
+
+/**
+ * A controller for mocking chrome.tabs.
+ */
+class MockTabsController {
+  constructor() {
+    this.origTabs_ = chrome.tabs;
+
+    this.currentTab = {
+      id: 123,
+      active: true,
+      windowId: 456,
+    };
+
+    this.mockTabs = {
+      onActivated: new MockEvent(),
+      getCurrent: (callback) => setTimeout(callback, 0, this.currentTab),
+    };
+  }
+
+  /**
+   * Start mocking.
+   *
+   * @suppress {constantProperty} Reassigning to chrome.tabs.
+   * @suppress {checkTypes} The mock is not an exact match.
+   */
+  start() {
+    chrome.tabs = this.mockTabs;
+  }
+
+  /**
+   * Stop mocking.
+   *
+   * @suppress {constantProperty} Reassigning to chrome.tabs.
+   */
+  stop() {
+    chrome.tabs = this.origTabs_;
+  }
+}

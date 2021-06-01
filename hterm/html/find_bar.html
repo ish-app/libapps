@@ -1,5 +1,5 @@
 <meta charset='utf-8'/>
-<style scoped>
+<style>
 :root {
   --hterm-grey-200-rgb: 232, 234, 237;  /* #e8eaed */
   --hterm-grey-200: rgb(var(--hterm-grey-200-rgb));
@@ -18,6 +18,7 @@
   border-radius: 2px;
   box-shadow: 0 2px 2px 1px rgba(var(--hterm-grey-600-rgb), .1);
   display: none;
+  font-family: sans-serif;
   padding: 5px 15px;
   position: fixed;
   right: 16px;
@@ -63,9 +64,13 @@
   height: 20px;
   fill: var(--hterm-grey-400);
   width: 20px;
-};
+}
+#hterm\\:find-bar-count {
+  color: var(--hterm-grey-600);
+}
 </style>
 <input type='text'>
+<div id='hterm:find-bar-count'>0/0</div>
 <div id='hterm:find-bar-vertical-separator' tabindex='-1'></div>
 <div id='hterm:find-bar-up' class='button' role='button'></div>
 <div id='hterm:find-bar-down' class='button' role='button'></div>

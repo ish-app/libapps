@@ -65,15 +65,28 @@ describe('parseURI', () => {
     'port': undefined,
     'relayHostname': undefined,
     'relayPort': undefined,
+    'schema': undefined,
+    'username': undefined,
   };
 
   // List the fields that each test requires or deviates from the default.
   const data = [
     // Strip off the leading URI schema.
     ['ssh://root@localhost',
-     {'username': 'root', 'hostname': 'localhost', 'uri': 'root@localhost'}],
+     {'username': 'root', 'hostname': 'localhost', 'schema': 'ssh',
+      'uri': 'root@localhost'}],
+    ['web+ssh://root@localhost',
+     {'username': 'root', 'hostname': 'localhost', 'schema': 'ssh',
+      'uri': 'root@localhost'}],
+    ['sftp://root@localhost',
+     {'username': 'root', 'hostname': 'localhost', 'schema': 'sftp',
+      'uri': 'root@localhost'}],
+    ['web+sftp://root@localhost',
+     {'username': 'root', 'hostname': 'localhost', 'schema': 'sftp',
+      'uri': 'root@localhost'}],
 
     // Basic forms.
+    ['localhost', {'hostname': 'localhost'}],
     ['root@localhost', {'username': 'root', 'hostname': 'localhost'}],
     ['u@h:2222', {'username': 'u', 'hostname': 'h', 'port': '2222'}],
 
@@ -123,6 +136,9 @@ describe('parseURI', () => {
     // Unaccpetable escaped forms.
     ['u@h%6eg', {'username': 'u', 'hostname': 'h%6eg'}],
     ['u@h:1%302', null],
+
+    // Bad hostnames.
+    ['u@>croash', null],
 
     // Fingerprints.
     ['u;fingerprint=foo@h',
@@ -188,14 +204,41 @@ describe('parseURI', () => {
  * Check parsing of Secure Shell destinations.
  * Most test logic is in parseURI, so we focus on the little bit that isn't.
  */
-it('parseDestination', () => {
+describe('parseDestination', () => {
   const data = [
     // Registered protocol handler.
-    ['uri:ssh://root@localhost', {'user': 'root', 'host': 'localhost'}],
+    ['uri:ssh://root@localhost',
+     {'user': 'root', 'host': 'localhost', 'schema': 'ssh'}],
+    ['uri:web+ssh://root@localhost',
+     {'user': 'root', 'host': 'localhost', 'schema': 'ssh'}],
+    ['uri:sftp://root@localhost',
+     {'user': 'root', 'host': 'localhost', 'schema': 'sftp'}],
+    ['uri:web+sftp://root@localhost',
+     {'user': 'root', 'host': 'localhost', 'schema': 'sftp'}],
     ['uri:root@localhost', null],
+
+    // URL escaped values.
+    ['uri:ssh%3A//root@localhost',
+     {'user': 'root', 'host': 'localhost', 'schema': 'ssh'}],
+    ['uri:web+ssh%3A//root@localhost',
+     {'user': 'root', 'host': 'localhost', 'schema': 'ssh'}],
+    ['uri:sftp%3A//root@localhost',
+     {'user': 'root', 'host': 'localhost', 'schema': 'sftp'}],
+    ['uri:web+sftp%3A//root@localhost',
+     {'user': 'root', 'host': 'localhost', 'schema': 'sftp'}],
 
     // For non-URI handler, we'll preserve the prefix.
     ['ssh://root@localhost', {'user': 'ssh://root', 'host': 'localhost'}],
+
+    // Blank URIs.
+    ['uri:ssh%3A//', {'host': '>connections'}],
+    ['uri:ssh%3A', {'host': '>connections'}],
+    ['uri:web+ssh%3A//', {'host': '>connections'}],
+    ['uri:web+ssh%3A', {'host': '>connections'}],
+    ['uri:sftp%3A//', {'host': '>connections'}],
+    ['uri:sftp%3A', {'host': '>connections'}],
+    ['uri:web+sftp%3A//', {'host': '>connections'}],
+    ['uri:web+sftp%3A', {'host': '>connections'}],
 
     // Normal form.
     ['root@localhost', {'user': 'root', 'host': 'localhost'}],
@@ -206,19 +249,23 @@ it('parseDestination', () => {
     ['u@h@host:1234', {'user': 'u', 'host': 'h',
                        'nasshOptions': '--proxy-host=host --proxy-port=1234'}],
 
-    // Reject missing usernames.
-    ['localhost', null],
+    // Missing usernames get prompted.
+    ['@localhost', {'user': '', 'host': 'localhost'}],
+    ['localhost', {'host': 'localhost'}],
   ];
 
   data.forEach((dataSet) => {
-    const rv = nassh.CommandInstance.parseDestination(dataSet[0]);
-    if (rv === null) {
-      assert.isNull(dataSet[1], dataSet[0]);
-    } else {
-      assert.equal(dataSet[1].user, rv.username, dataSet[0]);
-      assert.equal(dataSet[1].host, rv.hostname, dataSet[0]);
-      assert.equal(dataSet[1].nasshOptions, rv.nasshOptions, dataSet[0]);
-    }
+    it(dataSet[0], () => {
+      const rv = nassh.CommandInstance.parseDestination(dataSet[0]);
+      if (rv === null) {
+        assert.isNull(dataSet[1], dataSet[0]);
+      } else {
+        assert.equal(dataSet[1].user, rv.username, dataSet[0]);
+        assert.equal(dataSet[1].host, rv.hostname, dataSet[0]);
+        assert.equal(dataSet[1].schema, rv.schema, dataSet[0]);
+        assert.equal(dataSet[1].nasshOptions, rv.nasshOptions, dataSet[0]);
+      }
+    });
   });
 });
 
@@ -286,41 +333,57 @@ describe('proxy-host-addresses', () => {
  * Verify default proxy-host settings.
  */
 describe('default-proxy-host', () => {
+  const modeOld = 'corp-relay@google.com';
+  const modev4 = 'corp-relay-v4@google.com';
   const tests = [
     // Proxy host unrelated to Google.
     ['--proxy-host=proxy.example.com', 'example.com',
-     undefined, 'proxy.example.com', 'root'],
+     undefined, 'proxy.example.com', 'root', modeOld, undefined],
 
     // Default Google settings.
     ['--config=google', 'example.com',
-     '443', 'ssh-relay.corp.google.com', 'root'],
+     '443', 'ssh-relay.corp.google.com', 'root', modeOld, false],
 
     // Default cloudtop Google settings.
     ['--config=google', 'example.c.googlers.com',
-     '443', 'sup-ssh-relay.corp.google.com', 'root'],
+     '443', 'sup-ssh-relay.corp.google.com', 'root', modev4, true],
 
     // Default internal GCE settings.
     ['--config=google', 'example.internal.gcpnode.com',
-     '443', 'sup-ssh-relay.corp.google.com', 'root'],
+     '443', 'sup-ssh-relay.corp.google.com', 'root', modev4, true],
     ['--config=google', 'example.proxy.gcpnode.com',
-     '443', 'sup-ssh-relay.corp.google.com', 'root'],
+     '443', 'sup-ssh-relay.corp.google.com', 'root', modev4, true],
 
     // Explicit proxy settings override defaults.
     ['--config=google --proxy-host=example.com', 'example.c.googlers.com',
-     '443', 'example.com', 'root'],
+     '443', 'example.com', 'root', modev4, true],
 
     // Username settings.
     ['--config=google --proxy-host=example.com --proxy-user=user',
-     'example.c.googlers.com', '443', 'example.com', 'user'],
+     'example.c.googlers.com', '443', 'example.com', 'user', modev4, true],
+
+    // Mode settings.
+    ['--config=google --proxy-mode=foo', 'example.com',
+     '443', 'ssh-relay.corp.google.com', 'root', 'foo', false],
+    ['--config=google --proxy-mode=foo', 'example.internal.gcpnode.com',
+     '443', 'sup-ssh-relay.corp.google.com', 'root', 'foo', false],
+
+    // Resume settings.
+    ['--config=google --resume-connection', 'example.com',
+     '443', 'ssh-relay.corp.google.com', 'root', modeOld, true],
+    ['--config=google --no-resume-connection', 'example.internal.gcpnode.com',
+     '443', 'sup-ssh-relay.corp.google.com', 'root', modev4, false],
   ];
 
-  tests.forEach(([options, host, port, relay, user]) => {
+  tests.forEach(([options, host, port, relay, user, mode, resume]) => {
     it(`default relay for '${options}' & '${host}'`, () => {
       let rv = nassh.CommandInstance.tokenizeOptions(options);
       rv = nassh.CommandInstance.postProcessOptions(rv, host, 'root');
       assert.equal(port, rv['--proxy-port']);
       assert.equal(relay, rv['--proxy-host']);
       assert.equal(user, rv['--proxy-user']);
+      assert.equal(mode, rv['--proxy-mode']);
+      assert.equal(resume, rv['--resume-connection']);
     });
   });
 });

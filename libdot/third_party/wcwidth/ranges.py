@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 # Copyright 2017 The Chromium OS Authors. All rights reserved.
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
@@ -17,8 +16,6 @@ You'll need to provide the relevant Unicode database files.
 The latest version can be found here:
 https://www.unicode.org/Public/UNIDATA/UCD.zip
 """
-
-from __future__ import print_function
 
 import argparse
 import re
@@ -341,7 +338,7 @@ def download(version):
 
     if version == 'latest':
         uri = 'https://www.unicode.org/Public/UNIDATA/UCD.zip'
-        output = Path.cwd() / f'UCD.zip'
+        output = Path.cwd() / 'UCD.zip'
 
         if output.exists():
             req = urllib.request.Request(uri, method='HEAD')

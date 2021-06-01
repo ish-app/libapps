@@ -16,20 +16,17 @@
  * @return {!Promise} A promise resolving once the window opens.
  */
 const openNewWindow = function(url) {
-  return new Promise((resolve, reject) => {
-    chrome.runtime.sendMessage({
-      command: 'nassh',
-      width: window.innerWidth,
-      height: window.innerHeight,
-      url: url,
-      window: true,
-    }, null, (response) => {
-      if (response.error) {
-        reject(`request failed: ${response.message}`);
-      } else {
-        resolve();
-      }
-    });
+  const msg = {
+    command: 'nassh',
+    width: window.innerWidth,
+    height: window.innerHeight,
+    url: url,
+    window: true,
+  };
+  return nassh.runtimeSendMessage(msg).then((response) => {
+    if (response && response.error) {
+      throw new Error(`request failed: ${response.message}`);
+    }
   });
 };
 
@@ -38,11 +35,6 @@ const openNewWindow = function(url) {
  * so we do it like this instead.
  */
 window.addEventListener('DOMContentLoaded', (event) => {
-  // Workaround https://crbug.com/924656.
-  if (nassh.workaroundMissingChromeRuntime()) {
-    return;
-  }
-
   const params = new URLSearchParams(document.location.search);
 
   // Allow users to bookmark links that open as a window.
@@ -67,11 +59,9 @@ window.addEventListener('DOMContentLoaded', (event) => {
   }
 
   const execNaSSH = function() {
-    const profileName = params.get('profile');
+    const profileId = params.get('profile');
 
-    hterm.zoomWarningMessage = nassh.msg('ZOOM_WARNING');
-
-    const terminal = new hterm.Terminal(profileName);
+    const terminal = new hterm.Terminal({profileId});
     // TODO(crbug.com/1063219) We need this to not prompt the user for clipboard
     // permission.
     terminal.alwaysUseLegacyPasting = true;

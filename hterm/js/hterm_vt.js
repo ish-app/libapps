@@ -80,11 +80,6 @@ hterm.VT = function(terminal) {
   this.enableCsiJ3 = true;
 
   /**
-   * The expected encoding method for data received from the host.
-   */
-  this.characterEncoding = 'utf-8';
-
-  /**
    * If true, emit warnings when we encounter a control character or escape
    * sequence that we don't recognize or explicitly ignore.
    *
@@ -544,8 +539,6 @@ hterm.VT.prototype.onTerminalMouse_ = function(e) {
 /**
  * Interpret a string of characters, displaying the results on the associated
  * terminal object.
- *
- * The buffer will be decoded according to the 'receive-encoding' preference.
  *
  * @param {string} buf The buffer to interpret.
  */
@@ -1819,7 +1812,7 @@ hterm.VT.OSC['4'] = function(parseState) {
     const colorIndex = parseInt(args[pairNumber * 2], 10);
     let colorValue = args[pairNumber * 2 + 1];
 
-    if (colorIndex >= lib.colors.colorPalette.length) {
+    if (colorIndex >= lib.colors.stockPalette.length) {
       continue;
     }
 
@@ -2030,9 +2023,6 @@ hterm.VT.OSC['50'] = function(parseState) {
  * that is able to both write and read to the clipboard could essentially
  * take over your session.
  *
- * The clipboard data will be decoded according to the 'receive-encoding'
- * preference.
- *
  * @this {!hterm.VT}
  * @param {!hterm.VT.ParseState} parseState The current parse state.
  */
@@ -2056,11 +2046,9 @@ hterm.VT.OSC['52'] = function(parseState) {
     // If the user sent us invalid base64 content, silently ignore it.
     return;
   }
-  if (this.characterEncoding == 'utf-8') {
-    const decoder = new TextDecoder();
-    const bytes = lib.codec.stringToCodeUnitArray(data);
-    data = decoder.decode(bytes);
-  }
+  const decoder = new TextDecoder();
+  const bytes = lib.codec.stringToCodeUnitArray(data);
+  data = decoder.decode(bytes);
   if (data) {
     this.terminal.copyStringToClipboard(data);
   }
@@ -2798,7 +2786,7 @@ hterm.VT.prototype.parseSgrExtendedColors = function(parseState, i, attrs) {
         skipCount: usedSubargs ? 0 : 2,
       };
       const color = parseState.parseInt(ary[1]);
-      if (color < lib.colors.colorPalette.length) {
+      if (color < lib.colors.stockPalette.length) {
         ret.color = color;
       }
       return ret;
@@ -3097,9 +3085,15 @@ hterm.VT.CSI['"q'] = hterm.VT.ignore;
  */
 hterm.VT.CSI['r'] = function(parseState) {
   const args = parseState.args;
-  const scrollTop = args[0] ? parseInt(args[0], 10) - 1 : null;
-  const scrollBottom = args[1] ? parseInt(args[1], 10) - 1 : null;
-  this.terminal.setVTScrollRegion(scrollTop, scrollBottom);
+  const top = args[0] ? parseInt(args[0], 10) : 0;
+  const bottom =
+      args[1] ? parseInt(args[1], 10) : this.terminal.screenSize.height;
+  // Silently ignore bad args.
+  if (top < 0 || bottom > this.terminal.screenSize.height || bottom <= top) {
+    return;
+  }
+  // Convert from 1-based to 0-based with special case for zero.
+  this.terminal.setVTScrollRegion(top === 0 ? null : top - 1, bottom - 1);
   this.terminal.setCursorPosition(0, 0);
 };
 

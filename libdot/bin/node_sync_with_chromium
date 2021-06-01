@@ -1,15 +1,11 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 # Copyright 2019 The Chromium OS Authors. All rights reserved.
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
 """Update our pinned copy of node to match Chromium."""
 
-from __future__ import print_function
-
 import logging
-import os
 import re
 import sys
 
@@ -17,14 +13,14 @@ import libdot
 
 
 # Where in Chromium's tree they maintain their hashes.
-URI_BASE = ('https://chromium.googlesource.com/chromium/src/+/master/'
+URI_BASE = ('https://chromium.googlesource.com/chromium/src/+/HEAD/'
             'third_party/node')
 URI_LIN = '/'.join((URI_BASE, 'linux', 'node-linux-x64.tar.gz.sha1'))
 URI_MAC = '/'.join((URI_BASE, 'mac', 'node-darwin-x64.tar.gz.sha1'))
 URI_WIN = '/'.join((URI_BASE, 'win', 'node.exe.sha1'))
 
 # File which records the node hashes.
-HASH_FILE = os.path.join(libdot.BIN_DIR, 'node')
+HASH_FILE = libdot.BIN_DIR / 'node'
 
 
 def update(uri, var):
@@ -33,8 +29,7 @@ def update(uri, var):
     logging.info('Updating %s with hash %s', var, new_hash)
 
     # Read the current file.
-    with open(HASH_FILE, 'r', encoding='utf-8') as fp:
-        lines = fp.readlines()
+    lines = HASH_FILE.read_text(encoding='utf-8').splitlines()
 
     # Try to update the variable in the file.
     matcher = re.compile(r"%s = '(.*)'" % (var,))
@@ -44,7 +39,7 @@ def update(uri, var):
             old_hash = match.group(1)
             if new_hash != old_hash:
                 logging.info('  Old hash was %s', old_hash)
-                lines[i] = "%s = '%s'\n" % (var, new_hash)
+                lines[i] = f"{var} = '{new_hash}'"
                 break
             else:
                 logging.info('  Hash up-to-date already')
@@ -54,8 +49,7 @@ def update(uri, var):
         sys.exit(1)
 
     # Write out the new file content.
-    with open(HASH_FILE, 'w', encoding='utf-8') as fp:
-        fp.writelines(lines)
+    HASH_FILE.write_text('\n'.join(lines) + '\n', encoding='utf-8')
 
 
 def fetch_data(uri):

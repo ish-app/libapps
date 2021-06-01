@@ -407,7 +407,7 @@ hterm.Keyboard.KeyMap.prototype.reset = function() {
   add(88,  'xX',   DEFAULT, ctl('X'),              DEFAULT, DEFAULT);
   add(67,  'cC',   DEFAULT, c('onCtrlC_'),         DEFAULT, c('onMetaC_'));
   add(86,  'vV',   DEFAULT, c('onCtrlV_'),         DEFAULT, c('onMetaV_'));
-  add(66,  'bB',   DEFAULT, sh(ctl('B'), PASS),    DEFAULT, sh(DEFAULT, PASS));
+  add(66,  'bB',   DEFAULT, ctl('B'),              DEFAULT, DEFAULT);
   add(78,  'nN',   DEFAULT, c('onCtrlN_'),         DEFAULT, c('onMetaN_'));
   add(77,  'mM',   DEFAULT, ctl('M'),              DEFAULT, DEFAULT);
   add(188, ',<',   DEFAULT, alt(STRIP, PASS),      DEFAULT, DEFAULT);
@@ -661,7 +661,7 @@ hterm.Keyboard.KeyMap.prototype.onClear_ = function(e) {
  * @return {symbol|string} Key action or sequence.
  */
 hterm.Keyboard.KeyMap.prototype.onF11_ = function(e) {
-  if (hterm.windowType != 'popup') {
+  if (hterm.windowType != 'popup' && !e.shiftKey) {
     return hterm.Keyboard.KeyActions.PASS;
   } else {
     return '\x1b[23~';
@@ -942,13 +942,6 @@ hterm.Keyboard.KeyMap.prototype.onMetaV_ = function(e) {
 /**
  * Handle font zooming.
  *
- * The browser's built-in zoom has a bit of an issue at certain zoom levels.
- * At some magnifications, the measured height of a row of text differs from
- * the height that was explicitly set.
- *
- * We override the browser zoom keys to change the ScrollPort's font size to
- * avoid the issue.
- *
  * @param {!KeyboardEvent} e The event to process.
  * @param {!hterm.Keyboard.KeyDef} keyDef Key definition.
  * @return {symbol|string} Key action or sequence.
@@ -965,12 +958,6 @@ hterm.Keyboard.KeyMap.prototype.onZoom_ = function(e, keyDef) {
 
     // Only ^_ is valid, the other sequences have no meaning.
     return hterm.Keyboard.KeyActions.CANCEL;
-  }
-
-  if (this.keyboard.terminal.getZoomFactor() != 1) {
-    // If we're not at 1:1 zoom factor, let the Ctrl +/-/0 keys control the
-    // browser zoom, so it's easier to for the user to get back to 100%.
-    return hterm.Keyboard.KeyActions.PASS;
   }
 
   const cap = keyDef.keyCap.substr(0, 1);

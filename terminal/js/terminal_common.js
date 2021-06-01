@@ -6,7 +6,7 @@
  * @fileoverview Common code for terminal and it settings page.
  */
 
-// TODO(lxj@google.com) Move code duplicated in both terminal and settings here.
+import {TerminalActiveTracker} from './terminal_active_tracker.js';
 
 // The value of an entry is true if it is a web font from fonts.google.com,
 // otherwise it is a local font. Note that the UI shows the fonts in the same
@@ -23,6 +23,14 @@ export const SUPPORTED_FONT_FAMILIES = new Map([
 ]);
 export const DEFAULT_FONT_FAMILY = SUPPORTED_FONT_FAMILIES.keys().next().value;
 export const SUPPORTED_FONT_SIZES = [10, 11, 12, 13, 14, 16, 18, 20];
+// Numeric chrome version (e.g. 78). `null` if fail to detect.
+export const CHROME_VERSION = (function() {
+  const matches = navigator.userAgent.match(/Chrome\/(\d+)/);
+  if (matches) {
+    return parseInt(matches[1], 10);
+  }
+  return null;
+})();
 
 /** @type {!Array<string>} */
 export const DEFAULT_ANSI_COLORS = [
@@ -99,6 +107,8 @@ export function definePrefs(prefs) {
   prefs.definePreference('font-family', fontFamilyToCSS(DEFAULT_FONT_FAMILY));
   prefs.definePreference('font-size', DEFAULT_FONT_SIZE);
   prefs.definePreference('foreground-color', DEFAULT_FOREGROUND_COLOR);
+  prefs.definePreference('pass-alt-number', false);
+  prefs.definePreference('pass-ctrl-number', false);
   prefs.definePreference('pass-ctrl-tab', true);
   prefs.definePreference('screen-padding-size', DEFAULT_SCREEN_PADDING_SIZE);
   prefs.definePreference('theme', DEFAULT_THEME);
@@ -201,36 +211,43 @@ export function loadPowerlineWebFonts(document) {
 }
 
 /**
- * Add a listener to 'background-color' pref and set
- * <meta id='meta-theme-color' name='theme-color' content="#...">
- * to update tab and frame colors.
+ * Set up a title handler, which sets a proper document title before the
+ * terminal is ready, and caches title for other terminals to use.
  *
- * @param {!lib.PreferenceManager} prefs The preference manager.
- * @param {boolean} updateBody Whether body background should be updated when
- *     background-color pref changes.
+ * @return {!Promise<function()>} return a function to stop the handler. This is
+ *     mainly for testing.
  */
-export function watchBackgroundColor(prefs, updateBody) {
-  prefs.addObserver('background-color', (color) => {
-    document.getElementById('meta-theme-color')
-        .setAttribute('content', /** @type {string} */ (color));
-    if (updateBody) {
-      document.body.style.backgroundColor = /** @type {string} */ (color);
+export async function setUpTitleHandler() {
+  const tracker = await TerminalActiveTracker.get();
+
+  if (tracker.parentTerminal) {
+    document.title = tracker.parentTerminal.title;
+  } else {
+    const title = window.localStorage.getItem('cachedInitialTitle');
+    if (title !== null) {
+      document.title = title;
     }
+  }
+
+  let isFirstTitle = true;
+  const observer = new MutationObserver(function(mutations, observer) {
+    if (isFirstTitle && !tracker.parentTerminal) {
+      window.localStorage.setItem('cachedInitialTitle',
+          mutations[0].target.textContent);
+    }
+    isFirstTitle = false;
+    tracker.maybeUpdateWindowActiveTerminal();
   });
+  observer.observe(document.querySelector('title'), {childList: true});
+  return () => observer.disconnect();
 }
 
 /**
- * Set up a title cache handler, which sets the document title to the cached
- * value immediately if it exists, and set up a mutation observer to update the
- * cached value to the *first* new document title.
+ * Re-dispatch an event on the element.
+ *
+ * @param {!HTMLElement} element
+ * @param {!Event} event
  */
-export function setUpTitleCacheHandler() {
-  const cacheTitle = window.localStorage.getItem('cachedTitle');
-  if (cacheTitle !== null) {
-    document.title = cacheTitle;
-  }
-  (new MutationObserver(function(mutations, observer) {
-    observer.disconnect();
-    window.localStorage.setItem('cachedTitle', mutations[0].target.textContent);
-  })).observe(document.querySelector('title'), {childList: true});
+export function redispatchEvent(element, event) {
+    element.dispatchEvent(new event.constructor(event.type, event));
 }

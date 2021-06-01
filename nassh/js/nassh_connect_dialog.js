@@ -56,6 +56,7 @@ nassh.ConnectDialog = function(messagePort) {
 
   // Cached DOM nodes.
   this.form_ = lib.notNull(document.querySelector('form'));
+  this.moshButton_ = lib.notNull(document.querySelector('#mosh'));
   this.mountButton_ = lib.notNull(document.querySelector('#mount'));
   this.unmountButton_ = lib.notNull(document.querySelector('#unmount'));
   this.sftpClientButton_ = lib.notNull(document.querySelector('#sftp-client'));
@@ -222,6 +223,8 @@ nassh.ConnectDialog.prototype.installHandlers_ = function() {
   this.deleteButton_.addEventListener('keypress',
                                       this.onButtonKeypress_.bind(this));
 
+  this.moshButton_.addEventListener('click',
+                                    this.onMoshClick_.bind(this));
   this.mountButton_.addEventListener('click',
                                      this.onMountClick_.bind(this));
   this.unmountButton_.addEventListener('click',
@@ -393,7 +396,6 @@ nassh.ConnectDialog.prototype.displayMountButton_ = function(state) {
     }
     this.displayButton_(this.mountButton_, true);
     this.displayButton_(this.unmountButton_, false);
-    this.enableButton_(this.mountButton_, this.form_.checkValidity());
   });
 };
 
@@ -480,7 +482,16 @@ nassh.ConnectDialog.prototype.startup_ = function(message, proto) {
 
   if (this.form_.checkValidity()) {
     this.postMessage(message, [this.currentProfileRecord_.id]);
+  } else {
+    this.form_.reportValidity();
   }
+};
+
+/**
+ * Switch to mosh mode.
+ */
+nassh.ConnectDialog.prototype.mosh = function() {
+  this.startup_('mosh', 'ssh');
 };
 
 /**
@@ -494,14 +505,15 @@ nassh.ConnectDialog.prototype.mount = function() {
  * Unmount the SFTP connection.
  */
 nassh.ConnectDialog.prototype.unmount = function() {
-  const options = {fileSystemId: this.currentProfileRecord_.id};
-  // TODO: Turn this into an external message API.
-  nassh.getBackgroundPage()
-    .then((bg) => {
-      bg.nassh.sftp.fsp.onUnmountRequested(
-          options,
-          (success) => this.displayMountButton_(true),
-          (error) => { /* do nothing */ });
+  nassh.runtimeSendMessage({
+    command: 'unmount', fileSystemId: this.currentProfileRecord_.id,
+  })
+    .then(({error, message}) => {
+      if (error) {
+        console.warn(message);
+      }
+      // Always refresh button display if internal state changed.
+      this.displayMountButton_(true);
     });
 };
 
@@ -716,9 +728,6 @@ nassh.ConnectDialog.prototype.syncButtons_ = function() {
       this.deleteButton_,
       this.shortcutList_.activeIndex != 0);
 
-  const validForm = this.form_.checkValidity();
-  this.enableButton_(this.connectButton_, validForm);
-  this.enableButton_(this.sftpClientButton_, validForm);
   this.displayMountButton_(this.checkMountable_());
 };
 
@@ -1126,6 +1135,13 @@ nassh.ConnectDialog.prototype.onButtonKeypress_ = function(e) {
   if (e.charCode == 13 || e.charCode == 32) {
     e.srcElement.click();
   }
+};
+
+/**
+ * Someone clicked on the mosh button.
+ */
+nassh.ConnectDialog.prototype.onMoshClick_ = function() {
+  this.mosh();
 };
 
 /**

@@ -13,6 +13,7 @@ import {SUPPORTED_FONT_SIZES} from './terminal_common.js';
 import {stylesVars} from './terminal_settings_styles.js';
 import './terminal_settings_ansi_colors.js';
 import './terminal_settings_app.js';
+import './terminal_settings_background_image.js';
 import './terminal_settings_category_selector.js';
 import './terminal_settings_checkbox.js';
 import './terminal_settings_colorpicker.js';
@@ -20,7 +21,6 @@ import './terminal_settings_dropdown.js';
 import './terminal_settings_fonts.js';
 import './terminal_settings_textfield.js';
 import './terminal_settings_theme.js';
-import './terminal_settings_transparency_slider.js';
 
 export const BELL_SOUND_CONVERTER = {
   toChecked: (value) => !!value,
@@ -96,30 +96,6 @@ export class TerminalSettingsApp extends LitElement {
 
       #left-panel {
         min-width: 192px;
-      }
-
-      terminal-settings-category-option {
-        cursor: pointer;
-        outline: none;
-      }
-
-      terminal-settings-category-option > h2 {
-        border-radius: 0 16px 16px 0;
-        font-size: 13px;
-        font-weight: 500;
-        line-height: 32px;
-        margin: 8px 0;
-        padding: 0 24px 0 32px;
-        user-select: none;
-      }
-
-      terminal-settings-category-option:hover > h2 {
-        background-color: rgb(240, 240, 240);
-      }
-
-      terminal-settings-category-option[active] > h2 {
-        background-color: var(--active-bg);
-        color: rgb(26, 115, 232);
       }
 
       .terminal-settings-category {
@@ -214,18 +190,18 @@ export class TerminalSettingsApp extends LitElement {
           <h1>${msg('PREFERENCES_HEADER_TERMINAL')}</h1>
           <terminal-settings-category-selector
               @category-change="${this.onCategoryChange_}">
-            <terminal-settings-category-option role="link" for="appearance">
-              <h2 slot="title">${msg('TERMINAL_TITLE_PREF_APPEARANCE')}</h2>
-            </terminal-settings-category-option>
-            <terminal-settings-category-option role="link" for="mousekeyboard">
-              <h2 slot="title">${msg('TERMINAL_TITLE_PREF_KEYBOARD_MOUSE')}</h2>
-            </terminal-settings-category-option>
-            <terminal-settings-category-option role="link" for="behavior">
-              <h2 slot="title">${msg('TERMINAL_TITLE_PREF_BEHAVIOR')}</h2>
-            </terminal-settings-category-option>
-            <terminal-settings-category-option role="link" for="about">
-              <h2 slot="title">${msg('TERMINAL_SETTINGS_ABOUT_LABEL')}</h2>
-            </terminal-settings-category-option>
+            <div data-name="appearance">
+              ${msg('TERMINAL_TITLE_PREF_APPEARANCE')}
+            </div>
+            <div data-name="mousekeyboard">
+              ${msg('TERMINAL_TITLE_PREF_KEYBOARD_MOUSE')}
+            </div>
+            <div data-name="behavior">
+              ${msg('TERMINAL_TITLE_PREF_BEHAVIOR')}
+            </div>
+            <div data-name="about">
+              ${msg('TERMINAL_SETTINGS_ABOUT_LABEL')}
+            </div>
           </terminal-settings-category-selector>
         </div>
 
@@ -233,7 +209,7 @@ export class TerminalSettingsApp extends LitElement {
             ?active-category="${this.activeCategory_ === 'appearance'}">
           <section>
             <h3>${msg('TERMINAL_TITLE_THEME')}</h3>
-            <terminal-settings-theme />
+            <terminal-settings-theme></terminal-settings-theme>
           </section>
 
           <section>
@@ -246,6 +222,11 @@ export class TerminalSettingsApp extends LitElement {
                 <terminal-settings-colorpicker preference="background-color"
                     disableTransparency>
                 </terminal-settings-colorpicker>
+              </li>
+              <li class="setting-container"
+                  title="${msg('TERMINAL_SETTINGS_BACKGROUND_IMAGE_HELP')}">
+                <h4>${msg('TERMINAL_NAME_PREF_IMAGE')}</h4>
+                <terminal-settings-background-image />
               </li>
             </ul>
           </section>
@@ -370,6 +351,12 @@ export class TerminalSettingsApp extends LitElement {
                   title="${msg('HTERM_PREF_PASS_CTRL_NUMBER')}">
                 <h4>${msg('HTERM_NAME_PREF_PASS_CTRL_NUMBER')}</h4>
                 <terminal-settings-checkbox preference="pass-ctrl-number">
+                </terminal-settings-checkbox>
+              </li>
+              <li class="setting-container"
+                  title="${msg('HTERM_PREF_PASS_ALT_NUMBER')}">
+                <h4>${msg('HTERM_NAME_PREF_PASS_ALT_NUMBER')}</h4>
+                <terminal-settings-checkbox preference="pass-alt-number">
                 </terminal-settings-checkbox>
               </li>
               <li class="setting-container"

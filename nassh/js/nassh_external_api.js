@@ -83,29 +83,190 @@ function(request, sender, sendResponse) {
       writeFile(knownHosts, request.knownHosts),
       writeFile(identityFile, request.identityFile),
   ]).then(() => {
-    const args = {
-      argv: {
-        terminalIO: nassh.External.io_,
-        isSftp: true,
-        mountOptions: {
-          fileSystemId: request.fileSystemId,
-          displayName: request.displayName,
-          writable: true,
-        },
-      },
-      connectOptions: {
-        username: request.username,
-        hostname: request.hostname,
-        port: request.port,
-        argstr: `-i${identityFile} -oUserKnownHostsFile=${knownHosts}`,
+    const argv = {
+      terminalIO: nassh.External.io_,
+      isSftp: true,
+      mountOptions: {
+        fileSystemId: request.fileSystemId,
+        displayName: request.displayName,
+        writable: true,
       },
     };
-    const success = nassh.sftp.fsp.createSftpInstance(args);
-    sendResponse({error: !success, message: 'createSftpInstance'});
+    const connectOptions = {
+      username: request.username,
+      hostname: request.hostname,
+      port: request.port,
+      argstr: `-i${identityFile} -oUserKnownHostsFile=${knownHosts}`,
+    };
+    const instance = new nassh.CommandInstance(argv);
+    instance.connectTo(connectOptions);
+    // TODO(vapier): Plumb back up success/failure.
+    sendResponse({error: false, message: 'createSftpInstance'});
   }).catch((e) => {
     console.error(e);
     sendResponse({error: true, message: e.message, stack: e.stack});
   });
+});
+
+nassh.External.COMMANDS.set('unmount',
+/**
+ * Unmount an existing SFTP mount.
+ *
+ * @param {{fileSystemId:string}} request Request to unmount specified mount.
+ * @param {!MessageSender} sender chrome.runtime.MessageSender
+ * @param {function(!Object=)} sendResponse called to send response.
+ */
+function(request, sender, sendResponse) {
+  const {fileSystemId} = request;
+  // Always call the unmount API.  It will handle unknown mounts for us, and
+  // will clean up FSP state that Chrome knows about but we don't.
+  nassh.sftp.fsp.onUnmountRequested(
+      {fileSystemId},
+      () => sendResponse({error: false, message: `unmounted ${fileSystemId}`}),
+      (message) => sendResponse({error: true, message: message}));
+});
+
+/**
+ * Container for holding mount information.
+ */
+nassh.External.MountInfo = class {
+  /**
+   * @param {!nassh.sftp.Client=} client Where to get info from.
+   */
+  constructor(client = undefined) {
+    /** @type {string} */
+    this.basePath = '';
+    /** @type {number} */
+    this.readChunkSize = 0;
+    /** @type {number} */
+    this.writeChunkSize = 0;
+    /** @type {number} */
+    this.protocolClientVersion = 0;
+    /** @type {number} */
+    this.protocolServerVersion = 0;
+    /** @type {!Array<!Array<string>>} */
+    this.protocolServerExtensions = [];
+    /** @type {number} */
+    this.requestId = 0;
+    /** @type {string} */
+    this.buffer = '';
+    /** @type {!Array<string>} */
+    this.pendingRequests = [];
+    /** @type {!Array<string>} */
+    this.openedFiles = [];
+
+    if (client) {
+      this.fromClient(client);
+    }
+  }
+
+  /**
+   * Extract details from a mount.
+   *
+   * @param {!nassh.sftp.Client} client The mount client to read.
+   */
+  fromClient(client) {
+    this.basePath = client.basePath_;
+    this.readChunkSize = client.readChunkSize;
+    this.writeChunkSize = client.writeChunkSize;
+    this.protocolClientVersion = client.protocolClientVersion;
+    this.protocolServerVersion = client.protocolServerVersion;
+    this.protocolServerExtensions =
+        Object.entries(client.protocolServerExtensions);
+    this.requestId = client.requestId_;
+    this.buffer = client.buffer_.toString();
+    this.pendingRequests = Object.keys(client.pendingRequests_);
+    this.openedFiles = Object.keys(client.openedFiles);
+  }
+
+  /**
+   * Update configurable mount settings.
+   *
+   * @param {!nassh.External.MountInfo} info The settings to update from.
+   * @param {!nassh.sftp.Client} client The mount client to update.
+   */
+  static toClient(info, client) {
+    if (info.basePath !== undefined) {
+      if (typeof info.basePath !== 'string') {
+        throw new Error('basePath must be a string');
+      }
+      // The path has to always have a trailing slash.
+      if (info.basePath.length && info.basePath[-1] != '/') {
+        info.basePath += '/';
+      }
+      client.basePath_ = info.basePath;
+    }
+
+    if (client.readChunkSize !== undefined) {
+      if (typeof client.readChunkSize !== 'number') {
+        throw new Error('readChunkSize must be a number');
+      }
+      client.readChunkSize = info.readChunkSize;
+    }
+
+    if (client.writeChunkSize !== undefined) {
+      if (typeof client.writeChunkSize !== 'number') {
+        throw new Error('writeChunkSize must be a number');
+      }
+      client.writeChunkSize = info.writeChunkSize;
+    }
+  }
+};
+
+nassh.External.COMMANDS.set('getMountInfo',
+/**
+ * Get information about an existing mount.
+ *
+ * @param {{fileSystemId:string}} request Request to find the mount.
+ * @param {!MessageSender} sender chrome.runtime.MessageSender
+ * @param {function(!Object=)} sendResponse called to send response.
+ */
+function(request, sender, sendResponse) {
+  if (!sender.internal && !nassh.External.SelfExtIds.has(sender.id)) {
+    sendResponse(
+        {error: true, message: 'getMountInfo: External access not allowed'});
+    return;
+  }
+
+  const {fileSystemId} = request;
+  const sftpInstance = nassh.sftp.fsp.sftpInstances[fileSystemId];
+  if (sftpInstance === undefined) {
+    sendResponse({error: true, message: `mount ${fileSystemId} not found`});
+    return;
+  }
+
+  sendResponse({
+    error: false,
+    message: `info for ${fileSystemId} found`,
+    info: new nassh.External.MountInfo(sftpInstance.sftpClient),
+  });
+});
+
+nassh.External.COMMANDS.set('setMountInfo',
+/**
+ * Set information in an existing mount.
+ *
+ * @param {{fileSystemId:string, info:!nassh.External.MountInfo}} request
+ *     Request to find and update the mount.
+ * @param {!MessageSender} sender chrome.runtime.MessageSender
+ * @param {function(!Object=)} sendResponse called to send response.
+ */
+function(request, sender, sendResponse) {
+  if (!sender.internal && !nassh.External.SelfExtIds.has(sender.id)) {
+    sendResponse(
+        {error: true, message: 'setMountInfo: External access not allowed'});
+    return;
+  }
+
+  const {fileSystemId, info} = request;
+  const sftpInstance = nassh.sftp.fsp.sftpInstances[fileSystemId];
+  if (sftpInstance === undefined) {
+    sendResponse({error: true, message: `mount ${fileSystemId} not found`});
+    return;
+  }
+
+  nassh.External.MountInfo.toClient(info, sftpInstance.sftpClient);
+  sendResponse({error: false, message: `mount ${fileSystemId} updated`});
 });
 
 /**
@@ -273,11 +434,11 @@ function(request, sender, sendResponse) {
 });
 
 /**
- * Whether we've initialized enough for message handlers.
+ * Whether we've initialized enough to process requests.
  *
  * @private
  */
-let messageHandlersReady = false;
+let handlersReady = false;
 
 /** @typedef {{command:string}} */
 nassh.External.OnMessageRequest;
@@ -294,7 +455,7 @@ nassh.External.OnMessageRequest;
  */
 nassh.External.dispatchMessage_ = (internal, request, sender, sendResponse) => {
   // If we aren't ready yet, reschedule the call.
-  if (!messageHandlersReady) {
+  if (!handlersReady) {
     window.setTimeout(
         nassh.External.dispatchMessage_.bind(
             this, internal, request, sender, sendResponse),
@@ -314,7 +475,9 @@ nassh.External.dispatchMessage_ = (internal, request, sender, sendResponse) => {
         {error: true, message: `unsupported command '${request.command}'`});
     return false;
   }
-  console.log(`API: ${request.command}`);
+  const senderInfo = `[id:${sender.id} internal:${sender.internal} ` +
+                     `url:${sender.url} origin:${sender.origin}]`;
+  console.log(`API: message '${request.command}' from ${senderInfo}`);
   try {
     nassh.External.COMMANDS.get(request.command).call(
         this, request, sender, sendResponse);
@@ -330,7 +493,7 @@ nassh.External.dispatchMessage_ = (internal, request, sender, sendResponse) => {
 
 /**
  * Invoked when external app/extension calls chrome.runtime.sendMessage.
- * https://developer.chrome.com/apps/runtime#event-onMessageExternal.
+ * https://developer.chrome.com/extensions/runtime#event-onMessageExternal.
  *
  * @param {*} request
  * @param {!MessageSender} sender chrome.runtime.MessageSender.
@@ -346,7 +509,7 @@ nassh.External.onMessageExternal_ = (request, sender, sendResponse) => {
 
 /**
  * Invoked when internal code calls chrome.runtime.sendMessage.
- * https://developer.chrome.com/apps/runtime#event-onMessage.
+ * https://developer.chrome.com/extensions/runtime#event-onMessage.
  *
  * @param {*} request
  * @param {!MessageSender} sender chrome.runtime.MessageSender.
@@ -358,6 +521,222 @@ nassh.External.onMessage_ = (request, sender, sendResponse) => {
   return nassh.External.dispatchMessage_.call(
       this, true, /** @type {!nassh.External.OnMessageRequest} */ (request),
       sender, /** @type {function(!Object=)} */ (sendResponse));
+};
+
+/**
+ * Commands available.
+ */
+nassh.External.CONNECTIONS = new Map();
+
+nassh.External.CONNECTIONS.set('hello',
+/**
+ * Probe the extension.
+ *
+ * @param {!Port} port The new communication channel.
+ */
+function(port) {
+  const {sender} = port;
+  const responseBase = {error: false, internal: sender.internal, id: sender.id};
+
+  // Post a message.  On failure, just disconnect.
+  const post = (msg) => {
+    try {
+      port.postMessage(msg);
+    } catch (e) {
+      console.log(`API: hello: postMessage failed: ${e}`);
+      port.disconnect();
+    }
+  };
+
+  // Process each incoming message.
+  port.onMessage.addListener((msg) => {
+    switch (msg) {
+      case 'hello':
+        post({...responseBase, message: 'hello indeed'});
+        break;
+      case 'hi':
+        post({...responseBase, message: 'おはよう'});
+        break;
+      case 'bye':
+        post({...responseBase, message: 'tschüß!'});
+        port.disconnect();
+        break;
+      default:
+        post({...responseBase, error: true,
+              message: `sorry, i do not understand "${msg}"`});
+        port.disconnect();
+        break;
+    }
+  });
+});
+
+nassh.External.CONNECTIONS.set('mount',
+/**
+ * Performs interactive mount.
+ *
+ * @param {!Port} port The new communication channel.
+ */
+function(port) {
+  // Post a message.  On failure, just disconnect.
+  const post = (msg) => {
+    try {
+      port.postMessage(msg);
+    } catch (e) {
+      console.log(`API: mount: postMessage failed: ${e}`);
+      port.disconnect();
+    }
+  };
+
+  // Not sure we want to open this up to anyone else (yet?).
+  const {sender} = port;
+  if (!sender.internal && !nassh.External.SelfExtIds.has(sender.id)) {
+    post({error: true, message: 'mount: External access not allowed'});
+    port.disconnect();
+    return;
+  }
+
+  // The nassh CommandInstance pokes the terminal a little more than it should.
+  // Until we clean that up, set up a stub object.
+  const stubTerminal = /** @type {!hterm.Terminal} */ ({
+    interpret: (message) => {
+      // SSH wants to send something to the user (terminal).
+      post({error: false, command: 'write', message});
+    },
+    clearHome: () => {},
+    setProfile: () => {},
+    screenSize: {width: 0, height: 0},
+    showOverlay: (message, timeout) => {
+      post({error: false, command: 'overlay', message, timeout});
+    },
+  });
+  const pipeIo = new hterm.Terminal.IO(stubTerminal);
+  stubTerminal.io = pipeIo;
+
+  let instance;
+
+  // Process each incoming message.
+  port.onMessage.addListener((msg) => {
+    const {command} = msg;
+    switch (command) {
+      case 'connect': {
+        // UI wants us to start a connection.
+        const {argv, connectOptions} = msg;
+        argv.terminalIO = pipeIo;
+        argv.onExit = (status) => {
+          post({error: false, command: 'exit', status});
+          port.disconnect();
+        };
+        connectOptions.sftpCallback = () => {
+          post({error: false, command: 'done'});
+          port.disconnect();
+        };
+        instance = new nassh.CommandInstance(argv);
+        instance.connectTo(connectOptions);
+        break;
+      }
+
+      case 'write': {
+        // UI (probably the user) wants to send something to ssh.
+        if (instance === undefined) {
+          post({error: true, message: 'not connected'});
+          port.disconnect();
+          return;
+        }
+        pipeIo.sendString(msg.data);
+        break;
+      }
+
+      default:
+        post({error: true, message: `unknown command '${command}'`});
+        port.disconnect();
+        break;
+    }
+  });
+});
+
+/**
+ * Common connect dispatcher.
+ *
+ * @param {boolean} internal Whether the sender is this own extension.
+ * @param {!Port} port The new communication channel.
+ * @return {?boolean} Whether we were able to initiate the connection.
+ * @private
+ */
+nassh.External.dispatchConnect_ = (internal, port) => {
+  // If we aren't ready yet, reschedule the call.
+  if (!handlersReady) {
+    window.setTimeout(
+        nassh.External.dispatchConnect_.bind(this, internal, port),
+        100);
+    return null;
+  }
+
+  const {name, sender} = port;
+
+  // Pass the internal setting down so the handler can easily detect.
+  sender.internal = internal;
+
+  // If the requested endpoint doesn't exist, abort.
+  if (!nassh.External.CONNECTIONS.has(name)) {
+    try {
+      postMessage({error: true, message: `unsupported connection '${name}'`});
+    } catch (e) {
+      console.log('API: ignoring error during early disconnect', e);
+    }
+    port.disconnect();
+    return false;
+  }
+
+  const senderInfo = `[id:${sender.id} internal:${sender.internal} ` +
+                     `url:${sender.url} origin:${sender.origin}]`;
+  console.log(`API: connect '${name}' from ${senderInfo}`);
+
+  port.onDisconnect.addListener(() => {
+    const err = lib.f.lastError();
+    if (err) {
+      console.warn(
+          `API: disconnect '${name}' from ${senderInfo} failed: ${err}`);
+    } else {
+      console.log(`API: disconnect '${name}' from ${senderInfo}`);
+    }
+  });
+
+  // Execute specified connection.
+  try {
+    nassh.External.CONNECTIONS.get(name).call(this, port);
+    return true;
+  } catch (e) {
+    console.error(e);
+    try {
+      postMessage({error: true, message: e.message, stack: e.stack});
+    } catch (e) {
+      console.log('API: ignoring error during late disconnect', e);
+    }
+    port.disconnect();
+    return false;
+  }
+};
+
+/**
+ * Invoked when external app/extension calls chrome.runtime.connect.
+ * https://developer.chrome.com/extensions/runtime#event-onConnectExternal.
+ *
+ * @param {!Port} port The new communication channel.
+ * @private
+ */
+nassh.External.onConnectExternal_ = (port) => {
+  nassh.External.dispatchConnect_.call(this, false, port);
+};
+
+/**
+ * Invoked when internal code calls chrome.runtime.connect.
+ * https://developer.chrome.com/extensions/runtime#event-onConnect.
+ *
+ * @param {!Port} port The new communication channel.
+ * @private
+ */
+nassh.External.onConnect_ = (port) => {
+  nassh.External.dispatchConnect_.call(this, true, port);
 };
 
 // Initialize nassh.External.
@@ -384,14 +763,21 @@ lib.registerInit('external api', () => {
           deleteDone);
     }).then(() => {
       // We can start processing messages now.
-      messageHandlersReady = true;
+      handlersReady = true;
     });
   });
 });
 
-// Register listeners to receive messages.  We have to do it here so we can
-// handle messages when first launched (but before lib.registerInit finishes).
-chrome.runtime.onMessageExternal.addListener(
-    nassh.External.onMessageExternal_.bind(this));
-chrome.runtime.onMessage.addListener(
-    nassh.External.onMessage_.bind(this));
+/**
+ * Register listeners to receive messages.
+ */
+nassh.External.addListeners = function() {
+  chrome.runtime.onConnectExternal.addListener(
+      nassh.External.onConnectExternal_.bind(this));
+  chrome.runtime.onConnect.addListener(
+      nassh.External.onConnect_.bind(this));
+  chrome.runtime.onMessageExternal.addListener(
+      nassh.External.onMessageExternal_.bind(this));
+  chrome.runtime.onMessage.addListener(
+      nassh.External.onMessage_.bind(this));
+};

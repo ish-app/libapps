@@ -54,15 +54,9 @@ var Intl = Intl || {};
  */
 Intl.Segmenter = function(locales, options) {};
 
-/** @constructor */
-Intl.Segmenter.Iterator = function() {};
-
-/** @return {!Intl.Segmenter.Segment} */
-Intl.Segmenter.Iterator.prototype.next = function() {};
-
 /**
  * @param {string} s
- * @return {!Intl.Segmenter.Iterator}
+ * @return {!Iterable<!Object>}
  */
 Intl.Segmenter.prototype.segment = function(s) {};
 
@@ -82,6 +76,3 @@ function SVGSVGElement() {}
 
 /** @type {number} */
 SVGSVGElement.prototype.currentScale;
-
-/** @type {!ChromeEvent} */
-StorageArea.prototype.onChanged;

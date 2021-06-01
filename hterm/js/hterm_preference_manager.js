@@ -30,10 +30,11 @@ hterm.PreferenceManager.prefix_ = '/hterm/profiles/';
 /**
  * List all the defined profiles.
  *
+ * @param {!lib.Storage} storage Where to look for profiles.
  * @param {function(!Array<string>)} callback Called with the list of profiles.
  */
-hterm.PreferenceManager.listProfiles = function(callback) {
-  hterm.defaultStorage.getItems(null).then((items) => {
+hterm.PreferenceManager.listProfiles = function(storage, callback) {
+  storage.getItems(null).then((items) => {
     const profiles = {};
     for (const key of Object.keys(items)) {
       if (key.startsWith(hterm.PreferenceManager.prefix_)) {
@@ -442,6 +443,20 @@ hterm.PreferenceManager.defaultPreferences = {
       `The initial set of environment variables, as an object.`,
   ),
 
+  'find-result-color': hterm.PreferenceManager.definePref_(
+    'Find results highlight color',
+    hterm.PreferenceManager.Categories.Appearance,
+    'rgba(102, 204, 255, 0.4)', 'color',
+    `The background color to highlight find results.`,
+  ),
+
+  'find-result-selected-color': hterm.PreferenceManager.definePref_(
+    'Find results selected highlight color',
+    hterm.PreferenceManager.Categories.Appearance,
+    'rgba(102, 204, 255, 0.8)', 'color',
+    `The background color to highlight the selected find result.`,
+  ),
+
   'font-family': hterm.PreferenceManager.definePref_(
       'Text font family',
       hterm.PreferenceManager.Categories.Appearance,
@@ -652,15 +667,15 @@ hterm.PreferenceManager.defaultPreferences = {
   ),
 
   'pass-alt-number': hterm.PreferenceManager.definePref_(
-      'Alt+1..9 switch tab behavior',
+      'Alt+1..9 switch tab/app behavior',
       hterm.PreferenceManager.Categories.Keyboard,
       null, 'tristate',
       `Whether Alt+1..9 is passed to the browser.\n` +
       `\n` +
       `This is handy when running hterm in a browser tab, so that you don't ` +
-      `lose Chrome's "switch to tab" keyboard shortcuts. When not running ` +
-      `in a tab it's better to send these keys to the host so they can be ` +
-      `used in vim or emacs.\n` +
+      `lose Chrome's "switch to tab/app" keyboard shortcuts. When not ` +
+      `running in a tab it's better to send these keys to the host so they ` +
+      `can be used in vim or emacs.\n` +
       `\n` +
       `If true, Alt+1..9 will be handled by the browser. If false, Alt+1..9 ` +
       `will be sent to the host. If null, autodetect based on browser ` +
@@ -755,17 +770,6 @@ hterm.PreferenceManager.defaultPreferences = {
       true, 'bool',
       `If true, Drag and dropped text will paste into terminal.\n` +
       `If false, dropped text will be ignored.`,
-  ),
-
-  'receive-encoding': hterm.PreferenceManager.definePref_(
-      'Receive encoding',
-      hterm.PreferenceManager.Categories.Encoding,
-      'utf-8', ['utf-8', 'raw'],
-      `Set the expected encoding for data received from the host.\n` +
-      `If the encodings do not match, visual bugs are likely to be ` +
-      `observed.\n` +
-      `\n` +
-      `Valid values are 'utf-8' and 'raw'.`,
   ),
 
   'scroll-on-keystroke': hterm.PreferenceManager.definePref_(

@@ -15,7 +15,7 @@
  */
 nassh.PreferenceManager = function(storage = undefined) {
   if (!storage) {
-    storage = nassh.defaultStorage;
+    storage = new lib.Storage.Chrome(chrome.storage.sync);
   }
   lib.PreferenceManager.call(this, storage, '/nassh/');
 
@@ -151,6 +151,9 @@ nassh.LocalPreferenceManager = function(storage = undefined) {
   this.definePreferences([
     /* The last profile the user selected. */
     ['connectDialog/lastProfileId', ''],
+
+    /* How many times we've shown the migration message. */
+    ['migrate/showCount', 0],
   ]);
 
   this.defineChildren('profile-ids', function(parent, id) {

@@ -105,30 +105,6 @@ it('basic-scroll', function() {
   });
 
 /**
- * Do not scroll for prevented, or non-cancelable wheel events.
- */
-it('scroll-cancelable', function() {
-  assert.equal(this.scrollPort.getTopRowIndex(), 0);
-  const rowsToScroll = 10;
-  const rowAfterEvent = (options) => {
-    options.deltaMode = WheelEvent.DOM_DELTA_PIXEL;
-    options.deltaY = rowsToScroll * this.scrollPort.characterSize.height;
-    this.scrollPort.getScreenNode().dispatchEvent(
-        new WheelEvent('wheel', options));
-    return this.scrollPort.getTopRowIndex();
-  };
-
-  // No scrolling for defaultPrevented.
-  assert.equal(rowAfterEvent({defaultPrevented: true}), 0);
-
-  // No scrolling for cancelable=false.
-  assert.equal(rowAfterEvent({cancelable: false}), 0);
-
-  // Scroll if not prevented, and cancelable.
-  assert.equal(rowAfterEvent({cancelable: true}), rowsToScroll);
-});
-
-/**
  * Make sure the hterm.ScrollPort is reusing the same row nodes when it can.
  */
 it('node-recycler', function() {
@@ -638,11 +614,12 @@ it('fullscreen', function() {
     const scrollPort = new hterm.ScrollPort(rowProvider);
     scrollPort.decorate(div);
 
-    const divSize = hterm.getClientSize(div);
+    const divSize = div.getBoundingClientRect();
 
     assert.isAbove(divSize.height, 0);
     assert.isAbove(divSize.width, 0);
-    assert.equal(divSize.height, hterm.getClientHeight(scrollPort.iframe_));
+    assert.equal(divSize.height,
+                 scrollPort.iframe_.getBoundingClientRect().height);
 
     document.body.removeChild(div);
   });

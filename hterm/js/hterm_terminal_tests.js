@@ -83,7 +83,7 @@ const DISPLAY_IMAGE_TIMEOUT = 5000;
  * values that the Terminal was constructed with.
  */
 it('dimensions', function() {
-    const divSize = hterm.getClientSize(this.div);
+    const divSize = this.div.getBoundingClientRect();
     const scrollPort = this.terminal.scrollPort_;
     const rightPadding = Math.max(
         scrollPort.screenPaddingSize, scrollPort.currentScrollbarWidthPx);
@@ -416,9 +416,12 @@ it('per-screen-cursor-state', function() {
 it('display-img-disabled', function() {
   this.terminal.allowImagesInline = false;
 
+  let notification;
+  this.terminal.showOverlay = (msg) => {
+    notification = msg;
+  };
   this.terminal.displayImage({uri: ''});
-  const text = this.terminal.getRowsText(0, 1);
-  assert.equal('Inline Images Disabled', text);
+  assert.equal('Inline Images Disabled', notification);
 });
 
 /**
@@ -427,11 +430,15 @@ it('display-img-disabled', function() {
 it('display-img-prompt', function() {
   this.terminal.allowImagesInline = null;
 
-  // Search for the block & allow buttons.
+  // Make sure the notification has some buttons.  Don't probe too deeply so we
+  // don't have tests bound to the exact translations.
+  let notification;
+  this.terminal.showOverlay = (msg) => {
+    notification = msg;
+  };
   this.terminal.displayImage({uri: ''});
-  const text = this.terminal.getRowsText(0, 1);
-  assert.include(text.toLowerCase(), 'block');
-  assert.include(text.toLowerCase(), 'allow');
+  const buttons = notification.querySelectorAll('input');
+  assert.isAtLeast(buttons.length, 3);
 });
 
 /**
@@ -825,21 +832,128 @@ it('set-and-reset-colors', async function() {
 
   // Change the colors.
   indices.forEach((index) => {
-    assert.isTrue(lib.colors.colorPalette != custom);
-    assertColor(index, lib.colors.colorPalette[index]);
+    assert.isTrue(lib.colors.stockPalette != custom);
+    assertColor(index, lib.colors.stockPalette[index]);
     terminal.setColorPalette(index, custom);
     assertColor(index, custom);
   });
 
   // Reset a single color.
   terminal.resetColor(0);
-  assertColor(0, lib.colors.colorPalette[0]);
+  assertColor(0, lib.colors.stockPalette[0]);
 
   // Reset the palette and check the colors.
   terminal.resetColorPalette();
   indices.forEach((index) => {
-    assertColor(index, lib.colors.colorPalette[index]);
+    assertColor(index, lib.colors.stockPalette[index]);
   });
+});
+
+/**
+ * Use reduced scoll region.
+ */
+it('scroll-region', function() {
+  const terminal = this.terminal;
+
+  // This test prints 4 screens worth of text with different VT scroll region
+  // settings for each. The row contents are set so that each new screen will
+  // only partially overwrite the previous screen.
+  // ScreenA: '           |a??'
+  // ScreenB: '       |b??'
+  // ScreenC: '   |c??'
+  // ScreenD: 'd??'
+  // By the end the rows look something like: 'd00|c02|b03|a04' and we can
+  // validate the scrollback and screen at each stage.
+
+  // Print |visibleRowCount+ 1| rows.
+  const screenA = [];
+  for (let i = 0; i <= this.visibleRowCount; ++i) {
+    const p = i.toString().padStart(2, '0');
+    terminal.interpret(`           |a${p}`);
+    if (i < this.visibleRowCount) {
+      terminal.interpret('\n\r');
+    }
+    screenA.push(`           |a${p}`);
+  }
+  // The first row goes from screenA to scrollback.
+  const scrollback = screenA.splice(0, 1);
+
+  const validate = (scrollback, screen) => {
+    assert.deepStrictEqual(
+        terminal.scrollbackRows_.map((r) => r.textContent), scrollback);
+    assert.deepStrictEqual(
+        terminal.screen_.rowsArray.map((r) => r.textContent), screen);
+  };
+  validate(scrollback, screenA);
+
+  // Set top scroll on 2nd line (no bottom scroll), and print
+  // |visibleRowCount + 1| rows which will partially overwrite the existing
+  // screenA.
+  const screenB = [];
+  terminal.setVTScrollRegion(1, null);
+  terminal.setCursorPosition(0, 0);
+  for (let i = 0; i <= this.visibleRowCount; ++i) {
+    const p = i.toString().padStart(2, '0');
+    terminal.interpret(`       |b${p}`);
+    if (i < this.visibleRowCount) {
+      terminal.interpret('\n\r');
+    }
+    let fromScreenA = '';
+    if (i < this.visibleRowCount) {
+      fromScreenA = screenA[i].substr(11);
+    }
+    screenB.push(`       |b${p}${fromScreenA}`);
+  }
+  // The second row is deleted without going to scrollback.
+  screenB.splice(1, 1);
+  validate(scrollback, screenB);
+
+  // Set bottom scroll at 2nd last line (no top scroll), and print
+  // |visibleRowCount + 1| rows which will partially overwrite screenB.
+  const screenC = [];
+  terminal.setVTScrollRegion(null, this.visibleRowCount - 2);
+  terminal.setCursorPosition(0, 0);
+  for (let i = 0; i <= this.visibleRowCount; ++i) {
+    const p = i.toString().padStart(2, '0');
+    terminal.interpret(`   |c${p}`);
+    if (i < this.visibleRowCount) {
+      terminal.interpret('\n\r');
+    }
+    let fromScreenB = '';
+    if (i < this.visibleRowCount - 1) {
+      fromScreenB = screenB[i].substr(7);
+    }
+    screenC.push(`   |c${p}${fromScreenB}`);
+  }
+  // The first 2 rows go from screenC to scrollback.
+  scrollback.push.apply(scrollback, screenC.splice(0, 2));
+  // The last row of screenB is never touched.
+  screenC.push(screenB[this.visibleRowCount - 1]);
+  validate(scrollback, screenC);
+
+  // Set top scroll on 2nd line and bottom scroll on 2nd last line, and print
+  // |visibleRowCount + 1| rows which will partially overwrite screenC.
+  const screenD = [];
+  terminal.setVTScrollRegion(1, this.visibleRowCount - 2);
+  terminal.setCursorPosition(0, 0);
+  for (let i = 0; i <= this.visibleRowCount; ++i) {
+    const p = i.toString().padStart(2, '0');
+    terminal.interpret(`d${p}`);
+    if (i < this.visibleRowCount) {
+      terminal.interpret('\n\r');
+    }
+    let fromScreenC = '';
+    if (i < this.visibleRowCount - 1) {
+      fromScreenC = screenC[i].substr(3);
+    }
+    screenD.push(`d${p}${fromScreenC}`);
+  }
+  // The 2nd and 3rd rows are deleted without going to scrollback.
+  screenD.splice(1, 2);
+
+  // The last row of screenC is never touched.
+  screenD.push(screenC[this.visibleRowCount - 1]);
+  validate(scrollback, screenD);
 });
 
 });

@@ -8,17 +8,19 @@
  * @suppress {moduleLoad}
  */
 import {LitElement, css, html} from './lit_element.js';
+import {CHROME_VERSION} from './terminal_common.js';
 import {TerminalSettingsElement} from './terminal_settings_element.js';
-import {stylesButtonContainer, stylesDialog}
-    from './terminal_settings_styles.js';
 import './terminal_settings_button.js';
 import './terminal_settings_hue_slider.js';
 import './terminal_settings_saturation_value_picker.js';
+import './terminal_settings_transparency_slider.js';
 import './terminal_textfield.js';
+import './terminal_dialog.js';
 
+// Export for testing.
 export const TOO_WHITE_BOX_SHADOW = 'inset 0 0 0 1px black';
 export const FOCUS_BOX_SHADOW =
-    '0 0 0 2px rgba(var(--google-blue-600-rgb), .4)';
+    '0 0 0 2px var(--focus-shadow-color)';
 
 /**
  * Convert CSS color to hex color.  Always use uppercase for display.
@@ -35,10 +37,10 @@ function cssToHex(css) {
  * Return a css string for the swatch's style attribute.
  *
  * @param {string} color the css color.
- * @param {boolean} dialogIsOpened whether dialog is opened.
+ * @param {boolean} showFocusRing
  * @return {string}
  */
-function swatchStyle(color, dialogIsOpened) {
+function swatchStyle(color, showFocusRing) {
   const boxShadows = [];
 
   if (color) {
@@ -52,7 +54,7 @@ function swatchStyle(color, dialogIsOpened) {
     }
   }
 
-  if (dialogIsOpened) {
+  if (showFocusRing) {
     boxShadows.push(FOCUS_BOX_SHADOW);
   }
 
@@ -90,12 +92,15 @@ export class TerminalColorpickerElement extends LitElement {
       dialogIsOpened_: {
         type: Boolean,
       },
+      swatchFocusVisible_: {
+        type: Boolean,
+      },
     };
   }
 
   /** @override */
   static get styles() {
-    return [stylesButtonContainer, stylesDialog, css`
+    return css`
         #smallview {
           align-items: center;
           display: flex;
@@ -124,6 +129,7 @@ export class TerminalColorpickerElement extends LitElement {
           display: inline-block;
           height: 24px;
           margin: 6px;
+          outline: none;
           position: relative;
           user-select: none;
           width: 24px;
@@ -146,19 +152,18 @@ export class TerminalColorpickerElement extends LitElement {
           margin: 24px 0;
         }
 
-        dialog #hexinput {
+        terminal-dialog #hexinput {
           margin: 0;
         }
-    `];
+    `;
   }
 
   /** @override */
   render() {
-    const msg = hterm.messageManager.get.bind(hterm.messageManager);
     const transparency = this.disableTransparency ? '' : html`
-        <transparency-slider hue="${this.hue_}"
-            @updated="${this.onTransparency_}"
-            transparency="${this.transparency_}">
+        <transparency-slider color="${this.value}"
+            transparency="${this.transparency_}"
+            @change="${this.onTransparency_}">
         </transparency-slider>`;
     const input = html`
         <terminal-textfield id="hexinput"
@@ -167,35 +172,49 @@ export class TerminalColorpickerElement extends LitElement {
             @keydown="${this.onInputKeydown_}"/>`;
     return html`
         <div id="smallview">
-          <div id="swatch" @click="${this.onSwatchClick_}">
+          <div id="swatch" tabindex="0"
+              @blur="${this.onSwatchBlur_}"
+              @click="${this.onSwatchActivated_}"
+              @focus="${this.onSwatchFocus_}"
+              @keydown="${this.onSwatchKeydown_}"
+          >
             <div id="swatchdisplay"
-                style="${swatchStyle(this.value, this.dialogIsOpened_)}">
+                style="${swatchStyle(this.value,
+                    this.dialogIsOpened_ || this.swatchFocusVisible_)}">
             </div>
           </div>
           ${this.inputInDialog ? '' : input}
         </div>
-        <dialog>
+        <terminal-dialog @close="${this.onDialogClose_}">
           <saturation-value-picker
-              @updated="${this.onSaturationValue_}"
+              @change="${this.onSaturationValue_}"
               hue="${this.hue_}" saturation="${this.saturation_}"
               value="${this.hsvValue_}">
           </saturation-value-picker>
-          <hue-slider hue="${this.hue_}" @updated="${this.onHue_}" >
-          </hue-slider>
+          <hue-slider hue="${this.hue_}" @change="${this.onHue_}"></hue-slider>
           ${transparency}
           ${this.inputInDialog ? input : ''}
-          <div class="button-container">
-            <terminal-settings-button class="cancel"
-                @click="${this.onCancelClick_}">
-              ${msg('CANCEL_BUTTON_LABEL')}
-            </terminal-settings-button>
-            <terminal-settings-button class="action"
-                @click="${this.onOkClick_}">
-              ${msg('OK_BUTTON_LABEL')}
-            </terminal-settings-button>
-          </div>
-        </dialog>
+        </terminal-dialog>
     `;
+  }
+
+  onSwatchFocus_(event) {
+    this.swatchFocusVisible_ = event.target.matches(
+        CHROME_VERSION >= 87 ? ':focus-visible' : ':focus');
+  }
+
+  onSwatchBlur_(event) {
+    this.swatchFocusVisible_ = false;
+  }
+
+  onSwatchKeydown_(event) {
+    switch (event.code) {
+      case 'Enter':
+      case 'Space':
+        this.onSwatchActivated_();
+        event.preventDefault();
+        break;
+    }
   }
 
   constructor() {
@@ -219,6 +238,8 @@ export class TerminalColorpickerElement extends LitElement {
     this.cancelValue_;
     /** @private {boolean} */
     this.dialogIsOpened_ = false;
+    /** @private {boolean} */
+    this.swatchFocusVisible_ = false;
   }
 
   /**
@@ -236,7 +257,7 @@ export class TerminalColorpickerElement extends LitElement {
           this.saturation_, this.hsvValue_, this.transparency_]);
       this.value = lib.colors.arrayToHSLA(hslaArray);
     }
-    this.dispatchEvent(new CustomEvent('updated'));
+    this.dispatchEvent(new CustomEvent('change'));
   }
 
   /** @param {string} value */
@@ -271,8 +292,7 @@ export class TerminalColorpickerElement extends LitElement {
     return this.value_;
   }
 
-  /** @param {!Event} event */
-  onSwatchClick_(event) {
+  onSwatchActivated_() {
     this.openDialog();
     this.cancelValue_ = this.value;
   }
@@ -311,35 +331,25 @@ export class TerminalColorpickerElement extends LitElement {
   onInputKeydown_(event) {
     if (event.key === 'Enter') {
       this.onInputChange_(event);
-      this.onOkClick_();
+      this.shadowRoot.querySelector('terminal-dialog').accept();
     }
   }
 
   /**
-   * Detects clicks on the dialog cancel button.
+   * Handles dialog close.
    *
    * @param {!Event} event
    */
-  onCancelClick_(event) {
-    this.closeDialog();
-    this.onUiChanged_(this.cancelValue_);
-  }
-
-  /**
-   * Detects clicks on the dialog cancel button.
-   */
-  onOkClick_() {
-    this.closeDialog();
+  onDialogClose_(event) {
+    this.dialogIsOpened_ = false;
+    if (!event.detail.accept) {
+      this.onUiChanged_(this.cancelValue_);
+    }
   }
 
   openDialog() {
     this.dialogIsOpened_ = true;
-    this.shadowRoot.querySelector('dialog').showModal();
-  }
-
-  closeDialog() {
-    this.dialogIsOpened_ = false;
-    this.shadowRoot.querySelector('dialog').close();
+    this.shadowRoot.querySelector('terminal-dialog').show();
   }
 }
 
@@ -369,7 +379,7 @@ export class TerminalSettingsColorpickerElement extends
   /** @override */
   render() {
     return html`
-        <terminal-colorpicker @updated="${this.scheduleUpdate_}"
+        <terminal-colorpicker @change="${this.scheduleUpdate_}"
             value="${this.value}"
             ?disableTransparency="${this.disableTransparency}"/>
     `;

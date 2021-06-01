@@ -1,12 +1,9 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 # Copyright 2018 The Chromium OS Authors. All rights reserved.
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
 """Common ssh_client util code."""
-
-from __future__ import print_function
 
 import logging
 import multiprocessing
@@ -65,6 +62,9 @@ def copy(source, dest):
     """Always copy |source| to |dest|."""
     logging.info('Copying %s -> %s', source, dest)
     os.makedirs(os.path.dirname(dest), exist_ok=True)
+    # In case the dest perms are broken, remove the file.
+    if os.path.exists(dest):
+        unlink(dest)
     shutil.copy(source, dest)
 
 
@@ -228,10 +228,14 @@ def _toolchain_wasm_env():
         'PKG_CONFIG_SYSROOT_DIR': sysroot,
         'PKG_CONFIG_LIBDIR': pcdir,
         'SYSROOT': sysroot,
-        'CPPFLAGS': '-isystem %s' % (os.path.join(incdir, 'wassh-libc-sup'),),
+        'CPPFLAGS': ' '.join((
+            '-D_WASI_EMULATED_SIGNAL',
+            f'-isystem {os.path.join(incdir, "wassh-libc-sup")}',
+        )),
         'LDFLAGS': ' '.join([
             '-L%s' % (libdir,),
             '-lwassh-libc-sup',
+            '-lwasi-emulated-signal',
             '-Wl,--allow-undefined-file=%s' % (
                 os.path.join(libdir, 'wassh-libc-sup.imports'),),
             '-Wl,--export=__wassh_signal_handlers',

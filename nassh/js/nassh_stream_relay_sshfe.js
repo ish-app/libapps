@@ -37,7 +37,7 @@ nassh.Stream.RelaySshfeWS = function(fd) {
   this.sshAgent_ = null;
 
   // All the data we've queued but not yet sent out.
-  this.writeBuffer_ = new Uint8Array(0);
+  this.writeBuffer_ = nassh.buffer.new();
   // Callback function when asyncWrite is used.
   this.onWriteSuccess_ = null;
 
@@ -154,13 +154,9 @@ nassh.Stream.RelaySshfeWS.AgentResponse;
  *    resolve with the agent's response.
  */
 nassh.Stream.RelaySshfeWS.prototype.sendAgentMessage_ = function(data) {
-  // The Chrome message API uses callbacks, so wrap in a Promise ourselves.
-  return new Promise((resolve, reject) => {
-    chrome.runtime.sendMessage(
-        this.sshAgent_,
-        {'type': 'auth-agent@openssh.com', 'data': data},
-        resolve);
-  });
+  return /** @type {!Promise<!nassh.Stream.RelaySshfeWS.AgentResponse>} */ (
+      nassh.runtimeSendMessage(
+          this.sshAgent_, {'type': 'auth-agent@openssh.com', 'data': data}));
 };
 
 /**
@@ -364,8 +360,7 @@ nassh.Stream.RelaySshfeWS.prototype.asyncWrite = function(data, onSuccess) {
     return;
   }
 
-  this.writeBuffer_ = lib.array.concatTyped(
-      this.writeBuffer_, new Uint8Array(data));
+  this.writeBuffer_.write(data);
   this.onWriteSuccess_ = onSuccess;
   this.sendWrite_();
 };
@@ -375,7 +370,7 @@ nassh.Stream.RelaySshfeWS.prototype.asyncWrite = function(data, onSuccess) {
  */
 nassh.Stream.RelaySshfeWS.prototype.sendWrite_ = function() {
   if (!this.socket_ || this.socket_.readyState != 1 ||
-      this.writeBuffer_.length == 0) {
+      this.writeBuffer_.isEmpty()) {
     // Nothing to write or socket is not ready.
     return;
   }
@@ -388,7 +383,7 @@ nassh.Stream.RelaySshfeWS.prototype.sendWrite_ = function() {
     return;
   }
 
-  const readBuffer = this.writeBuffer_.subarray(0, this.maxMessageLength);
+  const readBuffer = this.writeBuffer_.read(this.maxMessageLength);
   const size = readBuffer.length;
   const buf = new ArrayBuffer(size + 4);
   const u8 = new Uint8Array(buf, 4);
@@ -400,7 +395,7 @@ nassh.Stream.RelaySshfeWS.prototype.sendWrite_ = function() {
   u8.set(readBuffer);
 
   this.socket_.send(buf);
-  this.writeBuffer_ = this.writeBuffer_.subarray(size);
+  this.writeBuffer_.ack(size);
   this.writeCount_ += size;
 
   if (this.onWriteSuccess_ !== null) {
@@ -408,7 +403,7 @@ nassh.Stream.RelaySshfeWS.prototype.sendWrite_ = function() {
     this.onWriteSuccess_(this.writeCount_);
   }
 
-  if (this.writeBuffer_.length) {
+  if (!this.writeBuffer_.isEmpty()) {
     // We have more data to send but due to message limit we didn't send it.
     setTimeout(this.sendWrite_.bind(this), 0);
   }

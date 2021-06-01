@@ -374,8 +374,7 @@ hterm.ScrollPort.prototype.paintIframeContents_ = function() {
       'width: 100%;' +
       'overflow: hidden;' +
       'cursor: var(--hterm-mouse-cursor-style);' +
-      '-webkit-user-select: none;' +
-      '-moz-user-select: none;');
+      'user-select: none;');
 
   const metaCharset = doc.createElement('meta');
   metaCharset.setAttribute('charset', 'utf-8');
@@ -573,8 +572,7 @@ hterm.ScrollPort.prototype.paintIframeContents_ = function() {
       'display: block;' +
       'position: fixed;' +
       'overflow: hidden;' +
-      '-webkit-user-select: text;' +
-      '-moz-user-select: text;');
+      'user-select: text;');
   this.screen_.appendChild(this.rowNodes_);
 
   // Two nodes to hold offscreen text during the copy event.
@@ -615,25 +613,6 @@ hterm.ScrollPort.prototype.paintIframeContents_ = function() {
   this.scrollArea_.id = 'hterm:scrollarea';
   this.scrollArea_.style.cssText = 'visibility: hidden';
   this.screen_.appendChild(this.scrollArea_);
-
-  // This svg element is used to detect when the browser is zoomed.  It must be
-  // placed in the outermost document for currentScale to be correct.
-  // TODO(rginda): This means that hterm nested in an iframe will not correctly
-  // detect browser zoom level.  We should come up with a better solution.
-  // Note: This must be http:// else Chrome cannot create the element correctly.
-  const xmlns = 'http://www.w3.org/2000/svg';
-  this.svg_ =
-      /** @type {?SVGSVGElement} */
-      (this.div_.ownerDocument.createElementNS(xmlns, 'svg'));
-  this.svg_.id = 'hterm:zoom-detector';
-  this.svg_.setAttribute('xmlns', xmlns);
-  this.svg_.setAttribute('version', '1.1');
-  this.svg_.style.cssText = (
-      'position: absolute;' +
-      'top: 0;' +
-      'left: 0;' +
-      'visibility: hidden');
-
 
   // We send focus to this element just before a paste happens, so we can
   // capture the pasted text and forward it on to someone who cares.
@@ -797,7 +776,7 @@ hterm.ScrollPort.prototype.setPasteOnDrop = function(pasteOnDrop) {
  * @return {{height: number, width: number}}
  */
 hterm.ScrollPort.prototype.getScreenSize = function() {
-  const size = hterm.getClientSize(lib.notNull(this.screen_));
+  const size = this.screen_.getBoundingClientRect();
   const rightPadding = Math.max(
       this.screenPaddingSize, this.currentScrollbarWidthPx);
   return {
@@ -832,7 +811,7 @@ hterm.ScrollPort.prototype.getScreenHeight = function() {
  * @return {number}
  */
 hterm.ScrollPort.prototype.getScrollbarX = function() {
-  return hterm.getClientSize(lib.notNull(this.screen_)).width -
+  return this.screen_.getBoundingClientRect().width -
          this.currentScrollbarWidthPx;
 };
 
@@ -893,7 +872,7 @@ hterm.ScrollPort.prototype.invalidate = function() {
   let node = this.topFold_.nextSibling;
   while (node != this.bottomFold_) {
     const nextSibling = node.nextSibling;
-    node.parentElement.removeChild(node);
+    node.remove();
     node = nextSibling;
   }
 
@@ -979,7 +958,7 @@ hterm.ScrollPort.prototype.measureCharacterSize = function(weight = '') {
   this.rulerSpan_.style.fontWeight = weight;
 
   this.rowNodes_.appendChild(this.ruler_);
-  const rulerSize = hterm.getClientSize(this.rulerSpan_);
+  const rulerSize = this.rulerSpan_.getBoundingClientRect();
 
   const size = new hterm.Size(rulerSize.width / lineLength,
                             rulerSize.height / numberOfLines);
@@ -988,10 +967,6 @@ hterm.ScrollPort.prototype.measureCharacterSize = function(weight = '') {
   this.ruler_.removeChild(this.rulerBaseline_);
 
   this.rowNodes_.removeChild(this.ruler_);
-
-  this.div_.ownerDocument.body.appendChild(this.svg_);
-  size.zoomFactor = this.svg_.currentScale;
-  this.div_.ownerDocument.body.removeChild(this.svg_);
 
   return size;
 };
@@ -1078,7 +1053,7 @@ hterm.ScrollPort.prototype.syncRowNodesDimensions_ = function() {
   let topFoldOffset = 0;
   let node = this.topFold_.previousSibling;
   while (node) {
-    topFoldOffset += hterm.getClientHeight(node);
+    topFoldOffset += node.getBoundingClientRect().height;
     node = node.previousSibling;
   }
 
@@ -1098,7 +1073,7 @@ hterm.ScrollPort.prototype.syncRowNodesDimensions_ = function() {
  * @private
  */
 hterm.ScrollPort.prototype.syncScrollbarWidth_ = function() {
-  const width = hterm.getClientWidth(lib.notNull(this.screen_)) -
+  const width = this.screen_.getBoundingClientRect().width -
                 this.screen_.clientWidth;
   if (width > 0) {
     this.currentScrollbarWidthPx = width;
@@ -1326,7 +1301,7 @@ hterm.ScrollPort.prototype.drawVisibleRows_ = function(
 
       const deadNode = currentNode;
       currentNode = currentNode.nextSibling;
-      deadNode.parentNode.removeChild(deadNode);
+      deadNode.remove();
     }
   };
 
@@ -1454,12 +1429,12 @@ hterm.ScrollPort.prototype.ariaHideOffscreenSelectionRows_ = function(
 hterm.ScrollPort.prototype.resetSelectBags_ = function() {
   if (this.topSelectBag_.parentNode) {
     this.topSelectBag_.textContent = '';
-    this.topSelectBag_.parentNode.removeChild(this.topSelectBag_);
+    this.topSelectBag_.remove();
   }
 
   if (this.bottomSelectBag_.parentNode) {
     this.bottomSelectBag_.textContent = '';
-    this.bottomSelectBag_.parentNode.removeChild(this.bottomSelectBag_);
+    this.bottomSelectBag_.remove();
   }
 };
 
@@ -1546,9 +1521,9 @@ hterm.ScrollPort.prototype.selectAll = function() {
  * @return {number}
  */
 hterm.ScrollPort.prototype.getScrollMax_ = function() {
-  return (hterm.getClientHeight(this.scrollArea_) +
-          this.visibleRowTopMargin + this.visibleRowBottomMargin -
-          hterm.getClientHeight(lib.notNull(this.screen_)));
+  return this.scrollArea_.getBoundingClientRect().height +
+         this.visibleRowTopMargin + this.visibleRowBottomMargin -
+         this.screen_.getBoundingClientRect().height;
 };
 
 /**
@@ -1557,6 +1532,11 @@ hterm.ScrollPort.prototype.getScrollMax_ = function() {
  * @param {number} rowIndex Index of the target row.
  */
 hterm.ScrollPort.prototype.scrollRowToTop = function(rowIndex) {
+  // Other scrollRowTo* functions and scrollLineUp could pass rowIndex < 0.
+  if (rowIndex < 0) {
+    rowIndex = 0;
+  }
+
   this.syncScrollHeight();
 
   this.isScrolledEnd = (
@@ -1584,24 +1564,16 @@ hterm.ScrollPort.prototype.scrollRowToTop = function(rowIndex) {
  * @param {number} rowIndex Index of the target row.
  */
 hterm.ScrollPort.prototype.scrollRowToBottom = function(rowIndex) {
-  this.syncScrollHeight();
+  this.scrollRowToTop(rowIndex - this.visibleRowCount);
+};
 
-  this.isScrolledEnd = (
-    rowIndex + this.visibleRowCount >= this.lastRowCount_);
-
-  let scrollTop = rowIndex * this.characterSize.height +
-      this.visibleRowTopMargin + this.visibleRowBottomMargin;
-  scrollTop -= this.visibleRowCount * this.characterSize.height;
-
-  if (scrollTop < 0) {
-    scrollTop = 0;
-  }
-
-  if (this.screen_.scrollTop == scrollTop) {
-    return;
-  }
-
-  this.screen_.scrollTop = scrollTop;
+/**
+ * Scroll the given rowIndex to the middle of the hterm.ScrollPort.
+ *
+ * @param {number} rowIndex Index of the target row.
+ */
+hterm.ScrollPort.prototype.scrollRowToMiddle = function(rowIndex) {
+  this.scrollRowToTop(rowIndex - Math.floor(this.visibleRowCount / 2));
 };
 
 /**
@@ -1677,11 +1649,7 @@ hterm.ScrollPort.prototype.onScrollWheel = function(e) {};
 hterm.ScrollPort.prototype.onScrollWheel_ = function(e) {
   this.onScrollWheel(e);
 
-  // Ignore the event if it was already handled (preventDefault was called),
-  // or if it is non-cancelable since preventDefault is ignored for these.
-  // See https://crbug.com/894223 where blink sends non-cancelable touchpad
-  // scrollWheel events.
-  if (e.defaultPrevented || !e.cancelable) {
+  if (e.defaultPrevented) {
     return;
   }
 
@@ -1705,6 +1673,10 @@ hterm.ScrollPort.prototype.onScrollWheel_ = function(e) {
     // Only preventDefault when we've actually scrolled.  If there's nothing
     // to scroll we want to pass the event through so Chrome can detect the
     // overscroll.
+    e.preventDefault();
+  } else if (e.ctrlKey) {
+    // Holding Contrl while scrolling will trigger zoom events.  Defeat them!
+    // Touchpad pinches also hit here via fake events.  https://crbug.com/289887
     e.preventDefault();
   }
 };
@@ -1730,12 +1702,12 @@ hterm.ScrollPort.prototype.scrollWheelDelta = function(e) {
       delta.x = e.deltaX * this.characterSize.width;
       delta.y = e.deltaY * this.characterSize.height;
       break;
-    case WheelEvent.DOM_DELTA_PAGE:
-      delta.x = e.deltaX * this.characterSize.width *
-          hterm.getClientWidth(lib.notNull(this.screen_));
-      delta.y = e.deltaY * this.characterSize.height *
-          hterm.getClientHeight(lib.notNull(this.screen_));
+    case WheelEvent.DOM_DELTA_PAGE: {
+      const {width, height} = this.screen_.getBoundingClientRect();
+      delta.x = e.deltaX * this.characterSize.width * width;
+      delta.y = e.deltaY * this.characterSize.height * height;
       break;
+    }
   }
 
   // The Y sign is inverted from what we would expect: up/down are

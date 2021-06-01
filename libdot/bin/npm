@@ -1,23 +1,25 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 # Copyright 2019 The Chromium OS Authors. All rights reserved.
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
 """Run npm with the right settings."""
 
-from __future__ import print_function
-
 import sys
 
 import libdot
+
+
+def run(cmd, **kwargs):
+    """Run the npm |cmd|."""
+    libdot.node.run(['npm'] + cmd, **kwargs)
 
 
 def main(argv):
     """The main func!"""
     libdot.setup_logging()
     libdot.node_and_npm_setup()
-    libdot.node.run(['npm'] + argv)
+    run(argv)
 
 
 if __name__ == '__main__':

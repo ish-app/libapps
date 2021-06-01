@@ -6,12 +6,8 @@
 
 /**
  * Namespace for the whole nassh project.
- *
- * We export this with 'var' as we access it across background pages.
- * It's messy and probably should be cleaned up at some point.
  */
-// eslint-disable-next-line no-var
-var nassh = {};
+const nassh = {};
 
 /**
  * Non-null if nassh is running as an extension.
@@ -27,10 +23,6 @@ lib.registerInit(
      * Register a static initializer for nassh.*.
      */
     () => {
-      if (!nassh.defaultStorage) {
-        nassh.defaultStorage = hterm.defaultStorage;
-      }
-
       // Since our translation process only preserves \n (and discards \r), we
       // have to manually insert them ourselves.
       hterm.messageManager.useCrlf = true;
@@ -149,7 +141,7 @@ nassh.exportPreferences = function(onComplete) {
 
     // Save all the profiles.
     rv.hterm = {};
-    hterm.PreferenceManager.listProfiles((profiles) => {
+    hterm.PreferenceManager.listProfiles(nasshPrefs.storage, (profiles) => {
       profiles.forEach((profile) => {
         rv.hterm[profile] = null;
         const prefs = new hterm.PreferenceManager(profile);
@@ -235,18 +227,12 @@ nassh.sendFeedback = function() {
   lib.f.openWindow('https://goo.gl/vb94JY');
 };
 
-/** Reload window. */
-nassh.reloadWindow = function() {
-  document.location.hash = '';
-  document.location.reload();
-};
-
 /**
  * Register this extension to handle URIs like ssh://.
  *
  * The protocol should be one allowed by the specifications:
  * https://html.spec.whatwg.org/multipage/webappapis.html#webappapis
- * https://chromium.googlesource.com/chromium/src/+blame/master/third_party/WebKit/Source/modules/navigatorcontentutils/NavigatorContentUtils.cpp
+ * https://chromium.googlesource.com/chromium/src/+blame/HEAD/third_party/WebKit/Source/modules/navigatorcontentutils/NavigatorContentUtils.cpp
  * https://www.iana.org/assignments/uri-schemes/prov/sftp
  *
  * @param {string} proto The protocol name to register.
@@ -341,72 +327,13 @@ nassh.base64ToBase64Url = function(data) {
 };
 
 /**
- * Workaround missing chrome.runtime in older versions of Chrome.
- *
- * As detailed in https://crbug.com/925118, the chrome.runtime object might be
- * missing when we run.  In order to workaround it, we need to reload the page.
- * While this is fixed in R72+, we unfortunately have EOL Chromebooks that will
- * never be able to upgrade to that version, so we have to keep this around for
- * a long time -- once we update minimum_chrome_version in the manifest to 72+.
- *
- * @return {boolean} True if bug was detected and the caller should halt all
- *     processing.
- */
-nassh.workaroundMissingChromeRuntime = function() {
-  // Chrome has a bug where it sometimes doesn't initialize chrome.runtime.
-  // Try and workaround it by forcing a refresh.  https://crbug.com/924656
-  if (window.chrome && !window.chrome.runtime) {
-    console.warn('chrome.runtime is undefined; reloading to workaround ' +
-                 'https://crbug.com/925118');
-    document.location.reload();
-    return true;
-  }
-
-  return false;
-};
-
-/**
- * Helper to get the background page once it's fully initialized.
- *
- * If the background page doesn't exist yet (fresh startup, or it's gone quiet
- * and Chrome automatically exited it), then the getBackgroundPage helper will
- * create a new instance on the fly and return it.  Unfortunately, we will often
- * then try to call funcs in it directly before it's finished initializing which
- * will cause random failures as it hits race conditions.
- *
- * @return {!Promise<!Window>} A promise resolving to the background page once
- *     it is fully initialized.
- */
-nassh.getBackgroundPage = function() {
-  if (!window.chrome || !chrome.runtime || !chrome.runtime.getBackgroundPage) {
-    return Promise.reject();
-  }
-
-  return new Promise((resolve, reject) => {
-    chrome.runtime.getBackgroundPage((bg) => {
-      if (bg === undefined) {
-        return reject();
-      }
-
-      const checkInitialized = () => {
-        if (bg.loaded) {
-          return resolve(bg);
-        }
-        console.log('Background page not initialized; retrying');
-        setTimeout(checkInitialized, 100);
-      };
-      checkInitialized();
-    });
-  });
-};
-
-/**
  * Generate an SGR escape sequence.
  *
  * @param {!Object=} settings
  * @return {string} The SGR escape sequence.
  */
-nassh.sgrSequence = function({bold, faint, italic, underline, fg, bg} = {}) {
+nassh.sgrSequence = function(
+    {bold, faint, italic, underline, blink, fg, bg} = {}) {
   const parts = [];
   if (bold) {
     parts.push('1');
@@ -418,7 +345,14 @@ nassh.sgrSequence = function({bold, faint, italic, underline, fg, bg} = {}) {
     parts.push('3');
   }
   if (underline) {
-    parts.push('4');
+    if (underline === true) {
+      parts.push('4');
+    } else {
+      parts.push(`4:${underline}`);
+    }
+  }
+  if (blink) {
+    parts.push('5');
   }
   if (fg) {
     parts.push(fg);
@@ -502,4 +436,25 @@ nassh.loadWebFonts = function(document) {
   const style = document.createElement('style');
   style.textContent = imports.join('\n') + fontFaces.join('');
   document.head.appendChild(style);
+};
+
+/**
+ * A Promise wrapper for the chrome.runtime.sendMessage API.
+ *
+ * @param {*} args The arguments to sendMessage.
+ * @return {!Promise<*>} A promise to resolve with the remote's response.
+ */
+nassh.runtimeSendMessage = function(...args) {
+  return new Promise((resolve, reject) => {
+    chrome.runtime.sendMessage(...args, (response) => {
+      // If the remote side doesn't exist (which is normal), Chrome complains
+      // if we don't read the lastError.  Clear that here.
+      const err = lib.f.lastError();
+      if (err) {
+        reject(err);
+      } else {
+        resolve(response);
+      }
+    });
+  });
 };

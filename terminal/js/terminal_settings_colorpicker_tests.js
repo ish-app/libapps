@@ -44,7 +44,7 @@ describe('terminal_settings_colorpicker.js', () => {
     assert.closeTo(+svp.getAttribute('saturation'), saturation, error);
     assert.closeTo(+svp.getAttribute('value'), value, error);
     assert.closeTo(+hs.getAttribute('hue'), hue, error);
-    assert.closeTo(+ts.getAttribute('hue'), hue, error);
+    assert.equal(ts.getAttribute('color'), el.value);
     assert.closeTo(+ts.getAttribute('transparency'), transparency, error);
   }
 
@@ -76,6 +76,11 @@ describe('terminal_settings_colorpicker.js', () => {
     this.el.updateDelay = 0;
     document.body.appendChild(this.el);
 
+    this.waitDialogClose = () => new Promise((resolve) => {
+      getElement(this.el, 'terminal-dialog').addEventListener(
+          'close', resolve, {once: true});
+    });
+
     return allUpdatesComplete(this.el);
   });
 
@@ -103,7 +108,7 @@ describe('terminal_settings_colorpicker.js', () => {
     const svp = getElement(this.el, 'saturation-value-picker');
     svp.saturation = 20;
     svp.value = 80;
-    svp.dispatchEvent(new CustomEvent('updated'));
+    svp.dispatchEvent(new CustomEvent('change'));
     await allUpdatesComplete(this.el);
 
     assertInternals(this.el, '#CCBEA3', 39, 20, 80, 1);
@@ -115,7 +120,7 @@ describe('terminal_settings_colorpicker.js', () => {
 
     const hs = getElement(this.el, 'hue-slider');
     hs.hue = 222;
-    hs.dispatchEvent(new CustomEvent('updated'));
+    hs.dispatchEvent(new CustomEvent('change'));
     await allUpdatesComplete(this.el);
 
     assertInternals(this.el, '#004CFF', 222, 100, 100, 1);
@@ -127,7 +132,7 @@ describe('terminal_settings_colorpicker.js', () => {
 
     const ts = getElement(this.el, 'transparency-slider');
     ts.transparency = 0.5;
-    ts.dispatchEvent(new CustomEvent('updated'));
+    ts.dispatchEvent(new CustomEvent('change'));
     await allUpdatesComplete(this.el);
 
     assertInternals(this.el, '#FFA60080', 39, 100, 100, 0.5);
@@ -157,19 +162,44 @@ describe('terminal_settings_colorpicker.js', () => {
     assert.isNull(getElement(this.el, 'transparency-slider'));
   });
 
+  it('open-dialog-on-swatch-clicked', async function() {
+    const swatch = getElement(this.el, '#swatch');
+    const dialog = getElement(this.el, 'terminal-dialog');
+
+    assert.isFalse(dialog.hasAttribute('open'));
+
+    swatch.dispatchEvent(new MouseEvent('click'));
+    await this.el.updateComplete;
+    assert.isTrue(dialog.hasAttribute('open'));
+  });
+
+  ['Enter', 'Space'].forEach((key) => it(`open-dialog-on-swatch-${key}-keydown`,
+        async function() {
+          const swatch = getElement(this.el, '#swatch');
+          const dialog = getElement(this.el, 'terminal-dialog');
+
+          assert.isFalse(dialog.hasAttribute('open'));
+
+          swatch.dispatchEvent(new KeyboardEvent('keydown', {code: key}));
+          await this.el.updateComplete;
+          assert.isTrue(dialog.hasAttribute('open'));
+        }));
+
   it('updates-and-closes-dialog-when-enter-pressed-in-input', async function() {
-    const dialog = getElement(this.el, 'dialog');
+    const dialog = getElement(this.el, 'terminal-dialog');
     const swatch = getElement(this.el, '#swatch');
     const hi = getElement(this.el, '#hexinput');
 
     // Show dialog when swatch clicked.
     assert.isFalse(dialog.hasAttribute('open'));
     swatch.dispatchEvent(new MouseEvent('click'));
+    await allUpdatesComplete(this.el);
     assert.isTrue(dialog.hasAttribute('open'));
 
     // Modify input and press enter.
     hi.value = 'purple';
     hi.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter'}));
+    await this.waitDialogClose();
     await allUpdatesComplete(this.el);
 
     // Dialog closed and value updated.
@@ -179,22 +209,23 @@ describe('terminal_settings_colorpicker.js', () => {
   });
 
   it('closes-dialog-when-ok-clicked', async function() {
-    const dialog = getElement(this.el, 'dialog');
+    const dialog = getElement(this.el, 'terminal-dialog');
     const swatch = getElement(this.el, '#swatch');
     const svp = getElement(this.el, 'saturation-value-picker');
-    const ok = getElement(this.el, 'terminal-settings-button.action');
 
     // Show dialog when swatch clicked.
     assert.isFalse(dialog.hasAttribute('open'));
     swatch.dispatchEvent(new MouseEvent('click'));
+    await allUpdatesComplete(this.el);
     assert.isTrue(dialog.hasAttribute('open'));
 
     // Modify input and click OK.
     svp.saturation = 20;
     svp.value = 80;
-    svp.dispatchEvent(new CustomEvent('updated'));
+    svp.dispatchEvent(new CustomEvent('change'));
     await allUpdatesComplete(this.el);
-    ok.dispatchEvent(new MouseEvent('click'));
+    dialog.accept();
+    await this.waitDialogClose();
 
     // Dialog closed and value updated.
     assert.isFalse(dialog.hasAttribute('open'));
@@ -204,22 +235,23 @@ describe('terminal_settings_colorpicker.js', () => {
   });
 
   it('closes-dialog-and-reverts-when-cancel-clicked', async function() {
-    const dialog = getElement(this.el, 'dialog');
+    const dialog = getElement(this.el, 'terminal-dialog');
     const swatch = getElement(this.el, '#swatch');
     const svp = getElement(this.el, 'saturation-value-picker');
-    const cancel = getElement(this.el, 'terminal-settings-button.cancel');
 
     // Show dialog when swatch clicked.
     assert.isFalse(dialog.hasAttribute('open'));
     swatch.dispatchEvent(new MouseEvent('click'));
+    await allUpdatesComplete(this.el);
     assert.isTrue(dialog.hasAttribute('open'));
 
     // Modify input and click OK.
     svp.saturation = 20;
     svp.value = 80;
-    svp.dispatchEvent(new CustomEvent('updated'));
+    svp.dispatchEvent(new CustomEvent('change'));
     await allUpdatesComplete(this.el);
-    cancel.dispatchEvent(new MouseEvent('click'));
+    dialog.cancel();
+    await this.waitDialogClose();
     await allUpdatesComplete(this.el);
 
     // Dialog closed and value updated.
@@ -243,7 +275,7 @@ describe('terminal_settings_colorpicker.js', () => {
   });
 
   it('sets-swatch-box-shadows-when-dialog-is-opened', async function() {
-    const dialog = getElement(this.el, 'dialog');
+    const dialog = getElement(this.el, 'terminal-dialog');
     const swatch = getElement(this.el, '#swatch');
     const swatchDisplay = getElement(this.el, '#swatchdisplay');
 

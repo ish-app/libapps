@@ -51,28 +51,22 @@ nassh.goog.gnubby.findExtension = function() {
   ];
 
   // Ping the extension to see if it's installed/enabled/alive.
-  const check = (id) => new Promise((resolve, reject) => {
-    chrome.runtime.sendMessage(id, {'type': 'HELLO'}, (result) => {
-      // If the remote side doesn't exist (which is normal), Chrome complains
-      // if we don't read the lastError.  Clear that here.
-      lib.f.lastError();
-
+  const check = (id) => {
+    return nassh.runtimeSendMessage(id, {'type': 'HELLO'}).then((result) => {
       // If the probe worked, return the id, else return nothing so we can
       // clear out all the pending promises.
       if (result !== undefined && result['rc'] == 0) {
-        resolve(id);
-      } else {
-        resolve();
+        return id;
       }
-    });
-  });
+    }).catch((e) => {});
+  };
 
   // Guess a reasonable default based on the OS.
   nassh.goog.gnubby.defaultExtension =
       (hterm.os == 'cros' ? stableAppId : stableExtId);
 
   // We don't set a timeout here as it doesn't block overall execution.
-  Promise.all(extensions.map((id) => check(id))).then((results) => {
+  Promise.all(extensions.map(check)).then((results) => {
     console.log(`gnubby probe results: ${results}`);
     for (let i = 0; i < extensions.length; ++i) {
       const extId = extensions[i];
@@ -84,6 +78,75 @@ nassh.goog.gnubby.findExtension = function() {
   });
 };
 
+/** @const */
+nassh.goog.gcse = {};
+
+/**
+ * The default extension id for managing certs.
+ *
+ * We default to the stable version.  If the dev version is available, we'll
+ * switch on the fly below.  We don't currently allow people to control this.
+ * This aligns with the gnubby team preferences: https://crbug.com/902588
+ *
+ * @type {string}
+ */
+nassh.goog.gcse.defaultExtension = 'cfmgaohenjcikllcgjpepfadgbflcjof';
+
+/**
+ * Find a usable GCSE extension.
+ */
+nassh.goog.gcse.findExtension = function() {
+  // If we're not in an extension context, nothing to do.
+  if (!window.chrome || !chrome.runtime) {
+    return;
+  }
+
+  const devId = 'oncenbbimcccjedkmajnncfllmbnmbnp';
+
+  // Ping the dev extension to see if it's installed/enabled/alive.
+  nassh.runtimeSendMessage(devId, {'action': 'hello'}).then((result) => {
+    // If the probe worked, return the id, else return nothing so we can
+    // clear out all the pending promises.  We don't check the value of the
+    // status field as it will be "error" which is confusing -- while the
+    // "hello" action is specifically reserved, it isn't handled :).
+    if (result !== undefined && result['status']) {
+      console.log(`found GCSE dev extension ${devId}`);
+      nassh.goog.gcse.defaultExtension = devId;
+    }
+  }).catch((e) => {});
+};
+
+/**
+ * Try to refresh the SSH cert if it's old.
+ *
+ * If the request works, we'll wait for it, otherwise we'll continue on even if
+ * we received an error.  Messages will be logged, but we won't throw errors.
+ *
+ * @param {!hterm.Terminal.IO} io Handle to the terminal for showing status.
+ * @return {!Promise<void>} Resolve once things are in sync.
+ */
+nassh.goog.gcse.refresh = function(io) {
+  io.print(nassh.msg('SSH_CERT_CHECK_START'));
+  return nassh.runtimeSendMessage(nassh.goog.gcse.defaultExtension,
+                                  {'action': 'certificate_expiry'})
+    .then((result) => {
+      if (result.status === 'OK') {
+        // Refresh the certificate if it expires in the next hour.
+        const now = new Date().getTime() / 1000;
+        const hoursLeft = Math.floor((result.expires - now) / 60 / 60);
+        io.println(nassh.msg('SSH_CERT_CHECK_RESULT', [hoursLeft]));
+        if (hoursLeft < 1) {
+          io.showOverlay(nassh.msg('SSH_CERT_CHECK_REFRESH'));
+          return nassh.runtimeSendMessage(nassh.goog.gcse.defaultExtension,
+                                          {'action': 'request_certificate'});
+        }
+      } else {
+        io.println(nassh.msg('SSH_CERT_CHECK_ERROR', [result.error]));
+      }
+    })
+    .catch((result) => io.println(nassh.msg('SSH_CERT_CHECK_ERROR', [result])));
+};
+
 /**
  * Register various Google extension probing.
  *
@@ -92,4 +155,5 @@ nassh.goog.gnubby.findExtension = function() {
  */
 lib.registerInit('goog init', () => {
   nassh.goog.gnubby.findExtension();
+  nassh.goog.gcse.findExtension();
 });

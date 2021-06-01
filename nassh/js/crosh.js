@@ -9,11 +9,6 @@
  * so we do it like this instead.
  */
 window.addEventListener('DOMContentLoaded', (event) => {
-  // Workaround https://crbug.com/928045.
-  if (nassh.workaroundMissingChromeRuntime()) {
-    return;
-  }
-
   const params = new URLSearchParams(document.location.search);
 
   // Make it easy to re-open as a window.
@@ -45,7 +40,6 @@ window.addEventListener('DOMContentLoaded', (event) => {
       hterm.defaultStorage = new lib.Storage.TerminalPrivate();
     });
     lib.registerInit('messages', nassh.loadMessages);
-    lib.registerInit('migrate-settings', Crosh.migrateSettings);
   }
 
   lib.init().then(Crosh.init);
@@ -101,34 +95,6 @@ Crosh.msg = function(name, args) {
 };
 
 /**
- * Migrates settings from crosh extension on first run as a web app.
- * TODO(crbug.com/1019021): Remove after M83.
- *
- * Copy any settings from the previous crosh extension which were stored in
- * chrome.storage.sync.
- *
- * @return {!Promise<void>} Resolves once settings have been migrated.
- */
-Crosh.migrateSettings = async function() {
-  if (!chrome.terminalPrivate || !chrome.terminalPrivate.getCroshSettings) {
-    return;
-  }
-
-  const migrated = await hterm.defaultStorage.getItem(
-      'crosh.settings.migrated');
-  if (migrated) {
-    return;
-  }
-
-  return new Promise((resolve) => {
-    chrome.terminalPrivate.getCroshSettings((settings) => {
-      settings['crosh.settings.migrated'] = true;
-      hterm.defaultStorage.setItems(settings).then(resolve);
-    });
-  });
-};
-
-/**
  * Static initializer called from crosh.html.
  *
  * This constructs a new Terminal instance and instructs it to run the Crosh
@@ -138,8 +104,8 @@ Crosh.migrateSettings = async function() {
  */
 Crosh.init = function() {
   const params = new URLSearchParams(document.location.search);
-  const profileName = params.get('profile');
-  const terminal = new hterm.Terminal(profileName);
+  const profileId = params.get('profile');
+  const terminal = new hterm.Terminal({profileId});
   // Use legacy pasting when running as an extension to avoid prompt.
   // TODO(crbug.com/1063219) We need this to not prompt the user for clipboard
   // permission.

@@ -1,12 +1,9 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 # Copyright 2018 The Chromium OS Authors. All rights reserved.
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
 """Common libdot util code."""
-
-from __future__ import print_function
 
 import argparse
 import base64
@@ -22,6 +19,7 @@ import sys
 import time
 import types
 from typing import Dict, List, Optional, Union
+import urllib.error
 import urllib.request
 
 
@@ -328,24 +326,28 @@ def fetch_data(uri: str, output=None, verbose: bool = False, b64: bool = False):
     if output is None:
         output = io.BytesIO()
 
-    with urllib.request.urlopen(uri, timeout=TIMEOUT) as infp:
-        mb = 0
-        length = infp.length
-        while True:
-            data = infp.read(1024 * 1024)
-            if not data:
-                break
-            # Show a simple progress bar if the user is interactive.
-            if verbose:
-                mb += 1
-                print('~%i MiB downloaded' % (mb,), end='')
-                if length:
-                    percent = mb * 1024 * 1024 * 100 / length
-                    print(' (%.2f%%)' % (percent,), end='')
-                print('\r', end='', flush=True)
-            if b64:
-                data = base64.b64decode(data)
-            output.write(data)
+    try:
+        with urllib.request.urlopen(uri, timeout=TIMEOUT) as infp:
+            mb = 0
+            length = infp.length
+            while True:
+                data = infp.read(1024 * 1024)
+                if not data:
+                    break
+                # Show a simple progress bar if the user is interactive.
+                if verbose:
+                    mb += 1
+                    print('~%i MiB downloaded' % (mb,), end='')
+                    if length:
+                        percent = mb * 1024 * 1024 * 100 / length
+                        print(' (%.2f%%)' % (percent,), end='')
+                    print('\r', end='', flush=True)
+                if b64:
+                    data = base64.b64decode(data)
+                output.write(data)
+    except urllib.error.HTTPError as e:
+        logging.error('%s: %s', uri, e)
+        sys.exit(1)
 
     return output
 
@@ -463,9 +465,11 @@ concat = HelperProgram('concat')
 cpplint = HelperProgram('cpplint')
 eslint = HelperProgram('eslint')
 headless_chrome = HelperProgram('headless-chrome')
+jsonlint = HelperProgram('jsonlint')
 lint = HelperProgram('lint')
 load_tests = HelperProgram('load_tests')
 mdlint = HelperProgram('mdlint')
 minify_translations = HelperProgram('minify-translations')
 node = HelperProgram('node')
+npm = HelperProgram('npm')
 pylint = HelperProgram('pylint')
