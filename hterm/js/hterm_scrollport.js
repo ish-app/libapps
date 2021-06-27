@@ -931,10 +931,8 @@ hterm.ScrollPort.prototype.measureCharacterSize = function(weight = '') {
   const context = ruler.getContext('2d');
   context.font = `${weight} ${this.getFontSize()}px ${this.getFontFamily()}`;
   const metrics = context.measureText('\u{2588}');
-  const ascent =
-      metrics.actualBoundingBoxAscent || metrics.fontBoundingBoxAscent;
-  const descent =
-      metrics.actualBoundingBoxDescent || metrics.fontBoundingBoxDescent;
+  const ascent = metrics.fontBoundingBoxAscent;
+  const descent = metrics.fontBoundingBoxDescent;
   return new hterm.Size(metrics.width, ascent + descent);
 };
 
