@@ -916,6 +916,67 @@ hterm.ScrollPort.prototype.getFontSize = function() {
   return parseInt(this.screen_.style.fontSize, 10);
 };
 
+hterm.ScrollPort.prototype.measureCharacterSizeLegacy = function(weight = '') {
+  // Number of lines used to average the height of a single character.
+  const numberOfLines = 100;
+  // Number of chars per line used to average the width of a single character.
+  const lineLength = 100;
+
+  if (!this.legacyRuler_) {
+    this.legacyRuler_ = this.document_.createElement('div');
+    this.legacyRuler_.id = 'hterm:ruler-character-size';
+    this.legacyRuler_.style.cssText = (
+        'position: absolute;' +
+        'top: 0;' +
+        'left: 0;' +
+        'visibility: hidden;' +
+        'height: auto !important;' +
+        'width: auto !important;');
+
+    // We need to put the text in a span to make the size calculation
+    // work properly in Firefox
+    this.rulerSpan_ = this.document_.createElement('span');
+    this.rulerSpan_.id = 'hterm:ruler-span-workaround';
+    this.rulerSpan_.innerHTML =
+        ('X'.repeat(lineLength) + '\r').repeat(numberOfLines);
+    this.legacyRuler_.appendChild(this.rulerSpan_);
+
+    this.rulerBaseline_ = this.document_.createElement('span');
+    this.rulerSpan_.id = 'hterm:ruler-baseline';
+    // We want to collapse it on the baseline
+    this.rulerBaseline_.style.fontSize = '0px';
+    this.rulerBaseline_.textContent = 'X';
+  }
+
+  this.rulerSpan_.style.fontWeight = weight;
+
+  this.rowNodes_.appendChild(this.legacyRuler_);
+  const rulerSize = this.rulerSpan_.getBoundingClientRect();
+
+  const size = new hterm.Size(rulerSize.width / lineLength,
+                            rulerSize.height / numberOfLines);
+
+  this.legacyRuler_.appendChild(this.rulerBaseline_);
+  this.legacyRuler_.removeChild(this.rulerBaseline_);
+
+  this.rowNodes_.removeChild(this.legacyRuler_);
+
+  return size;
+};
+
+hterm.ScrollPort.prototype.measureCharacterSizeModern = function(character, weight = '') {
+  let ruler = this.ruler_;
+  if (!ruler) {
+    ruler = this.ruler_ = this.document_.createElement('canvas');
+  }
+  const context = ruler.getContext('2d');
+  context.font = `${weight} ${this.getFontSize()}px ${this.getFontFamily()}`;
+  const metrics = context.measureText(character);
+  const ascent = metrics.fontBoundingBoxAscent;
+  const descent = metrics.fontBoundingBoxDescent;
+  return new hterm.Size(metrics.width, ascent + descent);
+};
+
 /**
  * Measure the size of a single character in pixels.
  *
@@ -924,16 +985,15 @@ hterm.ScrollPort.prototype.getFontSize = function() {
  * @return {!hterm.Size} A new hterm.Size object.
  */
 hterm.ScrollPort.prototype.measureCharacterSize = function(weight = '') {
-  let ruler = this.ruler_;
-  if (!ruler) {
-    ruler = this.ruler_ = this.document_.createElement('canvas');
+  let size = this.measureCharacterSizeModern('X', weight);
+  let comparisonSize = this.measureCharacterSizeModern('i', weight);
+  // The measurements we are getting do not appear to be monospace, so fallback
+  // on the legacy measurements.
+  if (size.width != comparisonSize.width) {
+    return this.measureCharacterSizeLegacy(weight);
+  } else {
+    return size;
   }
-  const context = ruler.getContext('2d');
-  context.font = `${weight} ${this.getFontSize()}px ${this.getFontFamily()}`;
-  const metrics = context.measureText('\u{2588}');
-  const ascent = metrics.fontBoundingBoxAscent;
-  const descent = metrics.fontBoundingBoxDescent;
-  return new hterm.Size(metrics.width, ascent + descent);
 };
 
 /**
